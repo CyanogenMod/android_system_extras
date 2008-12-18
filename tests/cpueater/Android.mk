@@ -22,3 +22,11 @@ LOCAL_MODULE_TAGS := tests eng
 LOCAL_SRC_FILES := cpueater.c
 include $(BUILD_EXECUTABLE)
 
+include $(CLEAR_VARS)
+LOCAL_MODULE := daemonize
+LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
+LOCAL_MODULE_TAGS := tests eng
+LOCAL_SRC_FILES := daemonize.c
+LOCAL_SHARED_LIBRARIES := libhardware
+include $(BUILD_EXECUTABLE)
+

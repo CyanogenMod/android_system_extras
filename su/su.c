@@ -29,11 +29,11 @@
 
 /*
  * SU can be given a specific command to exec. UID _must_ be
- * specified for this (ie argc => 3). Full path of file must be specified.
+ * specified for this (ie argc => 3).
  *
  * Usage:
  * su 1000
- * su 1000 /system/bin/ls -l
+ * su 1000 ls -l
  */
 int main(int argc, char **argv)
 {
@@ -70,7 +70,7 @@ int main(int argc, char **argv)
         char *exec_args[argc - 1];
         memset(exec_args, 0, sizeof(exec_args));
         memcpy(exec_args, &argv[2], sizeof(exec_args));
-        if (execv(argv[2], exec_args) < 0) {
+        if (execvp(argv[2], exec_args) < 0) {
             fprintf(stderr, "su: exec failed for %s Error:%s\n", argv[2],
                     strerror(errno));
             return -errno;
@@ -83,4 +83,3 @@ int main(int argc, char **argv)
     fprintf(stderr, "su: exec failed\n");
     return 1;
 }
-
