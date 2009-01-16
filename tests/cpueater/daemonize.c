@@ -25,7 +25,7 @@
 #include <sys/wait.h>
 
 
-#include "hardware/power.h"
+#include "hardware_legacy/power.h"
 
 
 main(int argc, char **argv)

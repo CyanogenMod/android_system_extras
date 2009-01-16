@@ -8,7 +8,6 @@ LOCAL_SRC_FILES:= memtest.cpp.arm \
 
 
 LOCAL_SHARED_LIBRARIES := libc 
-#libutils libhardware
 
 LOCAL_MODULE:= memtest
 

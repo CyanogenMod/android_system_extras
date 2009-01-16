@@ -39,7 +39,7 @@
 #include "jpeglib.h"
 #include <setjmp.h>
 #ifdef HAVE_ANDROID_OS
-#include <hardware/qemu_tracing.h>
+#include <hardware_legacy/qemu_tracing.h>
 #endif
 
 #define  USE_STDIO
