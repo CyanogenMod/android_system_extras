@@ -142,7 +142,7 @@ int pm_process_pagemap_range(pm_process_t *proc,
  * Returns an array of pointers to pm_map_t through *maps.
  * The array should be freed by the caller, but the maps should not be 
  * modified or destroyed. */
-int pm_process_maps(pm_process_t *proc, pm_map_t ***maps_out, size_t *len);
+int pm_process_maps(pm_process_t *proc, pm_map_t ***maps_out, int *len);
 
 /* Destroy a pm_process_t. */
 int pm_process_destroy(pm_process_t *proc);
