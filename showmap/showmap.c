@@ -78,6 +78,7 @@ again:
     if(fgets(line, 1024, fp) == 0) goto oops;
     if(sscanf(line, "Private_Dirty: %d kB", &mi->private_dirty) != 1) goto oops;
     if(fgets(line, 1024, fp) == 0) goto oops;
+    if(fgets(line, 1024, fp) == 0) goto oops;
 
     if(skip) {
         free(mi);
@@ -86,6 +87,7 @@ again:
 
     return mi;
 oops:
+    fprintf(stderr, "WARNING: Format of /proc/<pid>/smaps has changed!\n");
     free(mi);
     return 0;
 }
