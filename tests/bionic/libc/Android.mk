@@ -106,6 +106,7 @@ sources := \
     other/test_thread_max.c \
     other/test_timer_create.c \
     other/test_timer_create2.c \
+    other/test_timer_create3.c \
     other/test_vfprintf_leak.c \
 
 $(call device-test, $(sources))
