@@ -18,7 +18,7 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 LOCAL_MODULE := timeinfo
 LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
-LOCAL_MODULE_TAGS := tests eng
+LOCAL_MODULE_TAGS := eng
 LOCAL_SRC_FILES := timeinfo.cpp
 LOCAL_SHARED_LIBRARIES := libhardware_legacy
 include $(BUILD_EXECUTABLE)

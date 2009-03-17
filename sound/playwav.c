@@ -323,6 +323,7 @@ int mp3_play(const char *fn)
 
     close(fd);
     close(afd);
+    return 0;
 }
 
 int main(int argc, char **argv)

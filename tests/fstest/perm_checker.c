@@ -369,7 +369,7 @@ static int check_path(const char *name)
         closedir(d);
         return retval;
     } else if (S_ISLNK(s.st_mode)) {
-        validate_link(name, PERMS(s.st_mode), s.st_uid, s.st_gid);
+        return validate_link(name, PERMS(s.st_mode), s.st_uid, s.st_gid);
     } else {
         return validate_file(name, PERMS(s.st_mode), s.st_uid, s.st_gid);
     }

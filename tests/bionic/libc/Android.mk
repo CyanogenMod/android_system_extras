@@ -105,10 +105,36 @@ sources := \
     other/test_system.c \
     other/test_thread_max.c \
     other/test_timer_create.c \
+    other/test_timer_create2.c \
+    other/test_timer_create3.c \
     other/test_vfprintf_leak.c \
 
 $(call device-test, $(sources))
 
+# The relocations test is a bit special, since we need
+# to build one shared object and one executable that depends
+# on it.
+
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := bionic/lib_relocs.c
+LOCAL_MODULE    := libtest_relocs
+LOCAL_PRELINK_MODULE := false
+include $(BUILD_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := bionic/test_relocs.c
+LOCAL_MODULE    := test_relocs
+LOCAL_SHARED_LIBRARIES := libtest_relocs
+include $(BUILD_EXECUTABLE)
+
 # TODO: Add a variety of GLibc test programs too...
+
+# Hello World to test libstdc++ support
+
+sources := \
+    common/hello_world.cpp \
+
+EXTRA_CFLAGS := -mandroid
+#$(call device-test, $(sources))
 
 endif  # BIONIC_TESTS

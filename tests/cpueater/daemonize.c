@@ -28,7 +28,7 @@
 #include "hardware_legacy/power.h"
 
 
-main(int argc, char **argv)
+int main(int argc, char **argv)
 {
   int pid, fd, mode;
   unsigned int delay = 0;
