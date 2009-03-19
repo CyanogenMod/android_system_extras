@@ -15,6 +15,8 @@
 ** limitations under the License.
 */
 
+#define LOG_TAG "su"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,6 +29,8 @@
 
 #include <pwd.h>
 
+#include <private/android_filesystem_config.h>
+
 /*
  * SU can be given a specific command to exec. UID _must_ be
  * specified for this (ie argc => 3).
@@ -38,7 +42,7 @@
 int main(int argc, char **argv)
 {
     struct passwd *pw;
-    int uid, gid;
+    int uid, gid, myuid;
 
     if(argc < 2) {
         uid = gid = 0;
@@ -53,6 +57,13 @@ int main(int argc, char **argv)
         }
     }
 
+    /* Until we have something better, only root and the shell can use su. */
+    myuid = getuid();
+    if (myuid != AID_ROOT && myuid != AID_SHELL) {
+        fprintf(stderr,"su: uid %d not allowed to su\n", myuid);
+        return 1;
+    }
+    
     if(setgid(gid) || setuid(uid)) {
         fprintf(stderr,"su: permission denied\n");
         return 1;
