@@ -25,10 +25,7 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
-
-// Test that including cstddef works. This should be the only include in this
-// file to make sure that we don't pick definitions without us knowing.
-#include <cstddef>
+#include <climits>
 
 namespace {
 const int kPassed = 0;
@@ -36,66 +33,50 @@ const int kFailed = 1;
 #define FAIL_UNLESS(f) if (!android::f()) return kFailed;
 }  // anonymous namespace
 
-namespace android {
-// Dummy struct used to calculate offset of some of its fields.
-struct Foo
+namespace android
 {
-    char field1;
-    char field2;
-};
-
-// Check various types are declared in the std namespace.
-bool testTypesStd()
+bool testLimits()
 {
-    // size_t should be defined in both namespaces
-    volatile ::size_t size_t_in_top_ns = 0;
-    volatile ::std::size_t size_t_in_std_ns = 0;
+    // char
+    volatile char c1 = CHAR_BIT;
+    volatile char c2 = CHAR_MAX;
+    volatile char c3 = CHAR_MIN;
 
-    if (sizeof(::size_t) != sizeof(::std::size_t))
-    {
-        return false;
-    }
+    // int
+    volatile int i1 = INT_MAX;
+    volatile int i2 = INT_MIN;
 
-    // ptrdiff_t should be defined in both namespaces
-    volatile ::ptrdiff_t ptrdiff_t_in_top_ns = 0;
-    volatile ::std::ptrdiff_t ptrdiff_t_in_std_ns = 0;
+    // short
+    volatile short s1 = SHRT_MAX;
+    volatile short s2 = SHRT_MIN;
 
-    if (sizeof(::ptrdiff_t) != sizeof(::std::ptrdiff_t))
-    {
-        return false;
-    }
-    // NULL is only in the top namespace
-    volatile int *null_is_defined = NULL;
+    // long
+    volatile long l1 = LONG_MAX;
+    volatile long l2 = LONG_MIN;
+
+    // long long
+    volatile long long ll1 = LLONG_MAX;
+    volatile long long ll2 = LLONG_MIN;
+
+    volatile unsigned long mb = MB_LEN_MAX;
+
+    // signed char
+    volatile signed char sc1 = SCHAR_MIN;
+    volatile signed char sc2 = SCHAR_MAX;
+
+    // unsigned
+    volatile unsigned int ui = UINT_MAX;
+    volatile unsigned short us = USHRT_MAX;
+    volatile unsigned long ul = ULONG_MAX;
+    volatile unsigned long long ull = ULLONG_MAX;
+
     return true;
 }
 
-bool testOffsetOf()
-{
-#ifndef offsetof
-#error "offsetof is not a macro"
-#endif
-
-    // offsetof is only in the top namespace
-    volatile size_t offset = offsetof(struct Foo, field2);
-    return offset == 1;
-}
-
-bool testNull()
-{
-#ifndef NULL
-#error "NULL is not a macro"
-#endif
-    // If NULL is void* this will issue a warning.
-    volatile int null_is_not_void_star = NULL;
-    return true;
-}
-
-}  // android namespace
+}  // namespace android
 
 int main(int argc, char **argv)
 {
-    FAIL_UNLESS(testTypesStd);
-    FAIL_UNLESS(testOffsetOf);
-    FAIL_UNLESS(testNull);
+    FAIL_UNLESS(testLimits);
     return kPassed;
 }
