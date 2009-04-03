@@ -58,7 +58,11 @@ define host-test
 endef
 
 sources := \
-    test_cstddef.cpp
+    test_cassert.cpp \
+    test_cctype.cpp \
+    test_climits.cpp \
+    test_cstddef.cpp \
+    test_ctime.cpp
 
 $(call host-test, $(sources))
 $(call device-test, $(sources))
