@@ -25,7 +25,13 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
+
+
 #include <climits>
+#ifndef BIONIC_LIBSTDCPP_INCLUDE_CLIMITS__
+#error "Wrong header file included!!"
+#endif
+
 
 namespace {
 const int kPassed = 0;
