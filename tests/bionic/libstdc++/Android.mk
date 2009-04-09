@@ -61,10 +61,18 @@ sources := \
     test_cassert.cpp \
     test_cctype.cpp \
     test_climits.cpp \
+    test_csetjmp.cpp \
+    test_csignal.cpp \
     test_cstddef.cpp \
+    test_cstdint.cpp \
+    test_cstdio.cpp \
+    test_cstdlib.cpp \
     test_ctime.cpp
 
+EXTRA_CFLAGS := -I bionic/libstdc++/include
 $(call host-test, $(sources))
+
+EXTRA_CFLAGS := -I bionic/libstdc++/include
 $(call device-test, $(sources))
 
 endif  # BIONIC_TESTS
