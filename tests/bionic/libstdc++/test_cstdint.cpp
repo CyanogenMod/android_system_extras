@@ -26,78 +26,20 @@
  * SUCH DAMAGE.
  */
 
-#include <cstddef>
-#ifndef BIONIC_LIBSTDCPP_INCLUDE_CSTDDEF__
+#include <cstdint>
+#ifndef BIONIC_LIBSTDCPP_INCLUDE_CSTDINT__
 #error "Wrong header file included!!"
 #endif
 
-
 namespace {
 const int kPassed = 0;
-const int kFailed = 1;
-#define FAIL_UNLESS(f) if (!android::f()) return kFailed;
 }  // anonymous namespace
 
-namespace android {
-// Dummy struct used to calculate offset of some of its fields.
-struct Foo
+namespace android
 {
-    char field1;
-    char field2;
-};
-
-// Check various types are declared in the std namespace.
-bool testTypesStd()
-{
-    // size_t should be defined in both namespaces
-    volatile ::size_t size_t_in_top_ns = 0;
-    volatile ::std::size_t size_t_in_std_ns = 0;
-
-    if (sizeof(::size_t) != sizeof(::std::size_t))
-    {
-        return false;
-    }
-
-    // ptrdiff_t should be defined in both namespaces
-    volatile ::ptrdiff_t ptrdiff_t_in_top_ns = 0;
-    volatile ::std::ptrdiff_t ptrdiff_t_in_std_ns = 0;
-
-    if (sizeof(::ptrdiff_t) != sizeof(::std::ptrdiff_t))
-    {
-        return false;
-    }
-    // NULL is only in the top namespace
-    volatile int *null_is_defined = NULL;
-    return true;
-}
-
-bool testOffsetOf()
-{
-#ifndef offsetof
-#error "offsetof is not a macro"
-#endif
-
-    // offsetof is only in the top namespace
-    volatile size_t offset = offsetof(struct Foo, field2);
-    return offset == 1;
-}
-
-bool testNull()
-{
-#ifndef NULL
-#error "NULL is not a macro"
-#endif
-    // If NULL is void* this will issue a warning.
-    volatile int null_is_not_void_star = NULL;
-    return true;
-}
-
-}  // android namespace
+}  // namespace android
 
 int main(int argc, char **argv)
 {
-    FAIL_UNLESS(testTypesStd);
-    FAIL_UNLESS(testOffsetOf);
-    FAIL_UNLESS(testNull);
     return kPassed;
 }

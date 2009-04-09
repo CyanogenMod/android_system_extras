@@ -26,8 +26,11 @@
  * SUCH DAMAGE.
  */
 
-// Test that including cassert works.
+
 #include <cassert>
+#ifndef BIONIC_LIBSTDCPP_INCLUDE_CASSERT__
+#error "Wrong header file included!!"
+#endif
 
 namespace {
 const int kPassed = 0;

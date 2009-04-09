@@ -27,6 +27,10 @@
  */
 
 #include <cctype>
+#ifndef BIONIC_LIBSTDCPP_INCLUDE_CCTYPE__
+#error "Wrong header file included!!"
+#endif
+
 
 namespace {
 const int kPassed = 0;
