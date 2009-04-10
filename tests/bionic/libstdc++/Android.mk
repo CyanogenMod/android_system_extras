@@ -67,6 +67,7 @@ sources := \
     test_cstdint.cpp \
     test_cstdio.cpp \
     test_cstdlib.cpp \
+    test_cstring.cpp \
     test_ctime.cpp
 
 EXTRA_CFLAGS := -I bionic/libstdc++/include
