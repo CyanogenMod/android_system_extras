@@ -61,6 +61,7 @@ sources := \
     test_cassert.cpp \
     test_cctype.cpp \
     test_climits.cpp \
+    test_cmath.cpp \
     test_csetjmp.cpp \
     test_csignal.cpp \
     test_cstddef.cpp \
