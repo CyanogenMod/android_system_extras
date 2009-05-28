@@ -30,6 +30,7 @@ define device-test
     $(eval include $(CLEAR_VARS)) \
     $(eval LOCAL_SRC_FILES := $(file)) \
     $(eval LOCAL_MODULE := $(notdir $(file:%.c=%))) \
+    $(eval LOCAL_MODULE := $(LOCAL_MODULE:%.cpp=%)) \
     $(eval $(info LOCAL_MODULE=$(LOCAL_MODULE))) \
     $(eval LOCAL_CFLAGS += $(EXTRA_CFLAGS)) \
     $(eval LOCAL_MODULE_TAGS := tests) \
@@ -46,6 +47,7 @@ define host-test
     $(eval include $(CLEAR_VARS)) \
     $(eval LOCAL_SRC_FILES := $(file)) \
     $(eval LOCAL_MODULE := $(notdir $(file:%.c=%))) \
+    $(eval LOCAL_MODULE := $(LOCAL_MODULE:%.cpp=%)) \
     $(eval $(info LOCAL_MODULE=$(LOCAL_MODULE) file=$(file))) \
     $(eval LOCAL_CFLAGS += $(EXTRA_CFLAGS)) \
     $(eval LOCAL_LDLIBS += $(EXTRA_LDLIBS)) \
@@ -126,6 +128,23 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := bionic/test_relocs.c
 LOCAL_MODULE    := test_relocs
 LOCAL_SHARED_LIBRARIES := libtest_relocs
+include $(BUILD_EXECUTABLE)
+
+# This test tries to see if the static constructors in a
+# shared library are only called once. We thus need to
+# build a shared library, then call it from another
+# program.
+#
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := bionic/lib_static_init.cpp
+LOCAL_MODULE    := libtest_static_init
+LOCAL_PRELINK_MODULE := false
+include $(BUILD_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := bionic/test_static_init.cpp
+LOCAL_MODULE    := test_static_init
+LOCAL_SHARED_LIBRARIES := libtest_static_init
 include $(BUILD_EXECUTABLE)
 
 # TODO: Add a variety of GLibc test programs too...
