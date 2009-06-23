@@ -22,7 +22,7 @@ LOCAL_SHARED_LIBRARIES := libc
 
 LOCAL_MODULE := perm_checker
 
-LOCAL_MODULE_TAGS := tests
+LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_EXECUTABLE)
 
@@ -32,7 +32,7 @@ include $(CLEAR_VARS)
 
 LOCAL_MODULE := perm_checker.conf
 
-LOCAL_MODULE_TAGS := tests
+LOCAL_MODULE_TAGS := optional
 
 LOCAL_MODULE_CLASS := ETC
 
