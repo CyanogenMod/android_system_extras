@@ -9,6 +9,6 @@ LOCAL_SHARED_LIBRARIES := libc
 
 LOCAL_MODULE:= icache
 
-LOCAL_MODULE_TAGS := tests
+LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_EXECUTABLE)
