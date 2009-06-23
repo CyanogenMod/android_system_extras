@@ -117,7 +117,7 @@ void StopWatch::sprint(char **str, size_t *size)
     if (kVerbose) SNPRINTF_OR_RETURN(*str, *size, "# Got %d samples for %s\n", mDataLen, mName);
     processSamples();
 
-    SNPRINTF_OR_RETURN(*str, *size, "# StopWatch %s total/cumulative duration %f. Samples: %d\n",
+    SNPRINTF_OR_RETURN(*str, *size, "# StopWatch %s total/cumulative duration %f Samples: %d\n",
                        mName, mDuration, mNum);
     printThroughput(str, size);
     printAverageMinMax(str, size);
