@@ -591,10 +591,21 @@ done:
 
 static void show_help(const char *cmd)
 {
-    fprintf(stderr,"Usage: %s [options] [backup-file-path]\n", cmd);
+    fprintf(stderr,"Usage: %s COMMAND [options] [backup-file-path]\n", cmd);
 
+    fprintf(stderr, "commands are:\n"
+                    "  help            Show this help text.\n"
+                    "  backup          Perform a backup of /data.\n"
+                    "  restore         Perform a restore of /data.\n");
     fprintf(stderr, "options include:\n"
-                    "  -r              Perform restore of previous backup.\n");
+                    "  -h              Show this help text.\n");
+    fprintf(stderr, "\nThe %s command allows you to perform low-level\n"
+                    "backup and restore of the /data partition.  This is\n"
+                    "where all user data is kept, allowing for a fairly\n"
+                    "complete restore of a device's state.  Note that\n"
+                    "because this is low-level, it will only work across\n"
+                    "builds of the same (or very similar) device software.\n",
+                    cmd);
 }
 
 } /* namespace android */
@@ -607,24 +618,39 @@ int main (int argc, char **argv)
         fprintf(stderr, "error -- %s must run as root\n", argv[0]);
         exit(-1);
     }
-        
-    if (argc == 2 && 0 == strcmp(argv[1], "--help")) {
+    
+    if (argc < 2) {
+        fprintf(stderr, "No command specified.\n");
         android::show_help(argv[0]);
-        exit(0);
+        exit(-1);
     }
 
+    if (0 == strcmp(argv[1], "restore")) {
+        restore = 1;
+    } else if (0 == strcmp(argv[1], "help")) {
+        android::show_help(argv[0]);
+        exit(0);
+    } else if (0 != strcmp(argv[1], "backup")) {
+        fprintf(stderr, "Unknown command: %s\n", argv[1]);
+        android::show_help(argv[0]);
+        exit(-1);
+    }
+
+    optind = 2;
+    
     for (;;) {
         int ret;
 
-        ret = getopt(argc, argv, "r");
+        ret = getopt(argc, argv, "h");
 
         if (ret < 0) {
             break;
         }
 
         switch(ret) {
-            case 'r':
-                restore = 1;
+            case 'h':
+                android::show_help(argv[0]);
+                exit(0);
             break;
 
             default:
