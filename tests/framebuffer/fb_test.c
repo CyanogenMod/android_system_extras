@@ -111,7 +111,8 @@ static void set_active_framebuffer(unsigned n)
     vi.yoffset = n * vi.yres;
     if(ioctl(gr_fb_fd, FBIOPUT_VSCREENINFO, &vi) < 0) {
         fprintf(stderr,"active fb swap failed!\n");
-    }
+    } else
+        printf("active buffer: %d\n", n);
 }
 
 static void dumpinfo(struct fb_fix_screeninfo *fi, struct fb_var_screeninfo *vi)
@@ -218,24 +219,27 @@ void clear_screen(int w, int h, uint16_t* loc)
       loc[i + j*(stride)] = 0x0000;
 }
 
-
 int main(int argc, char **argv) {
   int w;
   int h;
+  int id = 0;
   gr_init();
   w = vi.xres;
   h = vi.yres;
   clear_screen(w, h, (uint16_t *)gr_framebuffer[0].data);
+  clear_screen(w, h, (uint16_t *)gr_framebuffer[1].data);
 
   if (argc > 2) {
     w = atoi(argv[1]);
     h = atoi(argv[2]);
   }
 
-  draw_grid(w, h, (uint16_t *)gr_framebuffer[0].data);
-  printf("%lld\n", (tv2.tv_sec*1000000000LL + tv2.tv_nsec) - (tv.tv_sec*1000000000LL + tv.tv_nsec));
-  set_active_framebuffer(1);
-  set_active_framebuffer(0);
+  if (argc > 3)
+      id = !!atoi(argv[3]);
+
+  draw_grid(w, h, (uint16_t *)gr_framebuffer[id].data);
+  set_active_framebuffer(!id);
+  set_active_framebuffer(id);
 
   return 0;
 }
