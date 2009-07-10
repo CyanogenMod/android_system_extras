@@ -28,7 +28,7 @@
 
 
 #include <climits>
-#ifndef BIONIC_LIBSTDCPP_INCLUDE_CLIMITS__
+#if defined BIONIC && !defined BIONIC_LIBSTDCPP_INCLUDE_CLIMITS__
 #error "Wrong header file included!!"
 #endif
 

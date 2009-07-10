@@ -27,7 +27,7 @@
  */
 
 #include <cstdint>
-#ifndef BIONIC_LIBSTDCPP_INCLUDE_CSTDINT__
+#if defined BIONIC && !defined BIONIC_LIBSTDCPP_INCLUDE_CSTDINT__
 #error "Wrong header file included!!"
 #endif
 

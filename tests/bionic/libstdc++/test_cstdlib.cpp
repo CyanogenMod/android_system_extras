@@ -27,7 +27,7 @@
  */
 
 #include <cstdlib>
-#ifndef BIONIC_LIBSTDCPP_INCLUDE_CSTDLIB__
+#if defined BIONIC && !defined BIONIC_LIBSTDCPP_INCLUDE_CSTDLIB__
 #error "Wrong header file included!!"
 #endif
 
@@ -40,6 +40,77 @@ const int kFailed = 1;
 
 namespace android
 {
+using ::exit;
+using ::abort;
+using ::atexit;
+using ::on_exit;
+
+using ::getenv;
+using ::putenv;
+using ::setenv;
+using ::unsetenv;
+using ::clearenv;
+
+using ::mktemp;
+using ::mkstemp;
+
+using ::strtol;
+using ::strtoll;
+using ::strtoul;
+using ::strtoull;
+using ::strtod;
+using ::strtof;
+
+using ::atoi;
+using ::atol;
+using ::atoll;
+using ::atof;
+
+using ::abs;
+using ::labs;
+using ::llabs;
+
+using ::realpath;
+using ::system;
+
+using ::bsearch;
+using ::qsort;
+
+using ::jrand48;
+using ::mrand48;
+using ::nrand48;
+using ::lrand48;
+using ::seed48;
+using ::srand48;
+
+using ::rand;
+using ::srand;
+using ::random;
+using ::srandom;
+
+using ::malloc;
+using ::free;
+using ::calloc;
+using ::realloc;
+
+using ::unlockpt;
+using ::ptsname;
+using ::ptsname_r;
+using ::getpt;
+using ::grantpt;
+
+using ::div_t;
+using ::div;
+using ::ldiv_t;
+using ::ldiv;
+using ::lldiv_t;
+using ::lldiv;
+
+using ::mblen;
+using ::mbstowcs;
+using ::mbtowc;
+using ::wctomb;
+using ::wcstombs;
 }  // namespace android
 
 int main(int argc, char **argv)

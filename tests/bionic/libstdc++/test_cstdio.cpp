@@ -27,7 +27,7 @@
  */
 
 #include <cstdio>
-#ifndef BIONIC_LIBSTDCPP_INCLUDE_CSTDIO__
+#if defined BIONIC && !defined BIONIC_LIBSTDCPP_INCLUDE_CSTDIO__
 #error "Wrong header file included!!"
 #endif
 

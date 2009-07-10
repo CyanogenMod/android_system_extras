@@ -27,7 +27,7 @@
  */
 
 #include <csetjmp>
-#ifndef BIONIC_LIBSTDCPP_INCLUDE_CSETJMP__
+#if defined BIONIC && !defined BIONIC_LIBSTDCPP_INCLUDE_CSETJMP__
 #error "Wrong header file included!!"
 #endif
 

@@ -31,7 +31,6 @@ define device-test
     $(eval include $(CLEAR_VARS)) \
     $(eval LOCAL_SRC_FILES := $(file)) \
     $(eval LOCAL_MODULE := $(notdir $(file:%.cpp=%))) \
-    $(eval $(info LOCAL_MODULE=$(LOCAL_MODULE))) \
     $(eval LOCAL_CFLAGS += $(EXTRA_CFLAGS)) \
     $(eval LOCAL_MODULE_TAGS := tests) \
     $(eval include $(BUILD_EXECUTABLE)) \
@@ -47,7 +46,6 @@ define host-test
     $(eval include $(CLEAR_VARS)) \
     $(eval LOCAL_SRC_FILES := $(file)) \
     $(eval LOCAL_MODULE := $(notdir $(file:%.cpp=%))) \
-    $(eval $(info LOCAL_MODULE=$(LOCAL_MODULE) file=$(file))) \
     $(eval LOCAL_CFLAGS += $(EXTRA_CFLAGS)) \
     $(eval LOCAL_LDLIBS += $(EXTRA_LDLIBS)) \
     $(eval LOCAL_MODULE_TAGS := tests) \
@@ -65,16 +63,22 @@ sources := \
     test_csetjmp.cpp \
     test_csignal.cpp \
     test_cstddef.cpp \
-    test_cstdint.cpp \
     test_cstdio.cpp \
     test_cstdlib.cpp \
     test_cstring.cpp \
     test_ctime.cpp
 
-EXTRA_CFLAGS := -I bionic/libstdc++/include
 $(call host-test, $(sources))
 
-EXTRA_CFLAGS := -I bionic/libstdc++/include
+EXTRA_CFLAGS := -DBIONIC=1 -I bionic/libstdc++/include
+
+# <cstdint> is not part of the C++ standard yet, and some
+# host environments don't provide it unless you use specific
+# compiler flags, so only build this test for device/Bionic
+# builds at the moment.
+#
+sources += test_cstdint.cpp
+
 $(call device-test, $(sources))
 
 endif  # BIONIC_TESTS
