@@ -27,7 +27,7 @@
  */
 
 #include <cstring>
-#ifndef BIONIC_LIBSTDCPP_INCLUDE_CSTRING__
+#if defined BIONIC && !defined BIONIC_LIBSTDCPP_INCLUDE_CSTRING__
 #error "Wrong header file included!!"
 #endif
 

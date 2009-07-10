@@ -28,7 +28,7 @@
 
 
 #include <cassert>
-#ifndef BIONIC_LIBSTDCPP_INCLUDE_CASSERT__
+#if defined BIONIC && !defined BIONIC_LIBSTDCPP_INCLUDE_CASSERT__
 #error "Wrong header file included!!"
 #endif
 
