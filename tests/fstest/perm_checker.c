@@ -36,10 +36,15 @@
 
 #include <linux/kdev_t.h>
 
+#define DEFAULT_CONFIG_FILE "/data/local/perm_checker.conf"
+
 #define PERMS(M) (M & ~S_IFMT)
 #define MAX_NAME_LEN 4096
 #define MAX_UID_LEN 256
 #define MAX_GID_LEN MAX_UID_LEN
+
+static char *config_file;
+static char *executable_file;
 
 enum perm_rule_type {EXACT_FILE = 0, EXACT_DIR, WILDCARD, RECURSIVE,
     NUM_PR_TYPES};
@@ -90,14 +95,69 @@ static gid_t str2gid(char *str, int line_num)
     return gr->gr_gid;
 }
 
+static void add_rule(int line_num, char *spec,
+                     unsigned long min_mode, unsigned long max_mode,
+                     char *min_uid_buf, char *max_uid_buf,
+                     char *min_gid_buf, char *max_gid_buf) {
+
+    char rule_text_buf[MAX_NAME_LEN + 2*MAX_UID_LEN + 2*MAX_GID_LEN + 9];
+    perm_rule_t *pr = malloc(sizeof(perm_rule_t));
+    if (!pr) {
+        printf("Out of memory.\n");
+        exit(255);
+    }
+    if (snprintf(rule_text_buf, sizeof(rule_text_buf),
+                 "%s %lo %lo %s %s %s %s", spec, min_mode, max_mode,
+                 min_uid_buf, max_uid_buf, min_gid_buf, max_gid_buf)
+                 >= (long int) sizeof(rule_text_buf)) {
+        // This should never happen, but just in case...
+        printf("# ERROR # Maximum length limits exceeded on line %d\n",
+               line_num);
+        exit(255);
+    }
+    pr->rule_text = strndup(rule_text_buf, sizeof(rule_text_buf));
+    pr->rule_line = line_num;
+    if (strstr(spec, "/...")) {
+        pr->spec = strndup(spec, strlen(spec) - 3);
+        pr->type = RECURSIVE;
+    } else if (spec[strlen(spec) - 1] == '*') {
+        pr->spec = strndup(spec, strlen(spec) - 1);
+        pr->type = WILDCARD;
+    } else if (spec[strlen(spec) - 1] == '/') {
+        pr->spec = strdup(spec);
+        pr->type = EXACT_DIR;
+    } else {
+        pr->spec = strdup(spec);
+        pr->type = EXACT_FILE;
+    }
+    if ((pr->spec == NULL) || (pr->rule_text == NULL)) {
+        printf("Out of memory.\n");
+        exit(255);
+    }
+    pr->min_mode = min_mode;
+    pr->max_mode = max_mode;
+    pr->min_uid = str2uid(min_uid_buf, line_num);
+    pr->max_uid = str2uid(max_uid_buf, line_num);
+    pr->min_gid = str2gid(min_gid_buf, line_num);
+    pr->max_gid = str2gid(max_gid_buf, line_num);
+
+    // Add the rule to the appropriate set
+    pr->next = rules[pr->type];
+    rules[pr->type] = pr;
+#if 0  // Useful for debugging
+    printf("rule #%d: type = %d spec = %s min_mode = %o max_mode = %o "
+           "min_uid = %d max_uid = %d min_gid = %d max_gid = %d\n",
+           num_rules, pr->type, pr->spec, pr->min_mode, pr->max_mode,
+           pr->min_uid, pr->max_uid, pr->min_gid, pr->max_gid);
+#endif
+}
+
 static int read_rules(FILE *fp)
 {
     char spec[MAX_NAME_LEN + 5];  // Allows for "/..." suffix + terminator
     char min_uid_buf[MAX_UID_LEN + 1], max_uid_buf[MAX_UID_LEN + 1];
     char min_gid_buf[MAX_GID_LEN + 1], max_gid_buf[MAX_GID_LEN + 1];
-    char rule_text_buf[MAX_NAME_LEN + 2*MAX_UID_LEN + 2*MAX_GID_LEN + 9];
     unsigned long min_mode, max_mode;
-    perm_rule_t *pr;
     int res;
     int num_rules = 0, num_lines = 0;
 
@@ -110,56 +170,25 @@ static int read_rules(FILE *fp)
             printf("# WARNING # Invalid rule on line number %d\n", num_lines);
             continue;
         }
-        if (!(pr = malloc(sizeof(perm_rule_t)))) {
-            printf("Out of memory.\n");
-            exit(255);
-        }
-        if (snprintf(rule_text_buf, sizeof(rule_text_buf),
-                     "%s %lo %lo %s %s %s %s", spec, min_mode, max_mode,
-                     min_uid_buf, max_uid_buf, min_gid_buf, max_gid_buf)
-                     >= (long int) sizeof(rule_text_buf)) {
-            // This should never happen, but just in case...
-            printf("# ERROR # Maximum length limits exceeded on line %d\n",
-                   num_lines);
-            exit(255);
-        }
-        pr->rule_text = strndup(rule_text_buf, sizeof(rule_text_buf));
-        pr->rule_line = num_lines;
-        if (strstr(spec, "/...")) {
-            pr->spec = strndup(spec, strlen(spec) - 3);
-            pr->type = RECURSIVE;
-        } else if (spec[strlen(spec) - 1] == '*') {
-            pr->spec = strndup(spec, strlen(spec) - 1);
-            pr->type = WILDCARD;
-        } else if (spec[strlen(spec) - 1] == '/') {
-            pr->spec = strdup(spec);
-            pr->type = EXACT_DIR;
-        } else {
-            pr->spec = strdup(spec);
-            pr->type = EXACT_FILE;
-        }
-        if ((pr->spec == NULL) || (pr->rule_text == NULL)) {
-            printf("Out of memory.\n");
-            exit(255);
-        }
-        pr->min_mode = min_mode;
-        pr->max_mode = max_mode;
-        pr->min_uid = str2uid(min_uid_buf, num_lines);
-        pr->max_uid = str2uid(max_uid_buf, num_lines);
-        pr->min_gid = str2gid(min_gid_buf, num_lines);
-        pr->max_gid = str2gid(max_gid_buf, num_lines);
-
-        // Add the rule to the appropriate set
-        pr->next = rules[pr->type];
-        rules[pr->type] = pr;
+        add_rule(num_lines, spec,
+                 min_mode, max_mode,
+                 min_uid_buf, max_uid_buf,
+                 min_gid_buf, max_gid_buf);
         num_rules++;
-#if 0  // Useful for debugging
-        printf("rule #%d: type = %d spec = %s min_mode = %o max_mode = %o "
-               "min_uid = %d max_uid = %d min_gid = %d max_gid = %d\n",
-               num_rules, pr->type, pr->spec, pr->min_mode, pr->max_mode,
-               pr->min_uid, pr->max_uid, pr->min_gid, pr->max_gid);
-#endif
     }
+
+    // Automatically add a rule to match this executable itself
+    add_rule(-1, executable_file,
+             000, 0777,
+             "root", "shell",
+             "root", "shell");
+
+    // Automatically add a rule to match the configuration file
+    add_rule(-1, config_file,
+             000, 0777,
+             "root", "shell",
+             "root", "shell");
+
     return num_lines - num_rules;
 }
 
@@ -274,7 +303,7 @@ static int validate_link(const char *name, mode_t mode, uid_t uid, gid_t gid)
         printf("# WARNING # Multiple exact rules for link: %s\n", name);
     if (retval)
         print_new_rule(name, mode, uid, gid);
-    
+
     // Note: Unlike files, if no rules matches for links, retval = 0 (success).
     return retval;
 }
@@ -380,12 +409,18 @@ int main(int argc, char **argv)
     FILE *fp;
     int i;
 
+    if (argc > 2) {
+      printf("\nSyntax: %s [configfilename]\n", argv[0]);
+    }
+    config_file = (argc == 2) ? argv[1] : DEFAULT_CONFIG_FILE;
+    executable_file = argv[0];
+
     // Initialize ruleset pointers
     for (i = 0; i < NUM_PR_TYPES; i++)
         rules[i] = NULL;
 
-    if (!(fp = fopen("/etc/perm_checker.conf", "r"))) {
-        printf("Error opening /etc/perm_checker.conf\n");
+    if (!(fp = fopen(config_file, "r"))) {
+        printf("Error opening %s\n", config_file);
         exit(255);
     }
     read_rules(fp);
@@ -393,7 +428,7 @@ int main(int argc, char **argv)
 
     if (check_path("/"))
         return 255;
-    
+
     printf("Passed.\n");
     return 0;
 }
