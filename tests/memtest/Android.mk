@@ -11,7 +11,7 @@ LOCAL_SHARED_LIBRARIES := libc
 
 LOCAL_MODULE:= memtest
 
-LOCAL_MODULE_TAGS := tests
+LOCAL_MODULE_TAGS := optional
 
 ## LOCAL_CFLAGS += -fstack-protector-all
 LOCAL_CFLAGS += -fomit-frame-pointer

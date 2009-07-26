@@ -77,8 +77,11 @@ again:
     if(sscanf(line, "Private_Clean: %d kB", &mi->private_clean) != 1) goto oops;
     if(fgets(line, 1024, fp) == 0) goto oops;
     if(sscanf(line, "Private_Dirty: %d kB", &mi->private_dirty) != 1) goto oops;
-    if(fgets(line, 1024, fp) == 0) goto oops;
-    if(fgets(line, 1024, fp) == 0) goto oops;
+
+    if(fgets(line, 1024, fp) == 0) goto oops; // Referenced
+    if(fgets(line, 1024, fp) == 0) goto oops; // Swap
+    if(fgets(line, 1024, fp) == 0) goto oops; // KernelPageSize
+    if(fgets(line, 1024, fp) == 0) goto oops; // MMUPageSize
 
     if(skip) {
         free(mi);

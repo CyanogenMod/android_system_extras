@@ -59,9 +59,12 @@ static int get_framebuffer(GGLSurface *fb)
     void *bits;
 
     fd = open("/dev/graphics/fb0", O_RDWR);
-    if(fd < 0) {
-        perror("cannot open fb0");
-        return -1;
+    if (fd < 0) {
+        printf("cannot open /dev/graphics/fb0, retrying with /dev/fb0\n");
+        if ((fd = open("/dev/fb0", O_RDWR)) < 0) {
+            perror("cannot open /dev/fb0");
+            return -1;
+        }
     }
 
     if(ioctl(fd, FBIOGET_FSCREENINFO, &fi) < 0) {
@@ -127,22 +130,26 @@ static void dumpinfo(struct fb_fix_screeninfo *fi, struct fb_var_screeninfo *vi)
 
 int gr_init(void)
 {
-    int fd;
+    int fd = -1;
 
+    if (!access("/dev/tty0", F_OK)) {
+        fd = open("/dev/tty0", O_RDWR | O_SYNC);
+        if(fd < 0)
+            return -1;
 
-    fd = open("/dev/tty0", O_RDWR | O_SYNC);
-    if(fd < 0) return -1;
-
-    if(ioctl(fd, KDSETMODE, (void*) KD_GRAPHICS)) {
-        close(fd);
-        return -1;
+        if(ioctl(fd, KDSETMODE, (void*) KD_GRAPHICS)) {
+            close(fd);
+            return -1;
+        }
     }
 
     gr_fb_fd = get_framebuffer(gr_framebuffer);
 
     if(gr_fb_fd < 0) {
-        ioctl(fd, KDSETMODE, (void*) KD_TEXT);
-        close(fd);
+        if (fd >= 0) {
+            ioctl(fd, KDSETMODE, (void*) KD_TEXT);
+            close(fd);
+        }
         return -1;
     }
 
@@ -160,9 +167,11 @@ void gr_exit(void)
     close(gr_fb_fd);
     gr_fb_fd = -1;
 
-    ioctl(gr_vt_fd, KDSETMODE, (void*) KD_TEXT);
-    close(gr_vt_fd);
-    gr_vt_fd = -1;
+    if (gr_vt_fd >= 0) {
+        ioctl(gr_vt_fd, KDSETMODE, (void*) KD_TEXT);
+        close(gr_vt_fd);
+        gr_vt_fd = -1;
+    }
 }
 
 int gr_fb_width(void)

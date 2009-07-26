@@ -7,7 +7,7 @@ GNU Lesser General Public License (LGPL)
 You must define the BIONIC_TESTS environment variable to build these
 test programs. For example, do:
 
-    cd system/bionic-tests/
+    cd system/extras/tests/bionic/libc
     mm BIONIC_TESTS=1
 
 All test programs, except those in the 'other' directory, should exit

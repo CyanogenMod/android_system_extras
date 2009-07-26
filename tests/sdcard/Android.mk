@@ -1,4 +1,4 @@
-# Copyright (C) 2008 The Android Open Source Project
+# Copyright (C) 2009 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,33 +11,27 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Build control file for Bionic's test programs
+# define the BIONIC_TESTS environment variable to build the test programs
+#
 
-LOCAL_PATH := $(call my-dir)
+ifdef SDCARD_TESTS
+
+LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES := perm_checker.c
+LOCAL_SRC_FILES = \
+    stopwatch.cpp \
+    sysutil.cpp \
+    sdcard_perf_test.cpp \
+	testcase.cpp
 
-LOCAL_SHARED_LIBRARIES := libc
-
-LOCAL_MODULE := perm_checker
-
-LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE := sdcard_perf_test
+LOCAL_MODULE_TAGS := eng tests
+LOCAL_SHARED_LIBRARIES := libutils libhardware_legacy
 
 include $(BUILD_EXECUTABLE)
 
-####
-
-include $(CLEAR_VARS)
-
-LOCAL_MODULE := perm_checker.conf
-
-LOCAL_MODULE_TAGS := optional
-
-LOCAL_MODULE_CLASS := ETC
-
-LOCAL_MODULE_PATH := $(TARGET_OUT)/etc/
-
-LOCAL_SRC_FILES := $(LOCAL_MODULE)
-
-include $(BUILD_PREBUILT)
+endif  # SDCARD_TESTS
