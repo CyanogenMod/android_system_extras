@@ -1,5 +1,5 @@
 All files and directories will be matched against entries taken from 
-/etc/perm_checker.conf, and any file/directory which fails the ruleset 
+/data/local/perm_checker.conf, and any file/directory which fails the ruleset 
 will cause an error message along with a corresponding explicit (fully 
 specified and minimal) rule for that file/directory to be printed on 
 stdout. If only the message "Passed." is printed on stdout, all files are 

@@ -27,7 +27,7 @@
  */
 
 #include <csignal>
-#ifndef BIONIC_LIBSTDCPP_INCLUDE_CSIGNAL__
+#if defined BIONIC && !defined BIONIC_LIBSTDCPP_INCLUDE_CSIGNAL__
 #error "Wrong header file included!!"
 #endif
 

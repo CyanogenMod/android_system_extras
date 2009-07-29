@@ -27,7 +27,7 @@
  */
 
 #include <cmath>
-#ifndef BIONIC_LIBSTDCPP_INCLUDE_CMATH__
+#if defined BIONIC && !defined BIONIC_LIBSTDCPP_INCLUDE_CMATH__
 #error "Wrong header file included!!"
 #endif
 

@@ -27,7 +27,7 @@
  */
 
 #include <ctime>
-#ifndef BIONIC_LIBSTDCPP_INCLUDE_CTIME__
+#if defined BIONIC && !defined BIONIC_LIBSTDCPP_INCLUDE_CTIME__
 #error "Wrong header file included!!"
 #endif
 
