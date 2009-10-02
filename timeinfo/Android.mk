@@ -20,5 +20,5 @@ LOCAL_MODULE := timeinfo
 LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 LOCAL_MODULE_TAGS := eng
 LOCAL_SRC_FILES := timeinfo.cpp
-LOCAL_SHARED_LIBRARIES := libhardware_legacy
+LOCAL_SHARED_LIBRARIES := libhardware_legacy libutils
 include $(BUILD_EXECUTABLE)
