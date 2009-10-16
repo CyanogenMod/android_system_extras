@@ -96,7 +96,7 @@ class Metadata(object):
 
   def Parse(self, line):
     if line.startswith('# Kernel:'):
-      self.kernel = re.search('Linux version ([0-9.]+-[0-9]+)', line).group(1)
+      self.kernel = re.search('Linux version ([0-9.]+-[^ ]+)', line).group(1)
     elif line.startswith('# Command:'):
       self.command_line = re.search('# Command: [/\w_]+ (.*)', line).group(1)
       self.command_line = self.command_line.replace(' --', '-')
