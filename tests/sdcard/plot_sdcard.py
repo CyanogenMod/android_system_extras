@@ -328,4 +328,7 @@ def main(argv):
 
 
 if __name__ == '__main__':
+  if Gnuplot.__version__ != "1.8":
+    print "Gnuplot should be 1.8. See REAME file"
+    sys.exit(2)
   main(sys.argv)
