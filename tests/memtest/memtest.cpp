@@ -36,6 +36,9 @@ const int CPU_FREQ_EST = 384;
 const int BRANCH_CYCLE = 2;
 #endif
 
+//extern "C" void* xmemcpy(void*, void*, size_t);
+#define MEMCPY  memcpy
+
 typedef long long nsecs_t;
 
 static nsecs_t system_time()
@@ -188,7 +191,7 @@ int memcpy_test(int argc, char** argv)
                 nsecs_t t = -system_time();
                 register int count = REPEAT;
                 do {
-                    memcpy(ddd, sss+offset, size);
+                    MEMCPY(ddd, sss+offset, size);
                 } while (--count);
                 t += system_time() - overhead;
                 const float throughput = (size*1000000000.0f*REPEAT) / (1024*1024*t);
@@ -234,7 +237,7 @@ int validate_memcpy(char* s, char* d, size_t size)
 {
     int nberr = 0;
     memset(d-4, 0x55, size+8);
-    memcpy(s, d, size);
+    MEMCPY(s, d, size);
     if (memcmp(s,d,size)) {
         printf("*** memcpy(%p,%p,%lu) destination != source\n",s,d,size);
         nberr++;

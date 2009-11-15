@@ -98,7 +98,6 @@ int pm_process_pagemap_range(pm_process_t *proc,
     uint64_t *range;
     off_t off;
     int error;
-    ssize_t len_read;
 
     if (!proc || (low >= high) || !range_out || !len)
         return -1;
@@ -116,8 +115,8 @@ int pm_process_pagemap_range(pm_process_t *proc,
         free(range);
         return error;
     }
-    len_read = read(proc->pagemap_fd, (char*)range, numpages * sizeof(uint64_t));
-    if (len_read < (ssize_t)numpages * sizeof(uint64_t)) {
+    error = read(proc->pagemap_fd, (char*)range, numpages * sizeof(uint64_t));
+    if (error < numpages * sizeof(uint64_t)) {
         error = (error < 0) ? errno : -1;
         free(range);
         return error;
@@ -129,7 +128,7 @@ int pm_process_pagemap_range(pm_process_t *proc,
     return 0;
 }
 
-int pm_process_maps(pm_process_t *proc, pm_map_t ***maps_out, int *len) {
+int pm_process_maps(pm_process_t *proc, pm_map_t ***maps_out, size_t *len) {
     pm_map_t **maps;
 
     if (!proc || !maps_out || !len)
