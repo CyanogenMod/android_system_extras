@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <time.h>
 #include "stopwatch.h"
+#include <math.h>
 
 #define SNPRINTF_OR_RETURN(str, size, format, ...) {                    \
         int len = snprintf((str), (size), (format), ## __VA_ARGS__);    \
@@ -53,7 +54,7 @@ namespace android_test {
 StopWatch::StopWatch(const char *name, size_t capacity)
     : mName(strdup(name)), mNum(0), mData(NULL), mDataLen(0), mCapacity(capacity * 2),
       mSizeKbytes(0), mAlreadyPrinted(false), mPrintRaw(false),
-      mDuration(0.0),
+      mDuration(0.0), mDeviation(0.0),
       mMinDuration(0.0), mMinIdx(0),
       mMaxDuration(0.0), mMaxIdx(0),
       mDeltas(NULL), mUsed(false)
@@ -126,7 +127,7 @@ void StopWatch::sprint(char **str, size_t *size)
     {
         // print comment header and summary values.
 
-        SNPRINTF_OR_RETURN(*str, *size, "# Name Iterations  Duration Min MinIdx Max MaxIdx SizeMbytes\n");
+        SNPRINTF_OR_RETURN(*str, *size, "# Name Iterations  Duration Min MinIdx Max MaxIdx SizeKbytes\n");
         SNPRINTF_OR_RETURN(*str, *size, "%s %d %f %f %d %f %d %d\n", mName, mNum, mDuration,
                            mMinDuration, mMinIdx, mMaxDuration, mMaxIdx, mSizeKbytes);
         // print each duration sample
@@ -164,8 +165,8 @@ void StopWatch::checkCapacity()
 void StopWatch::processSamples()
 {
     if (kVerbose) fprintf(stderr, "processing samples\n");
-    mDeltas= new double[mDataLen / 2];
-
+    size_t n = mDataLen / 2;
+    mDeltas= new double[n];
     for (size_t i = 0; i < mDataLen; i += 2)   // even: start  odd: stop
     {
         long second = mData[i + 1].mTime.tv_sec - mData[i].mTime.tv_sec;
@@ -174,7 +175,7 @@ void StopWatch::processSamples()
         mDeltas[i / 2] = double(second) + double(nano) / 1.0e9;
     }
 
-    for (size_t i = 0; i < mDataLen / 2; ++i)
+    for (size_t i = 0; i < n; ++i)
     {
         if (0 == i)
         {
@@ -195,7 +196,15 @@ void StopWatch::processSamples()
         }
         mDuration += mDeltas[i];
     }
+    double avgDuration = mDuration / n;
+    double diffSQ = 0.0;
+    for (size_t i = 0; i < n; ++i)
+    {
+      diffSQ += pow((mDeltas[i] - avgDuration), 2.0);
+    }
+    mDeviation = sqrt(diffSQ / n);
 }
+
 
 double StopWatch::timespecToDouble(const struct timespec& time)
 {
@@ -210,6 +219,7 @@ void StopWatch::printAverageMinMax(char **str, size_t *size)
     if (mDataLen > 2) // if there is only one sample, avg, min, max are trivial.
     {
         SNPRINTF_OR_RETURN(*str, *size, "# Average %s duration %f s/op\n", mName, mDuration / mNum);
+        SNPRINTF_OR_RETURN(*str, *size, "# Standard deviation %s duration %f \n", mName, mDeviation);
         SNPRINTF_OR_RETURN(*str, *size, "# Min %s duration %f [%d]\n", mName, mMinDuration, mMinIdx);
         SNPRINTF_OR_RETURN(*str, *size, "# Max %s duration %f [%d]\n", mName, mMaxDuration, mMaxIdx);
     }
