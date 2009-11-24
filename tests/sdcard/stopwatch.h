@@ -141,6 +141,7 @@ class StopWatch {
     bool mPrintRaw;
 
     double mDuration;
+    double mDeviation;
     double mMinDuration;
     size_t mMinIdx;
     double mMaxDuration;
