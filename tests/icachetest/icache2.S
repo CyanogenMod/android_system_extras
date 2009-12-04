@@ -10,6 +10,7 @@
     .align
     
     .global icache_test2
+    .type icache_test2, %function
 
 #define LOOP                             \
         mov     r0, r0                 ; \

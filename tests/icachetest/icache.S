@@ -8,6 +8,7 @@
 
 	.text
     .global icache_test
+    .type icache_test, %function
     .align
 	
 
