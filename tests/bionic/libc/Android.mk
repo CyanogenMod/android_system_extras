@@ -31,7 +31,6 @@ define device-test
     $(eval LOCAL_SRC_FILES := $(file)) \
     $(eval LOCAL_MODULE := $(notdir $(file:%.c=%))) \
     $(eval LOCAL_MODULE := $(LOCAL_MODULE:%.cpp=%)) \
-    $(eval $(info LOCAL_MODULE=$(LOCAL_MODULE))) \
     $(eval LOCAL_CFLAGS += $(EXTRA_CFLAGS)) \
     $(eval LOCAL_MODULE_TAGS := tests) \
     $(eval include $(BUILD_EXECUTABLE)) \
@@ -48,7 +47,6 @@ define host-test
     $(eval LOCAL_SRC_FILES := $(file)) \
     $(eval LOCAL_MODULE := $(notdir $(file:%.c=%))) \
     $(eval LOCAL_MODULE := $(LOCAL_MODULE:%.cpp=%)) \
-    $(eval $(info LOCAL_MODULE=$(LOCAL_MODULE) file=$(file))) \
     $(eval LOCAL_CFLAGS += $(EXTRA_CFLAGS)) \
     $(eval LOCAL_LDLIBS += $(EXTRA_LDLIBS)) \
     $(eval LOCAL_MODULE_TAGS := tests) \
@@ -147,6 +145,19 @@ LOCAL_SRC_FILES := bionic/test_static_init.cpp
 LOCAL_MODULE    := test_static_init
 LOCAL_SHARED_LIBRARIES := libtest_static_init
 include $(BUILD_EXECUTABLE)
+
+# Testing 'clone' is only possible on Linux systems
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := common/test_clone.c
+LOCAL_MODULE := test_clone
+include $(BUILD_EXECUTABLE)
+
+ifeq ($(HOST_OS),linux)
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := common/test_clone.c
+LOCAL_MODULE := test_clone
+include $(BUILD_HOST_EXECUTABLE)
+endif
 
 # TODO: Add a variety of GLibc test programs too...
 
