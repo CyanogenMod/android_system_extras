@@ -37,6 +37,7 @@ private:
 public:
     virtual int   getValue();
     Foo();
+    virtual ~Foo();
 };
 
 Foo::Foo()
@@ -48,6 +49,11 @@ Foo::Foo()
     pthread_mutex_init(&mMutex, &mattr);
     pthread_mutex_lock(&mMutex);
     fprintf(stderr, "recursive lock initialized and locked\n" );
+}
+
+Foo::~Foo()
+{
+    pthread_mutex_unlock(&mMutex);
 }
 
 int Foo::getValue()
