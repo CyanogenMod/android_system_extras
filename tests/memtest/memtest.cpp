@@ -381,7 +381,7 @@ static int ref_memcmp(const void *s1, const void *s2, size_t n)
       break;
   }
 
-  return d;
+  return (d < 0 ? -1 : (d > 0 ? 1 : 0));
 }
 
 int validate_memcmp(const char* s, const char* d, size_t size)
@@ -389,6 +389,7 @@ int validate_memcmp(const char* s, const char* d, size_t size)
 
     int a = ref_memcmp(s, d, size);
     int b = memcmp(s, d, size);
+    b = (b < 0 ? -1 : (b > 0 ? 1 : 0));
     //printf("%d, %d\n", a, b);
     if (a != b) {
         printf("*** memcmp(%p,%p,%lu) failed %d should be %d\n",s,d,size,b,a);
