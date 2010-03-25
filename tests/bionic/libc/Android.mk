@@ -65,6 +65,7 @@ sources := \
     common/test_pthread_cleanup_push.c \
     common/test_pthread_getcpuclockid.c \
     common/test_pthread_join.c \
+    common/test_pthread_mutex.c \
     common/test_pthread_once.c \
     common/test_semaphore.c \
     common/test_seteuid.c \
@@ -73,7 +74,10 @@ sources := \
     common/test_tm_zone.c \
     common/test_udp.c \
 
+# _XOPEN_SOURCE=600 is needed to get pthread_mutexattr_settype() on GLibc
+#
 EXTRA_LDLIBS := -lpthread -lrt
+EXTRA_CFLAGS := -D_XOPEN_SOURCE=600 -DHOST
 $(call host-test, $(sources))
 $(call device-test, $(sources))
 
