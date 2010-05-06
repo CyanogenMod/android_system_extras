@@ -17,7 +17,6 @@ include $(CLEAR_VARS)
 
 LOCAL_MODULE := libpagemap
 LOCAL_MODULE_TAGS := debug
-LOCAL_PRELINK_MODULE := false
 
 LOCAL_SRC_FILES := \
 	pm_kernel.c \
