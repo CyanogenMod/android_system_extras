@@ -97,6 +97,7 @@ sources :=  \
     bionic/test_netinet_icmp.c \
     bionic/test_pthread_cond.c \
     bionic/test_pthread_create.c \
+    bionic/test_setjmp.c \
 
 $(call device-test, $(sources))
 
