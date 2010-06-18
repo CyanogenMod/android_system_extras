@@ -31,7 +31,7 @@
 #include <dirent.h>
 #include <libgen.h>
 
-#if defined(linux)
+#if defined(__linux__)
 #include <linux/fs.h>
 #elif defined(__APPLE__) && defined(__MACH__)
 #include <sys/disk.h>
@@ -602,7 +602,7 @@ static u64 get_block_device_size(const char *filename)
 	if (fd < 0)
 		return 0;
 
-#if defined(linux)
+#if defined(__linux__)
 	ret = ioctl(fd, BLKGETSIZE64, &size);
 #elif defined(__APPLE__) && defined(__MACH__)
 	ret = ioctl(fd, DKIOCGETBLOCKCOUNT, &size);
