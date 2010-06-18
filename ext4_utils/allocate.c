@@ -236,11 +236,17 @@ void reduce_allocation(struct block_allocation *alloc, u32 len)
 			last_reg->len -= len;
 			len = 0;
 		} else {
-	        struct region *reg = alloc->list.last->prev;
+			struct region *reg = alloc->list.last->prev;
 			free_blocks(&aux_info.bgs[last_reg->bg], last_reg->len);
 			len -= last_reg->len;
-			if (reg)
+			if (reg) {
 				reg->next = NULL;
+			} else {
+				alloc->list.first = NULL;
+				alloc->list.last = NULL;
+				alloc->list.iter = NULL;
+				alloc->list.partial_iter = 0;
+			}
 			free(last_reg);
 		}
 	}
