@@ -19,11 +19,10 @@
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
-#include <sys/mman.h>
+#include <sys/ioctl.h>
 #include <limits.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
-#include <unistd.h>
 #include <stdlib.h>
 #include <strings.h>
 #include <string.h>
@@ -38,6 +37,7 @@
 #endif
 
 #include "make_ext4fs.h"
+#include "output_file.h"
 #include "ext4_utils.h"
 #include "allocate.h"
 #include "ext_utils.h"
@@ -57,8 +57,7 @@
 /* TODO: Not implemented:
    Allocating blocks in the same block group as the file inode
    Hash or binary tree directories
-   Non-extent inodes
-   Special files: symbolic links, sockets, devices, fifos
+   Special files: sockets, devices, fifos
  */
 
 int force = 0;
@@ -66,132 +65,27 @@ int force = 0;
 struct fs_info info;
 struct fs_aux_info aux_info;
 
-/* Write a contiguous region of data blocks from a memory buffer */
-static void write_data_block(void *priv, u32 block, u8 *data, int len)
-{
-	int fd = *(int*)priv;
-	off_t off;
-	int ret;
-
-	if (block * info.block_size + len >= info.len) {
-		error("attempted to write block %llu past end of filesystem",
-				block * info.block_size + len - info.len);
-		return;
-	}
-
-	off = (off_t)block * info.block_size;
-	off = lseek(fd, off, SEEK_SET);
-	if (off < 0) {
-		error_errno("lseek");
-		return;
-	}
-
-	ret = write(fd, data, len);
-	if (ret < 0)
-		error_errno("write");
-	else if (ret < len)
-		error("incomplete write");
-}
-
-/* Write a contiguous region of data blocks from a file */
-static void write_data_file(void *priv, u32 block, const char *file,
-        off_t offset, int len)
-{
-	int fd = *(int*)priv;
-	off_t off;
-	int ret;
-
-	if (block * info.block_size + len >= info.len) {
-		error("attempted to write block %llu past end of filesystem",
-				block * info.block_size + len - info.len);
-		return;
-	}
-
-	int file_fd = open(file, O_RDONLY);
-	if (file_fd < 0) {
-		error_errno("open");
-		return;
-	}
-
-	u8 *data = mmap(NULL, len, PROT_READ, MAP_SHARED, file_fd, offset);
-	if (data == MAP_FAILED) {
-		error_errno("mmap");
-		close(fd);
-		return;
-	}
-
-	off = (off_t)block * info.block_size;
-	off = lseek(fd, off, SEEK_SET);
-	if (off < 0) {
-		error_errno("lseek");
-		return;
-	}
-
-	ret = write(fd, data, len);
-	if (ret < 0)
-		error_errno("write");
-	else if (ret < len)
-		error("incomplete write");
-
-	munmap(data, len);
-
-	close(file_fd);
-}
-
 /* Write the filesystem image to a file */
-static void write_ext4_image(const char *filename)
+static void write_ext4_image(const char *filename, int gz)
 {
 	int ret = 0;
-	int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	struct output_file *out = open_output_file(filename, gz);
 	off_t off;
 
-	if (fd < 0) {
-		error_errno("open");
+	if (!out)
 		return;
-	}
 
-	off = lseek(fd, 1024, SEEK_SET);
-	if (off < 0) {
-		error_errno("lseek");
-		return;
-	}
+	write_data_block(out, 1024, (u8*)aux_info.sb, 1024);
 
-	ret = write(fd, aux_info.sb, 1024);
-	if (ret < 0)
-		error_errno("write");
-	else if (ret < 1024)
-		error("incomplete write");
+	write_data_block(out, (aux_info.first_data_block + 1) * info.block_size,
+			 (u8*)aux_info.bg_desc, 
+			 aux_info.bg_desc_blocks * info.block_size);
 
-	off = (aux_info.first_data_block + 1) * info.block_size;
-	off = lseek(fd, off, SEEK_SET);
-	if (off < 0) {
-		error_errno("lseek");
-		return;
-	}
+	for_each_data_block(write_data_block, write_data_file, out);
 
-	ret = write(fd, aux_info.bg_desc,
-			aux_info.bg_desc_blocks * info.block_size);
-	if (ret < 0)
-		error_errno("write");
-	else if (ret < (int)(aux_info.bg_desc_blocks * info.block_size))
-		error("incomplete write");
+	write_data_block(out, info.len - 1, (u8*)"", 1);
 
-	for_each_data_block(write_data_block, write_data_file, &fd);
-
-	off = info.len - 1;
-	off = lseek(fd, off, SEEK_SET);
-	if (off < 0) {
-		error_errno("lseek");
-		return;
-	}
-
-	ret = write(fd, "\0", 1);
-	if (ret < 0)
-		error_errno("write");
-	else if (ret < 1)
-		error("incomplete write");
-
-	close(fd);
+	close_output_file(out);
 }
 
 /* Compute the rest of the parameters of the filesystem from the basic info */
@@ -664,10 +558,11 @@ int main(int argc, char **argv)
 	const char *directory = NULL;
 	char *mountpoint = "";
 	int android = 0;
+	int gzip = 0;
 	u32 root_inode_num;
 	u16 root_mode;
 
-	while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:f")) != -1) {
+	while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:fz")) != -1) {
 		switch (opt) {
 		case 'l':
 			info.len = parse_num(optarg);
@@ -696,6 +591,9 @@ int main(int argc, char **argv)
 		case 'a':
 			android = 1;
 			mountpoint = optarg;
+			break;
+		case 'z':
+			gzip = 1;
 			break;
 		default: /* '?' */
 			usage(argv[0]);
@@ -804,7 +702,7 @@ int main(int argc, char **argv)
 			aux_info.sb->s_blocks_count_lo - aux_info.sb->s_free_blocks_count_lo,
 			aux_info.sb->s_blocks_count_lo);
 
-	write_ext4_image(filename);
+	write_ext4_image(filename, gzip);
 
 	return 0;
 }
