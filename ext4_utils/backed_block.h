@@ -23,16 +23,16 @@
 #include "output_file.h"
 
 typedef void (*data_block_callback_t)(struct output_file *out, u64 off,
-				      u8 *data, int len);
+	u8 *data, int len);
 typedef void (*data_block_file_callback_t)(struct output_file *out, u64 off,
 					   const char *file, off_t offset,
 					   int len);
 
 void queue_data_block(u8 *data, u32 len, u32 block);
 void queue_data_file(const char *filename, off_t offset, u32 len,
-        u32 block);
+	u32 block);
 void for_each_data_block(data_block_callback_t data_func,
-        data_block_file_callback_t file_func, struct output_file *out);
+	data_block_file_callback_t file_func, struct output_file *out);
 void free_data_blocks();
 
 #endif

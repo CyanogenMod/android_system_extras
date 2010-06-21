@@ -27,7 +27,7 @@
 /* Creates data buffers for the first backing_len bytes of a block allocation
    and queues them to be written */
 static u8 *extent_create_backing(struct block_allocation *alloc,
-        u64 backing_len)
+	u64 backing_len)
 {
 	u8 *data = calloc(backing_len, 1);
 	if (!data)
@@ -53,7 +53,7 @@ static u8 *extent_create_backing(struct block_allocation *alloc,
 /* Queues each chunk of a file to be written to contiguous data block
    regions */
 static void extent_create_backing_file(struct block_allocation *alloc,
-        u64 backing_len, const char *filename)
+	u64 backing_len, const char *filename)
 {
 	off_t offset = 0;
 	for (; alloc != NULL && backing_len > 0; get_next_region(alloc)) {
@@ -71,7 +71,7 @@ static void extent_create_backing_file(struct block_allocation *alloc,
 }
 
 static struct block_allocation *do_inode_allocate_extents(
-        struct ext4_inode *inode, u64 len)
+	struct ext4_inode *inode, u64 len)
 {
 	u32 block_len = DIV_ROUND_UP(len, info.block_size);
 	struct block_allocation *alloc = allocate_blocks(block_len + 1);
@@ -95,7 +95,7 @@ static struct block_allocation *do_inode_allocate_extents(
 
 	if (!extent_block) {
 		struct ext4_extent_header *hdr =
-		        (struct ext4_extent_header *)&inode->i_block[0];
+			(struct ext4_extent_header *)&inode->i_block[0];
 		hdr->eh_magic = EXT4_EXT_MAGIC;
 		hdr->eh_entries = allocation_len;
 		hdr->eh_max = 3;
@@ -105,7 +105,7 @@ static struct block_allocation *do_inode_allocate_extents(
 		extent = (struct ext4_extent *)&inode->i_block[3];
 	} else {
 		struct ext4_extent_header *hdr =
-		        (struct ext4_extent_header *)&inode->i_block[0];
+			(struct ext4_extent_header *)&inode->i_block[0];
 		hdr->eh_magic = EXT4_EXT_MAGIC;
 		hdr->eh_entries = 1;
 		hdr->eh_max = 3;
@@ -113,7 +113,7 @@ static struct block_allocation *do_inode_allocate_extents(
 		hdr->eh_depth = 1;
 
 		struct ext4_extent_idx *idx =
-		        (struct ext4_extent_idx *)&inode->i_block[3];
+			(struct ext4_extent_idx *)&inode->i_block[3];
 		idx->ei_block = 0;
 		idx->ei_leaf_lo = extent_block;
 		idx->ei_leaf_hi = 0;
@@ -135,13 +135,13 @@ static struct block_allocation *do_inode_allocate_extents(
 		hdr = (struct ext4_extent_header *)data;
 		hdr->eh_magic = EXT4_EXT_MAGIC;
 		hdr->eh_entries = allocation_len;
-		hdr->eh_max = (info.block_size - sizeof(struct ext4_extent_header))
-		        / sizeof(struct ext4_extent);
+		hdr->eh_max = (info.block_size - sizeof(struct ext4_extent_header)) /
+			sizeof(struct ext4_extent);
 		hdr->eh_generation = 0;
 		hdr->eh_depth = 0;
 
-		extent = (struct ext4_extent *)(data
-		        + sizeof(struct ext4_extent_header));
+		extent = (struct ext4_extent *)(data +
+			sizeof(struct ext4_extent_header));
 	}
 
 	for (; !last_region(alloc); extent++, get_next_region(alloc)) {
@@ -176,7 +176,7 @@ static struct block_allocation *do_inode_allocate_extents(
    buffer, and connects them to an inode.  Returns a pointer to the data
    buffer. */
 u8 *inode_allocate_data_extents(struct ext4_inode *inode, u64 len,
-        u64 backing_len)
+	u64 backing_len)
 {
 	struct block_allocation *alloc;
 	u8 *data = NULL;
@@ -201,7 +201,7 @@ u8 *inode_allocate_data_extents(struct ext4_inode *inode, u64 len,
 /* Allocates enough blocks to hold len bytes, queues them to be written
    from a file, and connects them to an inode. */
 void inode_allocate_file_extents(struct ext4_inode *inode, u64 len,
-        const char *filename)
+	const char *filename)
 {
 	struct block_allocation *alloc;
 

@@ -84,7 +84,7 @@ void queue_data_block(u8 *data, u32 len, u32 block)
 
 /* Queues a chunk of a file on disk to be written to the specified data blocks */
 void queue_data_file(const char *filename, off_t offset, u32 len,
-        u32 block)
+	u32 block)
 {
 	struct data_block *db = malloc(sizeof(struct data_block));
 	if (db == NULL)
@@ -102,7 +102,7 @@ void queue_data_file(const char *filename, off_t offset, u32 len,
 /* Iterates over the queued data blocks, calling data_func for each contiguous
    data block, and file_func for each contiguous file block */
 void for_each_data_block(data_block_callback_t data_func,
-        data_block_file_callback_t file_func, struct output_file *out)
+	data_block_file_callback_t file_func, struct output_file *out)
 {
 	struct data_block *db;
 	u32 last_block = 0;

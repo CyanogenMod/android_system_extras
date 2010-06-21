@@ -32,8 +32,8 @@ static u32 dentry_size(u32 entries, struct dentry *dentries)
 	unsigned int i;
 
 	for (i = 0; i < entries; i++) {
-		unsigned int dentry_len = 8 + 4
-		        * DIV_ROUND_UP(strlen(dentries[i].filename), 4);
+		unsigned int dentry_len = 8 + 4 *
+			DIV_ROUND_UP(strlen(dentries[i].filename), 4);
 		if (len % info.block_size + dentry_len > info.block_size)
 			len += info.block_size - (len % info.block_size);
 		len += dentry_len;
@@ -81,7 +81,7 @@ static struct ext4_dir_entry_2 *add_dentry(u8 *data, u32 *offset,
    when the inode for the entry is allocated.  Returns the inode number of the
    new directory */
 u32 make_directory(u32 dir_inode_num, u32 entries, struct dentry *dentries,
-        u32 dirs)
+	u32 dirs)
 {
 	struct ext4_inode *inode;
 	u32 blocks = DIV_ROUND_UP(dentry_size(entries, dentries), info.block_size);

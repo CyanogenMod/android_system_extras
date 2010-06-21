@@ -24,10 +24,10 @@
 #include "ext4.h"
 
 struct region_list {
-    struct region *first;
-    struct region *last;
-    struct region *iter;
-    u32 partial_iter;
+	struct region *first;
+	struct region *last;
+	struct region *iter;
+	u32 partial_iter;
 };
 
 struct block_allocation {
@@ -36,11 +36,11 @@ struct block_allocation {
 };
 
 struct region {
-    u32 block;
-    u32 len;
-    int bg;
-    struct region *next;
-    struct region *prev;
+	u32 block;
+	u32 len;
+	int bg;
+	struct region *next;
+	struct region *prev;
 };
 
 struct block_group_info {
@@ -61,16 +61,16 @@ struct block_group_info {
 
 struct block_allocation *create_allocation()
 {
-    struct block_allocation *alloc = malloc(sizeof(struct block_allocation));
-    alloc->list.first = NULL;
-    alloc->list.last = NULL;
-    alloc->oob_list.first = NULL;
-    alloc->oob_list.last = NULL;
-    alloc->list.iter = NULL;
-    alloc->list.partial_iter = 0;
-    alloc->oob_list.iter = NULL;
-    alloc->oob_list.partial_iter = 0;
-    return alloc;
+	struct block_allocation *alloc = malloc(sizeof(struct block_allocation));
+	alloc->list.first = NULL;
+	alloc->list.last = NULL;
+	alloc->oob_list.first = NULL;
+	alloc->oob_list.last = NULL;
+	alloc->list.iter = NULL;
+	alloc->list.partial_iter = 0;
+	alloc->oob_list.iter = NULL;
+	alloc->oob_list.partial_iter = 0;
+	return alloc;
 }
 
 static void region_list_remove(struct region_list *list, struct region *reg)
@@ -131,14 +131,14 @@ static void dump_region_lists(struct block_allocation *alloc) {
 void append_region(struct block_allocation *alloc,
 		u32 block, u32 len, int bg_num)
 {
-    struct region *reg;
-    reg = malloc(sizeof(struct region));
-    reg->block = block;
-    reg->len = len;
-    reg->bg = bg_num;
-    reg->next = NULL;
+	struct region *reg;
+	reg = malloc(sizeof(struct region));
+	reg->block = block;
+	reg->len = len;
+	reg->bg = bg_num;
+	reg->next = NULL;
 
-    region_list_append(&alloc->list, reg);
+	region_list_append(&alloc->list, reg);
 }
 
 static void allocate_bg_inode_table(struct block_group_info *bg)
@@ -156,7 +156,7 @@ static void allocate_bg_inode_table(struct block_group_info *bg)
 		critical_error_errno("calloc");
 
 	queue_data_block(bg->inode_table, aux_info.inode_table_blocks
-	        * info.block_size, block);
+			* info.block_size, block);
 }
 
 static int bitmap_set_bit(u8 *bitmap, u32 bit)
@@ -330,13 +330,13 @@ static u32 ext4_allocate_blocks_from_block_group(u32 len, int bg_num)
 static struct region *ext4_allocate_contiguous_blocks(u32 len)
 {
 	unsigned int i;
-    struct region *reg;
+	struct region *reg;
 
 	for (i = 0; i < aux_info.groups; i++) {
 		u32 block = ext4_allocate_blocks_from_block_group(len, i);
 
 		if (block != EXT4_ALLOCATE_FAILED) {
-            reg = malloc(sizeof(struct region));
+			reg = malloc(sizeof(struct region));
 			reg->block = block;
 			reg->len = len;
 			reg->next = NULL;
@@ -366,7 +366,7 @@ u32 allocate_block()
 static struct region *ext4_allocate_partial(u32 len)
 {
 	unsigned int i;
-    struct region *reg;
+	struct region *reg;
 
 	for (i = 0; i < aux_info.groups; i++) {
 		if (aux_info.bgs[i].data_blocks_used == 0) {
@@ -387,7 +387,7 @@ static struct region *ext4_allocate_partial(u32 len)
 					return NULL;
 				}
 
-	            reg = malloc(sizeof(struct region));
+				reg = malloc(sizeof(struct region));
 				reg->block = block;
 				reg->len = bg_len;
 				reg->next = NULL;
@@ -454,7 +454,7 @@ struct block_allocation *allocate_blocks(u32 len)
 
 	struct block_allocation *alloc = create_allocation();
 	alloc->list.first = reg;
-    alloc->list.last = reg;
+	alloc->list.last = reg;
 	alloc->list.iter = alloc->list.first;
 	alloc->list.partial_iter = 0;
 	return alloc;
@@ -475,7 +475,7 @@ int block_allocation_num_regions(struct block_allocation *alloc)
 int block_allocation_len(struct block_allocation *alloc)
 {
 	unsigned int i;
-    struct region *reg = alloc->list.first;
+	struct region *reg = alloc->list.first;
 
 	for (i = 0; reg != NULL; reg = reg->next)
 		i += reg->len;
@@ -486,10 +486,10 @@ int block_allocation_len(struct block_allocation *alloc)
 /* Returns the block number of the block'th block in an allocation */
 u32 get_block(struct block_allocation *alloc, u32 block)
 {
-    struct region *reg = alloc->list.iter;
-    block += alloc->list.partial_iter;
+	struct region *reg = alloc->list.iter;
+	block += alloc->list.partial_iter;
 
-    for (; reg; reg = reg->next) {
+	for (; reg; reg = reg->next) {
 		if (block < reg->len)
 			return reg->block + block;
 		block -= reg->len;
@@ -499,10 +499,10 @@ u32 get_block(struct block_allocation *alloc, u32 block)
 
 u32 get_oob_block(struct block_allocation *alloc, u32 block)
 {
-    struct region *reg = alloc->oob_list.iter;
-    block += alloc->oob_list.partial_iter;
+	struct region *reg = alloc->oob_list.iter;
+	block += alloc->oob_list.partial_iter;
 
-    for (; reg; reg = reg->next) {
+	for (; reg; reg = reg->next) {
 		if (block < reg->len)
 			return reg->block + block;
 		block -= reg->len;
@@ -544,11 +544,11 @@ void rewind_alloc(struct block_allocation *alloc)
 
 static struct region *do_split_allocation(struct block_allocation *alloc, u32 len)
 {
-    struct region *reg = alloc->list.iter;
-    struct region *new;
-    struct region *tmp;
+	struct region *reg = alloc->list.iter;
+	struct region *new;
+	struct region *tmp;
 
-    while (reg && len >= reg->len) {
+	while (reg && len >= reg->len) {
 		len -= reg->len;
 		reg = reg->next;
 	}
@@ -569,7 +569,7 @@ static struct region *do_split_allocation(struct block_allocation *alloc, u32 le
 		reg->len = len;
 
 		tmp = alloc->list.iter;
-	    alloc->list.iter = new;
+		alloc->list.iter = new;
 		return tmp;
 	} else {
 		return reg;
@@ -594,7 +594,7 @@ static struct region *split_allocation(struct block_allocation *alloc, u32 len)
 int reserve_oob_blocks(struct block_allocation *alloc, int blocks)
 {
 	struct region *oob = split_allocation(alloc, blocks);
-    struct region *next;
+	struct region *next;
 
 	if (oob == NULL)
 		return -1;
@@ -664,8 +664,8 @@ struct ext4_inode *get_inode(u32 inode)
 	inode %= info.inodes_per_group;
 
 	allocate_bg_inode_table(&aux_info.bgs[bg]);
-	return (struct ext4_inode *)(aux_info.bgs[bg].inode_table + inode
-	        * info.inode_size);
+	return (struct ext4_inode *)(aux_info.bgs[bg].inode_table + inode *
+		info.inode_size);
 }
 
 /* Mark the first len inodes in a block group as used */

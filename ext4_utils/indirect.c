@@ -56,9 +56,9 @@ static u8 *create_backing(struct block_allocation *alloc,
 static void reserve_indirect_block(struct block_allocation *alloc, int len)
 {
 	if (reserve_oob_blocks(alloc, 1)) {
-        error("failed to reserve oob block");
-        return;
-    }
+		error("failed to reserve oob block");
+		return;
+	}
 
 	if (advance_blocks(alloc, len)) {
 		error("failed to advance %d blocks", len);
@@ -69,9 +69,9 @@ static void reserve_indirect_block(struct block_allocation *alloc, int len)
 static void reserve_dindirect_block(struct block_allocation *alloc, int len)
 {
 	if (reserve_oob_blocks(alloc, 1)) {
-        error("failed to reserve oob block");
-        return;
-    }
+		error("failed to reserve oob block");
+		return;
+	}
 
 	while (len > 0) {
 		int ind_block_len = min((int)aux_info.blocks_per_ind, len);
@@ -86,9 +86,9 @@ static void reserve_dindirect_block(struct block_allocation *alloc, int len)
 static void reserve_tindirect_block(struct block_allocation *alloc, int len)
 {
 	if (reserve_oob_blocks(alloc, 1)) {
-        error("failed to reserve oob block");
-        return;
-    }
+		error("failed to reserve oob block");
+		return;
+	}
 
 	while (len > 0) {
 		int dind_block_len = min((int)aux_info.blocks_per_dind, len);
@@ -115,9 +115,9 @@ static void fill_dindirect_block(u32 *dind_block, int len, struct block_allocati
 	for (i = 0; len >  0; i++) {
 		ind_block = get_oob_block(alloc, 0);
 		if (advance_oob_blocks(alloc, 1)) {
-            error("failed to reserve oob block");
-            return;
-        }
+			error("failed to reserve oob block");
+			return;
+		}
 
 		dind_block[i] = ind_block;
 
@@ -144,11 +144,11 @@ static void fill_tindirect_block(u32 *tind_block, int len, struct block_allocati
 	for (i = 0; len > 0; i++) {
 		dind_block = get_oob_block(alloc, 0);
 		if (advance_oob_blocks(alloc, 1)) {
-            error("failed to reserve oob block");
-            return;
-        }
+			error("failed to reserve oob block");
+			return;
+		}
 
-        tind_block[i] = dind_block;
+		tind_block[i] = dind_block;
 
 		u32 *dind_block_data = calloc(info.block_size, 1);
 		queue_data_block((u8*)dind_block_data, info.block_size, dind_block);
@@ -156,7 +156,7 @@ static void fill_tindirect_block(u32 *tind_block, int len, struct block_allocati
 
 		fill_dindirect_block(dind_block_data, dind_block_len, alloc);
 
-        len -= dind_block_len;
+		len -= dind_block_len;
 	}
 }
 
@@ -172,13 +172,13 @@ static int inode_attach_direct_blocks(struct ext4_inode *inode,
 		inode->i_block[i] = get_block(alloc, i);
 	}
 
-    if (advance_blocks(alloc, len)) {
-        error("failed to advance %d blocks", len);
-        return -1;
-    }
+	if (advance_blocks(alloc, len)) {
+		error("failed to advance %d blocks", len);
+		return -1;
+	}
 
-    *block_len -= len;
-    return 0;
+	*block_len -= len;
+	return 0;
 }
 
 /* Given an allocation, attach as many blocks as possible to indirect blocks,
@@ -193,23 +193,23 @@ static int inode_attach_indirect_blocks(struct ext4_inode *inode,
 	int ind_block = get_oob_block(alloc, 0);
 	inode->i_block[EXT4_IND_BLOCK] = ind_block;
 
-    if (advance_oob_blocks(alloc, 1)) {
-        error("failed to advance oob block");
-        return -1;
-    }
+	if (advance_oob_blocks(alloc, 1)) {
+		error("failed to advance oob block");
+		return -1;
+	}
 
 	u32 *ind_block_data = calloc(info.block_size, 1);
 	queue_data_block((u8*)ind_block_data, info.block_size, ind_block);
 
 	fill_indirect_block(ind_block_data, len, alloc);
 
-    if (advance_blocks(alloc, len)) {
-        error("failed to advance %d blocks", len);
-        return -1;
-    }
+	if (advance_blocks(alloc, len)) {
+		error("failed to advance %d blocks", len);
+		return -1;
+	}
 
-    *block_len -= len;
-    return 0;
+	*block_len -= len;
+	return 0;
 }
 
 /* Given an allocation, attach as many blocks as possible to doubly indirect
@@ -224,22 +224,22 @@ static int inode_attach_dindirect_blocks(struct ext4_inode *inode,
 	int dind_block = get_oob_block(alloc, 0);
 	inode->i_block[EXT4_DIND_BLOCK] = dind_block;
 
-    if (advance_oob_blocks(alloc, 1)) {
-        error("failed to advance oob block");
-        return -1;
-    }
+	if (advance_oob_blocks(alloc, 1)) {
+		error("failed to advance oob block");
+		return -1;
+	}
 
 	u32 *dind_block_data = calloc(info.block_size, 1);
 	queue_data_block((u8*)dind_block_data, info.block_size, dind_block);
 
 	fill_dindirect_block(dind_block_data, len, alloc);
 
-    if (advance_blocks(alloc, len)) {
-        error("failed to advance %d blocks", len);
-        return -1;
-    }
+	if (advance_blocks(alloc, len)) {
+		error("failed to advance %d blocks", len);
+		return -1;
+	}
 
-    *block_len -= len;
+	*block_len -= len;
 	return 0;
 }
 
@@ -255,23 +255,23 @@ static int inode_attach_tindirect_blocks(struct ext4_inode *inode,
 	int tind_block = get_oob_block(alloc, 0);
 	inode->i_block[EXT4_TIND_BLOCK] = tind_block;
 
-    if (advance_oob_blocks(alloc, 1)) {
-        error("failed to advance oob block");
-        return -1;
-    }
+	if (advance_oob_blocks(alloc, 1)) {
+		error("failed to advance oob block");
+		return -1;
+	}
 
 	u32 *tind_block_data = calloc(info.block_size, 1);
 	queue_data_block((u8*)tind_block_data, info.block_size, tind_block);
 
 	fill_tindirect_block(tind_block_data, len, alloc);
 
-    if (advance_blocks(alloc, len)) {
-        error("failed to advance %d blocks", len);
-        return -1;
-    }
+	if (advance_blocks(alloc, len)) {
+		error("failed to advance %d blocks", len);
+		return -1;
+	}
 
-    *block_len -= len;
-    return 0;
+	*block_len -= len;
+	return 0;
 }
 
 static void reserve_all_indirect_blocks(struct block_allocation *alloc, u32 len)
@@ -350,30 +350,30 @@ static int do_inode_attach_indirect(struct ext4_inode *inode,
 	}
 
 	if (count > 0) {
-	    if (inode_attach_indirect_blocks(inode, alloc, &count)) {
-	        error("failed to attach indirect blocks to inode");
-	        return -1;
-	    }
+		if (inode_attach_indirect_blocks(inode, alloc, &count)) {
+			error("failed to attach indirect blocks to inode");
+			return -1;
+		}
 	}
 
-    if (count > 0) {
-        if (inode_attach_dindirect_blocks(inode, alloc, &count)) {
-            error("failed to attach dindirect blocks to inode");
-            return -1;
-        }
-    }
+	if (count > 0) {
+		if (inode_attach_dindirect_blocks(inode, alloc, &count)) {
+			error("failed to attach dindirect blocks to inode");
+			return -1;
+		}
+	}
 
-    if (count > 0) {
-        if (inode_attach_tindirect_blocks(inode, alloc, &count)) {
-            error("failed to attach tindirect blocks to inode");
-            return -1;
-        }
-    }
+	if (count > 0) {
+		if (inode_attach_tindirect_blocks(inode, alloc, &count)) {
+			error("failed to attach tindirect blocks to inode");
+			return -1;
+		}
+	}
 
-    if (count) {
+	if (count) {
 		error("blocks left after triply-indirect allocation");
 		return -1;
-    }
+	}
 
 	rewind_alloc(alloc);
 

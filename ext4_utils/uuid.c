@@ -32,7 +32,7 @@ struct uuid {
 };
 
 static void sha1_hash(const char *namespace, const char *name,
-        unsigned char sha1[SHA1_DIGEST_LENGTH])
+	unsigned char sha1[SHA1_DIGEST_LENGTH])
 {
 	SHA1_CTX ctx;
 	SHA1Init(&ctx);

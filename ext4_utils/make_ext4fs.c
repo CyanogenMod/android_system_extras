@@ -94,20 +94,20 @@ static void ext4_create_fs_aux_info()
 	aux_info.first_data_block = (info.block_size > 1024) ? 0 : 1;
 	aux_info.len_blocks = info.len / info.block_size;
 	aux_info.inode_table_blocks = DIV_ROUND_UP(info.inodes_per_group * info.inode_size,
-	        info.block_size);
+		info.block_size);
 	aux_info.groups = DIV_ROUND_UP(aux_info.len_blocks - aux_info.first_data_block,
-	        info.blocks_per_group);
+		info.blocks_per_group);
 	aux_info.blocks_per_ind = info.block_size / sizeof(u32);
 	aux_info.blocks_per_dind = aux_info.blocks_per_ind * aux_info.blocks_per_ind;
 	aux_info.blocks_per_tind = aux_info.blocks_per_dind * aux_info.blocks_per_dind;
 
 	aux_info.bg_desc_blocks =
-	        DIV_ROUND_UP(aux_info.groups * sizeof(struct ext2_group_desc),
-	                info.block_size);
+		DIV_ROUND_UP(aux_info.groups * sizeof(struct ext2_group_desc),
+			info.block_size);
 
 	aux_info.bg_desc_reserve_blocks =
-            DIV_ROUND_UP(aux_info.groups * 1024 * sizeof(struct ext2_group_desc),
-                    info.block_size) - aux_info.bg_desc_blocks;
+		DIV_ROUND_UP(aux_info.groups * 1024 * sizeof(struct ext2_group_desc),
+			info.block_size) - aux_info.bg_desc_blocks;
 
 	if (aux_info.bg_desc_reserve_blocks > aux_info.blocks_per_ind)
 		aux_info.bg_desc_reserve_blocks = aux_info.blocks_per_ind;
@@ -204,10 +204,10 @@ static void ext4_fill_in_sb()
 	sb->s_blocks_count_hi = aux_info.len_blocks >> 32;
 	sb->s_r_blocks_count_hi = 0;
 	sb->s_free_blocks_count_hi = 0;
-	sb->s_min_extra_isize = sizeof(struct ext4_inode)
-	        - EXT4_GOOD_OLD_INODE_SIZE;
-	sb->s_want_extra_isize = sizeof(struct ext4_inode)
-	        - EXT4_GOOD_OLD_INODE_SIZE;
+	sb->s_min_extra_isize = sizeof(struct ext4_inode) -
+		EXT4_GOOD_OLD_INODE_SIZE;
+	sb->s_want_extra_isize = sizeof(struct ext4_inode) -
+		EXT4_GOOD_OLD_INODE_SIZE;
 	sb->s_flags = 0;
 	sb->s_raid_stride = 0;
 	sb->s_mmp_interval = 0;
@@ -217,15 +217,15 @@ static void ext4_fill_in_sb()
 	sb->s_kbytes_written = 0;
 
 	for (i = 0; i < aux_info.groups; i++) {
-		u64 group_start_block = aux_info.first_data_block + i
-		        * info.blocks_per_group;
+		u64 group_start_block = aux_info.first_data_block + i *
+			info.blocks_per_group;
 		u32 header_size = 0;
 		if (ext4_bg_has_super_block(i)) {
 			if (i != 0) {
 				queue_data_block((u8 *)sb, info.block_size, group_start_block);
 				queue_data_block((u8 *)aux_info.bg_desc,
-				        aux_info.bg_desc_blocks * info.block_size,
-				        group_start_block + 1);
+					aux_info.bg_desc_blocks * info.block_size,
+					group_start_block + 1);
 			}
 			header_size = 1 + aux_info.bg_desc_blocks + aux_info.bg_desc_reserve_blocks;
 		}
@@ -255,12 +255,12 @@ static void ext4_create_resize_inode()
 	for (i = 0; i < aux_info.groups; i++) {
 		if (ext4_bg_has_super_block(i)) {
 			u64 group_start_block = aux_info.first_data_block + i *
-			        info.blocks_per_group;
+				info.blocks_per_group;
 			u32 reserved_block_start = group_start_block + 1 +
-					aux_info.bg_desc_blocks;
+				aux_info.bg_desc_blocks;
 			u32 reserved_block_len = aux_info.bg_desc_reserve_blocks;
 			append_region(reserve_inode_alloc, reserved_block_start,
-					reserved_block_len, i);
+				reserved_block_len, i);
 			reserve_inode_len += reserved_block_len;
 		}
 	}
@@ -285,7 +285,7 @@ static void ext4_create_journal_inode()
 
 	u8 *journal_data = inode_allocate_data_extents(inode,
 			info.journal_blocks * info.block_size,
-	        info.block_size);
+			info.block_size);
 	if (!journal_data) {
 		error("failed to allocate extents for journal data");
 		return;
@@ -364,7 +364,7 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 	u32 entry_inode;
 	u32 dirs = 0;
 
-	entries = scandir(full_path, &namelist, filter_dot, alphasort);
+	entries = scandir(full_path, &namelist, filter_dot, (void*)alphasort);
 	if (entries < 0) {
 		error_errno("scandir");
 		return EXT4_ALLOCATE_FAILED;
