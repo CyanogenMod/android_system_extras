@@ -20,7 +20,6 @@
 #include "ext4_utils.h"
 #include "allocate.h"
 #include "backed_block.h"
-#include "ext_utils.h"
 #include "ext4.h"
 
 struct region_list {

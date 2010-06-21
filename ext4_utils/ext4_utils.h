@@ -113,4 +113,15 @@ static inline int log_2(int j)
 	return i - 1;
 }
 
+int ext4_bg_has_super_block(int bg);
+void write_ext4_image(const char *filename, int gz);
+void ext4_create_fs_aux_info(void);
+void ext4_free_fs_aux_info(void);
+void ext4_fill_in_sb(void);
+void ext4_create_resize_inode(void);
+void ext4_create_journal_inode(void);
+void ext4_update_free(void);
+u64 get_file_size(const char *filename);
+u64 parse_num(const char *arg);
+
 #endif
