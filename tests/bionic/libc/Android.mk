@@ -68,6 +68,7 @@ sources := \
     common/test_pthread_mutex.c \
     common/test_pthread_once.c \
     common/test_semaphore.c \
+    common/test_sem_post.c \
     common/test_seteuid.c \
     common/test_static_cpp_mutex.cpp \
     common/test_strftime_2039.c \
@@ -148,6 +149,21 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := bionic/test_static_init.cpp
 LOCAL_MODULE    := test_static_init
 LOCAL_SHARED_LIBRARIES := libtest_static_init
+include $(BUILD_EXECUTABLE)
+
+# This test tries to see if static destructors are called
+# on dlclose(). We thus need to generate a C++ shared library
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := bionic/libdlclosetest1.cpp
+LOCAL_MODULE := libdlclosetest1
+LOCAL_PRELINK_MODULE := false
+include $(BUILD_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := bionic/test_dlclose_destruction.c
+LOCAL_MODULE := test_dlclose_destruction
+LOCAL_LDFLAGS := -ldl
+#LOCAL_SHARED_LIBRARIES := libdlclosetest1
 include $(BUILD_EXECUTABLE)
 
 # Testing 'clone' is only possible on Linux systems
