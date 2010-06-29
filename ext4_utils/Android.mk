@@ -28,6 +28,17 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(libext4_utils_src_files)
 LOCAL_MODULE := libext4_utils
 LOCAL_MODULE_TAGS := optional
+LOCAL_C_INCLUDES += external/zlib
+LOCAL_STATIC_LIBRARIES := libz
+LOCAL_PRELINK_MODULE := false
+
+include $(BUILD_STATIC_LIBRARY)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := $(libext4_utils_src_files)
+LOCAL_MODULE := libext4_utils
+LOCAL_MODULE_TAGS := optional
 LOCAL_SHARED_LIBRARIES := libz
 
 include $(BUILD_HOST_STATIC_LIBRARY)
