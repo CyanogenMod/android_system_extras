@@ -4,6 +4,7 @@ LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
 libext4_utils_src_files := \
+	make_ext4fs.c \
         ext4_utils.c \
         allocate.c \
         backed_block.c \
@@ -45,7 +46,7 @@ include $(BUILD_HOST_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES := make_ext4fs.c
+LOCAL_SRC_FILES := make_ext4fs_main.c
 LOCAL_MODULE := make_ext4fs
 LOCAL_MODULE_TAGS := optional
 LOCAL_SHARED_LIBRARIES += libext4_utils libz
@@ -54,7 +55,7 @@ include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES := make_ext4fs.c
+LOCAL_SRC_FILES := make_ext4fs_main.c
 LOCAL_MODULE := make_ext4fs
 LOCAL_STATIC_LIBRARIES += libext4_utils libz
 

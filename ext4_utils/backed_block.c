@@ -122,12 +122,23 @@ void for_each_data_block(data_block_callback_t data_func,
 /* Frees the memory used by the linked list of data blocks */
 void free_data_blocks()
 {
+        if (!data_blocks) return;
 	struct data_block *db = data_blocks;
 	while (db) {
 		struct data_block *next = db->next;
 		free((void*)db->filename);
-		free((void*)db->data);
+
+                // There used to be a free() of db->data here, but it
+		// made the function crash since queue_data_block() is
+		// sometimes passed pointers it can't take ownership of
+		// (like a pointer into the middle of an allocated
+		// block).  It's not clear what the queue_data_block
+		// contract is supposed to be, but we'd rather leak
+		// memory than crash.
+
 		free(db);
 		db = next;
 	}
+        data_blocks = NULL;
+        last_used = NULL;
 }
