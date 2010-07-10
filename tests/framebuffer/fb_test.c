@@ -54,6 +54,7 @@ static int get_framebuffer(struct simple_fb *fb, unsigned bpp)
     int fd;
     void *bits;
     int bytes_per_pixel;
+    long pagesize = sysconf(_SC_PAGESIZE);
 
     fd = open("/dev/graphics/fb0", O_RDWR);
     if (fd < 0) {
@@ -85,11 +86,16 @@ static int get_framebuffer(struct simple_fb *fb, unsigned bpp)
 
     dumpinfo(&fi, &vi);
 
-    bits = mmap(0, fi.smem_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (fi.smem_start & (pagesize-1))
+        bits = mmap(0, fi.smem_len+pagesize, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+    else
+        bits = mmap(0, fi.smem_len, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
     if(bits == MAP_FAILED) {
         perror("failed to mmap framebuffer");
         return -1;
     }
+    if (fi.smem_start & (pagesize-1))
+        bits = (char *)bits + (fi.smem_start & (pagesize-1));
 
     bytes_per_pixel = vi.bits_per_pixel >> 3;
 
