@@ -50,7 +50,7 @@ static nsecs_t system_time()
 }
 
 nsecs_t loop_overhead(size_t count) __attribute__((noinline));
-nsecs_t loop_overhead(size_t count) 
+nsecs_t loop_overhead(size_t count)
 {
     nsecs_t overhead = -system_time();
     do {
@@ -58,13 +58,13 @@ nsecs_t loop_overhead(size_t count)
     } while (--count);
     overhead += system_time();
     return overhead;
-}            
+}
 
 static void preload(volatile char* addr, size_t s)
 {
     for (size_t i=0 ; i<s ; i+=32) {
         char c = addr[i];
-        (void)c; 
+        (void)c;
     }
 }
 
@@ -95,6 +95,7 @@ int madvise_test(int argc, char** argv);
 int crash_test(int argc, char** argv);
 int stack_smasher_test(int argc, char** argv);
 int crawl_test(int argc, char** argv);
+int fp_test(int argc, char** argv);
 
 #if 0
 #pragma mark -
@@ -118,6 +119,7 @@ int main(int argc, char** argv)
     else if (!strcmp(argv[1], "crash"))     err = crash_test(argc-1, argv+1);
     else if (!strcmp(argv[1], "stack"))     err = stack_smasher_test(argc-1, argv+1);
     else if (!strcmp(argv[1], "crawl"))     err = crawl_test(argc-1, argv+1);
+    else if (!strcmp(argv[1], "fp"))     err = fp_test(argc-1, argv+1);
     if (err) {
         usage(argv[0]);
     }
@@ -143,12 +145,12 @@ int memcpy_test(int argc, char** argv)
 
     const int MAX_SIZE = 1024*1024; // 1MB
     const int CACHED_SPEED_EST = CPU_FREQ_EST*1024*1024; // 150 MB/s
-    const int UNCACHED_SPEED_EST = (CPU_FREQ_EST/4)*1024*1024; // 60 MB/s 
+    const int UNCACHED_SPEED_EST = (CPU_FREQ_EST/4)*1024*1024; // 60 MB/s
     char* src = (char*)malloc(MAX_SIZE+4+8+32);
     char* dst = (char*)malloc(MAX_SIZE+4+8+32);
     memset(src, 0, MAX_SIZE+4+8+32);
     memset(dst, 0, MAX_SIZE+4+8+32);
-    
+
     if (option == 0) {
         bool fast = (argc>=3 && !strcmp(argv[2], "fast"));
         printf("memcpy() performance test is running, please wait...\n");
@@ -164,7 +166,7 @@ int memcpy_test(int argc, char** argv)
         for (int i=0 ; ; i++) {
             if (!fast) {
                 if (size<128)          size += 8;
-                else if (size<1024)    size += 128;  	
+                else if (size<1024)    size += 128;
                 else if (size<16384)   size += 1024;
                 else                   size <<= 1;
             } else {
@@ -181,11 +183,11 @@ int memcpy_test(int argc, char** argv)
                                 // ~0.5 second per test
 
             const nsecs_t overhead = loop_overhead(REPEAT);
-            
+
             // tweak to make it a bad case
             char* ddd = (char*)((long(dst+31)&~31) + 4);
             char* sss = (char*)((long(src+31)&~31) + 28);
-            
+
             for (int offset=0 ; offset<=2 ; offset +=2 ) {
                 memcpy(dst, src, size); // just make sure to load the caches I/D
                 nsecs_t t = -system_time();
@@ -227,7 +229,7 @@ int memcpy_test(int argc, char** argv)
         if (nb) printf("%d error(s) found\n", nb);
         else    printf("success!\n");
     }
-    fflush(stdout); 
+    fflush(stdout);
     free(dst);
     free(src);
     return 0;
@@ -272,9 +274,9 @@ int memset_test(int argc, char** argv)
 
     const int MAX_SIZE = 1024*1024; // 1MB
     const int CACHED_SPEED_EST = CPU_FREQ_EST*1024*1024; // 195 MB/s
-    const int UNCACHED_SPEED_EST = CPU_FREQ_EST*1024*1024; // 195 MB/s 
+    const int UNCACHED_SPEED_EST = CPU_FREQ_EST*1024*1024; // 195 MB/s
     char* dst = (char*)malloc(MAX_SIZE+4+8);
-    
+
     if (option == 0) {
         printf("memset() performance test is running, please wait...\n");
         fflush(stdout);
@@ -316,7 +318,7 @@ int memset_test(int argc, char** argv)
                 nbr++;
             }
         }
-        
+
         printf("%9s %9s %9s\n", "size", "MB/s", "MB/s (cached)");
         for (int i=0 ; i<nbr ; i+=2) {
             printf("%9d %9ld %9ld\n", results[i].size, (long)results[i].res, (long)results[i+1].res);
@@ -335,7 +337,7 @@ int memset_test(int argc, char** argv)
         if (nb) printf("%d error(s) found\n", nb);
         else    printf("success!\n");
     }
-    fflush(stdout); 
+    fflush(stdout);
     free(dst);
     return 0;
 }
@@ -409,7 +411,7 @@ int memcmp_test(int argc, char** argv)
 
     const int MAX_SIZE = 1024*1024; // 1MB
     const int CACHED_SPEED_EST = CPU_FREQ_EST*1024*1024; // 150 MB/s
-    const int UNCACHED_SPEED_EST = (CPU_FREQ_EST/4)*1024*1024; // 60 MB/s 
+    const int UNCACHED_SPEED_EST = (CPU_FREQ_EST/4)*1024*1024; // 60 MB/s
     char* src = (char*)malloc(MAX_SIZE+4+8+32);
     char* dst = (char*)malloc(MAX_SIZE+4+8+32);
 
@@ -438,11 +440,11 @@ int memcmp_test(int argc, char** argv)
                                 // ~0.5 second per test
 
             const nsecs_t overhead = loop_overhead(REPEAT);
-            
+
             // tweak to make it a bad case
             char* ddd = (char*)((long(dst+31)&~31) + 4);
             char* sss = (char*)((long(src+31)&~31) + 28);
-            
+
             for (int offset=0 ; offset<=2 ; offset +=2 ) {
                 memcpy(ddd, sss+offset, size); // just make sure to load the caches I/D
                 nsecs_t t = -system_time();
@@ -461,7 +463,7 @@ int memcmp_test(int argc, char** argv)
                 nbr++;
             }
         }
-        
+
         printf("%9s %9s %9s\n", "size", "MB/s", "MB/s (nc)");
         for (int i=0 ; i<nbr ; i+=2) {
             printf("%9d %9ld %9ld\n", results[i].size, (long)results[i].res, (long)results[i+1].res);
@@ -500,7 +502,7 @@ int memcmp_test(int argc, char** argv)
         if (nb) printf("%d error(s) found\n", nb);
         else    printf("success!\n");
     }
-    fflush(stdout); 
+    fflush(stdout);
     free(dst);
     free(src);
     return 0;
@@ -522,9 +524,9 @@ int strlen_test(int argc, char** argv)
 
     const int MAX_SIZE = 1024*1024; // 1MB
     const int CACHED_SPEED_EST = CPU_FREQ_EST*1024*1024; // 195 MB/s
-    const int UNCACHED_SPEED_EST = CPU_FREQ_EST*1024*1024; // 195 MB/s 
+    const int UNCACHED_SPEED_EST = CPU_FREQ_EST*1024*1024; // 195 MB/s
     char* str = (char*)calloc(MAX_SIZE+4+8, 1);
-    
+
     if (option == 0) {
         printf("strlen() performance test is running, please wait...\n");
         fflush(stdout);
@@ -570,14 +572,14 @@ int strlen_test(int argc, char** argv)
                 nbr++;
             }
         }
-        
+
         printf("%9s %9s %9s\n", "size", "MB/s", "MB/s (cached)");
         for (int i=0 ; i<nbr ; i+=2) {
             printf("%9d %9ld %9ld\n", results[i].size, (long)results[i].res, (long)results[i+1].res);
         }
     }
 
-    fflush(stdout); 
+    fflush(stdout);
     free(str);
     return 0;
 }
@@ -682,12 +684,12 @@ int cpufreq_test(int argc, char** argv)
 
     if (clock_getres(CLOCK_REALTIME_HR, &res) != 0)
         printf("CLOCK_REALTIME_HR   resolution: %lu ns\n", res.tv_nsec);
-    else 
+    else
         printf("CLOCK_REALTIME_HR   not supported\n");
-        
+
     if (clock_getres(CLOCK_MONOTONIC_HR, &res) != 0)
         printf("CLOCK_MONOTONIC_HR  resolution: %lu ns\n", res.tv_nsec);
-    else 
+    else
         printf("CLOCK_MONOTONIC_HR  not supported\n");
 
     printf("\nEstimating the CPU frequency, please wait...\n");
