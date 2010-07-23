@@ -32,10 +32,12 @@ define device-test
     $(eval LOCAL_MODULE := $(notdir $(file:%.c=%))) \
     $(eval LOCAL_MODULE := $(LOCAL_MODULE:%.cpp=%)) \
     $(eval LOCAL_CFLAGS += $(EXTRA_CFLAGS)) \
+    $(eval LOCAL_LDFLAGS += $(EXTRA_LDLIBS)) \
     $(eval LOCAL_MODULE_TAGS := tests) \
     $(eval include $(BUILD_EXECUTABLE)) \
   ) \
-  $(eval EXTRA_CFLAGS :=)
+  $(eval EXTRA_CFLAGS :=) \
+  $(eval EXTRA_LDLIBS :=)
 endef
 
 # same as 'device-test' but builds a host executable instead
@@ -82,6 +84,25 @@ EXTRA_LDLIBS := -lpthread -lrt
 EXTRA_CFLAGS := -D_XOPEN_SOURCE=600 -DHOST
 $(call host-test, $(sources))
 $(call device-test, $(sources))
+
+# The 'test_dlopen_null' tests requires specific linker flags
+#
+# The -Wl,--export-dynamic ensures that dynamic symbols are
+# exported from the executable.
+#
+# -Wl,-u,foo is used to ensure that symbol "foo" is not
+# garbage-collected by the gold linker, since the function
+# appears to be unused.
+#
+sources := common/test_dlopen_null.c \
+
+EXTRA_LDLIBS := -ldl -Wl,--export-dynamic -Wl,-u,foo
+EXTRA_CFLAGS := -DHOST
+$(call host-test, $(sources))
+
+EXTRA_LDLIBS := -ldl -Wl,--export-dynamic -Wl,-u,foo
+$(call device-test, $(sources))
+
 
 sources := \
     common/test_libgen.c \
