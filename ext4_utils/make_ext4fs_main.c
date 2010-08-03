@@ -45,7 +45,7 @@ int main(int argc, char **argv)
         int android = 0;
         int gzip = 0;
 
-        while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:fz")) != -1) {
+        while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:fzJ")) != -1) {
                 switch (opt) {
                 case 'l':
                         info.len = parse_num(optarg);
@@ -78,6 +78,9 @@ int main(int argc, char **argv)
                 case 'z':
                         gzip = 1;
                         break;
+		case 'J':
+			info.no_journal = 1;
+			break;
                 default: /* '?' */
                         usage(argv[0]);
                         exit(EXIT_FAILURE);

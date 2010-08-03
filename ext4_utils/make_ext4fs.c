@@ -186,6 +186,16 @@ static u32 compute_block_size()
 	return 4096;
 }
 
+static u32 compute_journal_blocks()
+{
+	u32 journal_blocks = DIV_ROUND_UP(info.len, info.block_size) / 64;
+	if (journal_blocks < 1024)
+		journal_blocks = 1024;
+	if (journal_blocks > 32768)
+		journal_blocks = 32768;
+	return journal_blocks;
+}
+
 static u32 compute_blocks_per_group()
 {
 	return info.block_size * 8;
@@ -225,11 +235,16 @@ int make_ext4fs(const char *filename, const char *directory,
                 return EXIT_FAILURE;
 	}
 
-	if (info.journal_blocks > 0)
-		info.feat_compat = EXT4_FEATURE_COMPAT_HAS_JOURNAL;
-
 	if (info.block_size <= 0)
 		info.block_size = compute_block_size();
+
+	if (info.journal_blocks == 0)
+		info.journal_blocks = compute_journal_blocks();
+
+	if (info.no_journal == 0)
+		info.feat_compat = EXT4_FEATURE_COMPAT_HAS_JOURNAL;
+	else
+		info.journal_blocks = 0;
 
 	if (info.blocks_per_group <= 0)
 		info.blocks_per_group = compute_blocks_per_group();
@@ -263,6 +278,7 @@ int make_ext4fs(const char *filename, const char *directory,
 	printf("    Blocks per group: %d\n", info.blocks_per_group);
 	printf("    Inodes per group: %d\n", info.inodes_per_group);
 	printf("    Inode size: %d\n", info.inode_size);
+	printf("    Journal blocks: %d\n", info.journal_blocks);
 	printf("    Label: %s\n", info.label);
 
 	ext4_create_fs_aux_info();

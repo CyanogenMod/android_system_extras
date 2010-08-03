@@ -82,6 +82,7 @@ struct fs_info {
 	u16 feat_compat;
 	u16 feat_incompat;
 	const char *label;
+	u8 no_journal;
 };
 
 struct fs_aux_info {
