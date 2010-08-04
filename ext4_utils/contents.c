@@ -173,7 +173,8 @@ u32 make_file(const char *filename, u64 len)
 		return EXT4_ALLOCATE_FAILED;
 	}
 
-	inode_allocate_file_extents(inode, len, filename);
+	if (len > 0)
+		inode_allocate_file_extents(inode, len, filename);
 
 	inode->i_mode = S_IFREG;
 	inode->i_links_count = 1;
