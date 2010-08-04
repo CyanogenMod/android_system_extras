@@ -56,7 +56,8 @@ static u32 build_default_directory_structure()
 			.file_type = EXT4_FT_DIR,
 			.mode = S_IRWXU,
 			.uid = 0,
-			.gid = 0
+			.gid = 0,
+			.mtime = 0,
 	};
 	root_inode = make_directory(0, 1, &dentries, 1);
 	inode = make_directory(root_inode, 0, NULL, 0);
@@ -110,6 +111,7 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 
 		dentries[i].size = stat.st_size;
 		dentries[i].mode = stat.st_mode & (S_ISUID|S_ISGID|S_ISVTX|S_IRWXU|S_IRWXG|S_IRWXO);
+		dentries[i].mtime = stat.st_mtime;
 		if (android) {
 #ifdef ANDROID
 			unsigned int mode = 0;
@@ -167,7 +169,8 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 		*dentries[i].inode = entry_inode;
 
 		ret = inode_set_permissions(entry_inode, dentries[i].mode,
-				dentries[i].uid, dentries[i].gid);
+			dentries[i].uid, dentries[i].gid,
+			dentries[i].mtime);
 		if (ret)
 			error("failed to set permissions on %s\n", dentries[i].path);
 
@@ -306,7 +309,7 @@ int make_ext4fs(const char *filename, const char *directory,
 		root_inode_num = build_default_directory_structure();
 
 	root_mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
-	inode_set_permissions(root_inode_num, root_mode, 0, 0);
+	inode_set_permissions(root_inode_num, root_mode, 0, 0, 0);
 
 	ext4_update_free();
 

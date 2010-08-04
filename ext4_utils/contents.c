@@ -218,7 +218,7 @@ u32 make_link(const char *filename, const char *link)
 	return inode_num;
 }
 
-int inode_set_permissions(u32 inode_num, u16 mode, u16 uid, u16 gid)
+int inode_set_permissions(u32 inode_num, u16 mode, u16 uid, u16 gid, u32 mtime)
 {
 	struct ext4_inode *inode = get_inode(inode_num);
 
@@ -228,6 +228,9 @@ int inode_set_permissions(u32 inode_num, u16 mode, u16 uid, u16 gid)
 	inode->i_mode |= mode;
 	inode->i_uid = uid;
 	inode->i_gid = gid;
+	inode->i_mtime = mtime;
+	inode->i_atime = mtime;
+	inode->i_ctime = mtime;
 
 	return 0;
 }
