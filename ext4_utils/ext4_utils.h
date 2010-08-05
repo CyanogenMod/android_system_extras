@@ -38,6 +38,7 @@ extern int force;
 #define min(a, b) ((a) < (b) ? (a) : (b))
 
 #define DIV_ROUND_UP(x, y) (((x) + (y) - 1)/(y))
+#define ALIGN(x, y) ((y) * DIV_ROUND_UP((x), (y)))
 
 #define __le64 u64
 #define __le32 u32

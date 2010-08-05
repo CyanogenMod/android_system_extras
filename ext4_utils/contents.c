@@ -30,10 +30,10 @@ static u32 dentry_size(u32 entries, struct dentry *dentries)
 {
 	u32 len = 24;
 	unsigned int i;
+	unsigned int dentry_len;
 
 	for (i = 0; i < entries; i++) {
-		unsigned int dentry_len = 8 + 4 *
-			DIV_ROUND_UP(strlen(dentries[i].filename), 4);
+		dentry_len = 8 + ALIGN(strlen(dentries[i].filename), 4);
 		if (len % info.block_size + dentry_len > info.block_size)
 			len += info.block_size - (len % info.block_size);
 		len += dentry_len;
@@ -42,14 +42,12 @@ static u32 dentry_size(u32 entries, struct dentry *dentries)
 	return len;
 }
 
-#define PAD_TO(x, y) (x + (y - (x % y)))
-
 static struct ext4_dir_entry_2 *add_dentry(u8 *data, u32 *offset,
 		struct ext4_dir_entry_2 *prev, u32 inode, const char *name,
 		u8 file_type)
 {
 	u8 name_len = strlen(name);
-	u16 rec_len = 8 + PAD_TO(name_len, 4);
+	u16 rec_len = 8 + ALIGN(name_len, 4);
 	struct ext4_dir_entry_2 *dentry;
 
 	u32 start_block = *offset / info.block_size;
@@ -84,13 +82,16 @@ u32 make_directory(u32 dir_inode_num, u32 entries, struct dentry *dentries,
 	u32 dirs)
 {
 	struct ext4_inode *inode;
-	u32 blocks = DIV_ROUND_UP(dentry_size(entries, dentries), info.block_size);
-	u64 len = (u64)blocks * info.block_size;
+	u32 blocks;
+	u32 len;
 	u32 offset = 0;
 	u32 inode_num;
 	u8 *data;
 	unsigned int i;
 	struct ext4_dir_entry_2 *dentry;
+
+	blocks = DIV_ROUND_UP(dentry_size(entries, dentries), info.block_size);
+	len = blocks * info.block_size;
 
 	if (dir_inode_num) {
 		inode_num = allocate_inode(info);
@@ -137,8 +138,11 @@ u32 make_directory(u32 dir_inode_num, u32 entries, struct dentry *dentries,
 	}
 
 	for (i = 0; i < entries; i++) {
-		dentry = add_dentry(data, &offset, dentry, 0, dentries[i].filename,
-				dentries[i].file_type);
+		dentry = add_dentry(data, &offset, dentry, 0,
+				dentries[i].filename, dentries[i].file_type);
+		if (offset > len || (offset == len && i != entries - 1))
+			critical_error("internal error: dentry for %s ends at %d, past %d\n",
+				dentries[i].filename, offset, len);
 		dentries[i].inode = &dentry->inode;
 		if (!dentry) {
 			error("failed to add directory");
