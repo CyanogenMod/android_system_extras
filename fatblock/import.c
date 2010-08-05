@@ -23,18 +23,17 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#include "errors.h"
-#include "extent.h"
+#include "fatblock.h"
 #include "fat.h"
 #include "fdpool.h"
-#include "filedir.h"
 #include "fs.h"
-#include "import.h"
 #include "utils.h"
 
 static inline int valid_char(int c)
 {
-	return (isalnum(c) || strchr("!#$%'()-@^_`{}~", c) || ((c >= 128) && (c < 256)));
+	return (isalnum(c) ||
+		strchr("!#$%'()-@^_`{}~", c) ||
+		((c >= 128) && (c < 256)));
 }
 
 static int convert_name(char *short_name, const char *long_name)
@@ -108,14 +107,16 @@ static int import_file(struct fs *fs, char *path, struct imported *out)
 
 	f = malloc(sizeof(struct file));
 	if (!f) {
-		WARN("importing %s: couldn't allocate file struct: out of memory\n", path);
+		WARN("importing %s: couldn't allocate file struct: "
+		     "out of memory\n", path);
 		ret = MALLOC_FAIL;
 		goto fail;
 	}
 
 	path_copy = strdup(path);
 	if (!path_copy) {
-		WARN("importing %s: couldn't strdup path: out of memory\n", path);
+		WARN("importing %s: couldn't strdup path: out of memory\n",
+		     path);
 		ret = MALLOC_FAIL;
 		goto fail;
 	}
@@ -128,13 +129,12 @@ static int import_file(struct fs *fs, char *path, struct imported *out)
 	fdpool_init(&f->pfd);
 
 	ret = fs_alloc_extent(fs, &f->extent,
-                              f->size, EXTENT_TYPE_FILE, &f->first_cluster);
+                              f->size, EXTENT_TYPE_FILE, &out->first_cluster);
 	if (ret) {
 		WARN("importing %s: couldn't allocate data extent\n", path);
 		goto fail;
 	}
 
-	out->first_cluster = f->first_cluster;
 	out->size = f->size;
 	out->dot_dot_dirent = NULL;
 
@@ -190,10 +190,11 @@ static void free_items(struct item *head)
 
 /* TODO: With some work, this can be rewritten so we don't recurse
  * until all memory is allocated. */
-static int import_dir(struct fs *fs, char *path, int is_root, struct imported *out)
+static int import_dir(struct fs *fs, char *path, int is_root,
+		      struct imported *out)
 {
 	struct dir *d;
-	cluster_t first_cluster;
+	cluster_t my_first_cluster;
 
 	DIR *dir;
 	struct dirent *de;
@@ -213,20 +214,23 @@ static int import_dir(struct fs *fs, char *path, int is_root, struct imported *o
 
 	dir = opendir(path);
 	if (!dir) {
-		WARN("importing %s: opendir failed: %s\n", path, strerror(errno));
+		WARN("importing %s: opendir failed: %s\n", path,
+		     strerror(errno));
 		return -1;
 	}
 
 	d = malloc(sizeof(struct dir));
 	if (!d) {
-		WARN("importing %s: couldn't allocate dir struct: out of memory\n", path);
+		WARN("importing %s: couldn't allocate dir struct: "
+		     "out of memory\n", path);
 		closedir(dir);
 		return MALLOC_FAIL;
 	}
 
 	d->path = strdup(path);
 	if (!d->path) {
-		WARN("importing %s: couldn't strdup path: out of memory\n", path);
+		WARN("importing %s: couldn't strdup path: out of memory\n",
+		     path);
 		closedir(dir);
 		free(d);
 		return MALLOC_FAIL;
@@ -248,7 +252,8 @@ static int import_dir(struct fs *fs, char *path, int is_root, struct imported *o
 
 		item = alloc_item();
 		if (!item) {
-			WARN("importing %s: couldn't allocate item struct: out of memory\n", path);
+			WARN("importing %s: couldn't allocate item struct: "
+			     "out of memory\n", path);
 			ret = MALLOC_FAIL;
 			goto free_items;
 		}
@@ -287,13 +292,17 @@ skip_item:
 	closedir(dir);
 
 	d->size = sizeof(struct fat_dirent) * (count + (is_root ? 0 : 2));
-	ret = fs_alloc_extent(fs, &d->extent, d->size, EXTENT_TYPE_DIR, &d->first_cluster);
+	ret = fs_alloc_extent(fs, &d->extent, d->size, EXTENT_TYPE_DIR, &out->first_cluster);
 	if (ret) {
-		WARN("importing %s: couldn't allocate directory table extent: out of space\n", path);
+		WARN("importing %s: couldn't allocate directory table extent: "
+		     "out of space\n", path);
 		goto free_items;
 	}
 
-	first_cluster = is_root ? 0 : d->first_cluster;
+	if (is_root)
+		out->first_cluster = 0;
+
+	my_first_cluster = is_root ? 0 : out->first_cluster;
 
 	d->entries = malloc(sizeof(struct fat_dirent) * (count + (is_root ? 0 : 2)));
 	assert(d->entries);
@@ -308,7 +317,8 @@ skip_item:
                                item->imp.first_cluster, item->imp.size);
 
 		if (item->imp.dot_dot_dirent) {
-			fat_dirent_set_first_cluster(item->imp.dot_dot_dirent, first_cluster);
+			fat_dirent_set_first_cluster(item->imp.dot_dot_dirent,
+						     my_first_cluster);
 		}
 
 		free_item(item);
@@ -322,12 +332,11 @@ skip_item:
 
 		fat_dirent_set(&d->entries[1],
                                ".          ", FAT_ATTR_SUBDIR,
-                               first_cluster, 0);
+                               my_first_cluster, 0);
 	} else {
 		out->dot_dot_dirent = NULL;
 	}
 
-	out->first_cluster = d->first_cluster;
 	out->size = 0;
 
 	return 0;

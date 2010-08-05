@@ -32,7 +32,8 @@ static struct pooled_fd fdpool_head = {
 };
 static int fdpool_count = 0;
 
-static void fdpool_insert_head(struct pooled_fd *node) {
+static void fdpool_insert_head(struct pooled_fd *node)
+{
 	struct pooled_fd *prev = &fdpool_head;
 	struct pooled_fd *next = prev->next;
 
@@ -46,7 +47,8 @@ static void fdpool_insert_head(struct pooled_fd *node) {
 	fdpool_count++;
 }
 
-static void fdpool_remove(struct pooled_fd *node) {
+static void fdpool_remove(struct pooled_fd *node)
+{
 	struct pooled_fd *prev = node->prev;
 	struct pooled_fd *next = node->next;
 
@@ -59,7 +61,8 @@ static void fdpool_remove(struct pooled_fd *node) {
 	fdpool_count--;
 }
 
-static struct pooled_fd *fdpool_remove_tail(void) {
+static struct pooled_fd *fdpool_remove_tail(void)
+{
 	struct pooled_fd *tail = fdpool_head.prev;
 
 	assert(tail != &fdpool_head);
@@ -69,26 +72,30 @@ static struct pooled_fd *fdpool_remove_tail(void) {
 	return tail;
 }
 
-static void fdpool_clear(struct pooled_fd *pfd) {
+static void fdpool_clear(struct pooled_fd *pfd)
+{
 	assert(pfd);
 
 	pfd->fd = INVALID_FD;
 	pfd->prev = pfd->next = NULL;
 }
 
-static void fdpool_unpool(struct pooled_fd *pfd) {
+static void fdpool_unpool(struct pooled_fd *pfd)
+{
 	close(pfd->fd);
 	fdpool_clear(pfd);
 }
 
-static void fdpool_evict(void) {
+static void fdpool_evict(void)
+{
 	struct pooled_fd *tail;
 
 	tail = fdpool_remove_tail();
 	fdpool_unpool(tail);
 }
 
-static void fdpool_pool(struct pooled_fd *pfd, int fd) {
+static void fdpool_pool(struct pooled_fd *pfd, int fd)
+{
 	if (fdpool_count >= FDPOOL_SIZE)
 		fdpool_evict();
 
@@ -96,18 +103,21 @@ static void fdpool_pool(struct pooled_fd *pfd, int fd) {
 	pfd->fd = fd;
 }
 
-static void fdpool_touch(struct pooled_fd *pfd) {
+static void fdpool_touch(struct pooled_fd *pfd)
+{
 	fdpool_remove(pfd);
 	fdpool_insert_head(pfd);
 }
 
 
 
-void fdpool_init(struct pooled_fd *pfd) {
+void fdpool_init(struct pooled_fd *pfd)
+{
 	fdpool_clear(pfd);
 }
 
-int fdpool_open(struct pooled_fd *pfd, const char *pathname, int flags) {
+int fdpool_open(struct pooled_fd *pfd, const char *pathname, int flags)
+{
 	int open_errno;
 	int fd;
 
@@ -127,7 +137,8 @@ int fdpool_open(struct pooled_fd *pfd, const char *pathname, int flags) {
 	return fd;
 }
 
-void fdpool_close(struct pooled_fd *pfd) {
+void fdpool_close(struct pooled_fd *pfd)
+{
 	assert(pfd);
 
 	fdpool_unpool(pfd);

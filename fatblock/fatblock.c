@@ -22,17 +22,18 @@
 
 #include <ublock/ublock.h>
 
-#include "errors.h"
-#include "import.h"
+#include "fatblock.h"
 #include "fs.h"
-#include "read.h"
 #include "utils.h"
 
 static struct fs fs;
 static struct ublock_ctx *ub;
 static int ums_lun = 0;
 
-static int fs_import(struct fs *fs, uint16_t cluster_size, offset_t data_size, offset_t *total_size_out) {
+static int fs_import(struct fs *fs,
+		     uint16_t cluster_size, offset_t data_size,
+		     offset_t *total_size_out)
+{
 	int ret;
 
 	ret = fs_init(fs, cluster_size, data_size, total_size_out);
@@ -48,7 +49,8 @@ static int fs_import(struct fs *fs, uint16_t cluster_size, offset_t data_size, o
 
 
 
-static int read_callback(char *buf, uint64_t length, uint64_t offset) {
+static int read_callback(char *buf, uint64_t length, uint64_t offset)
+{
 	int result;
 	int i;
 
@@ -61,7 +63,8 @@ static int read_callback(char *buf, uint64_t length, uint64_t offset) {
 	return result ? -EINVAL : 0;
 }
 
-static int write_callback(const char *buf, uint64_t length, uint64_t offset) {
+static int write_callback(const char *buf, uint64_t length, uint64_t offset)
+{
 	DEBUG("writing to (%llu, %llu): we are read-only\n", offset, length);
 
 	return -EINVAL;
@@ -79,10 +82,12 @@ static int set_ums_file(int index)
 	char filename[PATH_MAX];
 	FILE *file;
 
-	sprintf(filename, "/sys/devices/platform/usb_mass_storage/lun%d/file", ums_lun);
+	sprintf(filename, "/sys/devices/platform/usb_mass_storage/lun%d/file",
+	        ums_lun);
 	file = fopen(filename, "w");
 	if (!file) {
-		WARN("setting USB mass storage file: fopen(%s) failed: %s\n", filename, strerror(errno));
+		WARN("setting USB mass storage file: fopen(%s) failed: %s\n",
+		     filename, strerror(errno));
 		return -1;
 	}
 
@@ -100,10 +105,12 @@ static int clear_ums_file(void)
 	char filename[PATH_MAX];
 	FILE *file;
 
-	sprintf(filename, "/sys/devices/platform/usb_mass_storage/lun%d/file", ums_lun);
+	sprintf(filename, "/sys/devices/platform/usb_mass_storage/lun%d/file",
+	        ums_lun);
 	file = fopen(filename, "w");
 	if (!file) {
-		WARN("clearing USB mass storage file: fopen(%s) failed: %s\n", filename, strerror(errno));
+		WARN("clearing USB mass storage file: fopen(%s) failed: %s\n",
+		     filename, strerror(errno));
 		return -1;
 	}
 

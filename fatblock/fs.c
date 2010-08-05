@@ -18,11 +18,9 @@
 #include <string.h>
 #include <sys/endian.h>
 
-#include "extent.h"
-#include "errors.h"
+#include "fatblock.h"
 #include "fat.h"
 #include "fs.h"
-#include "types.h"
 #include "utils.h"
 
 #define DEFAULT_SECTOR_SIZE 512
@@ -155,7 +153,8 @@ int fs_alloc_extent(struct fs *fs, struct extent *extent,
 	return 0;
 }
 
-int fs_init(struct fs *fs, uint16_t cluster_size, offset_t data_size, offset_t *total_size_out)
+int fs_init(struct fs *fs, uint16_t cluster_size, offset_t data_size,
+	    offset_t *total_size_out)
 {
 	uint16_t sector_size;
 	cluster_t data_clusters;
@@ -220,7 +219,8 @@ int fs_init(struct fs *fs, uint16_t cluster_size, offset_t data_size, offset_t *
 	fs->fat_size = fat_sectors * sector_size;
 	fs->fat = malloc(fs->fat_size);
 	if (!fs->fat) {
-		WARN("initializing filesystem: couldn't allocate FAT extent: out of memory\n");
+		WARN("initializing filesystem: couldn't allocate FAT extent: "
+		     "out of memory\n");
 		return MALLOC_FAIL;
 	}
 	memset(fs->fat, 0, fs->fat_size);

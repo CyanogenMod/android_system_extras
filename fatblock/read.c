@@ -21,12 +21,13 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
-#include "errors.h"
-#include "filedir.h"
+#include "fatblock.h"
 #include "fs.h"
 #include "utils.h"
 
-static int buffer_read(char *buf, offset_t buf_len, char *out, offset_t off, offset_t len) {
+static int buffer_read(char *buf, offset_t buf_len, char *out,
+		       offset_t off, offset_t len)
+{
 	assert(buf);
 	assert(out);
 
@@ -48,7 +49,8 @@ static int buffer_read(char *buf, offset_t buf_len, char *out, offset_t off, off
 	return 0;
 }
 
-static int file_check_metadata(struct file *f) {
+static int file_check_metadata(struct file *f)
+{
 	struct stat st;
 	int ret;
 
@@ -56,7 +58,8 @@ static int file_check_metadata(struct file *f) {
 
 	ret = stat(f->path, &st);
 	if (ret) {
-		WARN("checking metadata of %s: stat failed: %s\n", f->path, strerror(errno));
+		WARN("checking metadata of %s: stat failed: %s\n",
+		     f->path, strerror(errno));
 		return -1;
 	}
 
@@ -66,7 +69,8 @@ static int file_check_metadata(struct file *f) {
 	return 0;
 }
 
-static int file_read(struct file *f, char *buf, offset_t off, offset_t len) {
+static int file_read(struct file *f, char *buf, offset_t off, offset_t len)
+{
 	int fd;
 	off_t sought;
 	ssize_t ret;
@@ -75,17 +79,22 @@ static int file_read(struct file *f, char *buf, offset_t off, offset_t len) {
 	assert(buf);
 
 	if (off >= UINT32_MAX) {
-		WARN("reading %s (%llu, %llu): ignoring read that starts past 2^32\n", f->path, off, len);
+		WARN("reading %s (%llu, %llu): "
+		     "ignoring read that starts past 2^32\n",
+		     f->path, off, len);
 		return 0;
 	}
 
 	if (off + len > UINT32_MAX) {
-		WARN("reading %s (%llu, %llu): truncating read that ends past 2^32\n", f->path, off, len);
+		WARN("reading %s (%llu, %llu): "
+		     "truncating read that ends past 2^32\n",
+		     f->path, off, len);
 		len = UINT32_MAX - off;
 	}
 
 	if (file_check_metadata(f)) {
-		WARN("reading %s (%llu, %llu): metadata has changed\n", f->path, off, len);
+		WARN("reading %s (%llu, %llu): metadata has changed\n",
+		     f->path, off, len);
 		return SKY_IS_FALLING;
 	}
 
@@ -97,13 +106,15 @@ static int file_read(struct file *f, char *buf, offset_t off, offset_t len) {
 
 	sought = lseek(fd, (off_t)len, SEEK_SET);
 	if (sought != (off_t)len) {
-		WARN("reading %s (%llu, %llu): seek failed: %s\n", f->path, off, len, strerror(errno));
+		WARN("reading %s (%llu, %llu): seek failed: %s\n",
+		     f->path, off, len, strerror(errno));
 		return -1;
 	}
 
 	ret = read(fd, buf, (size_t)len);
 	if (ret != (ssize_t)len) {
-		WARN("reading %s (%llu, %llu): read failed: %s\n", f->path, off, len, strerror(errno));
+		WARN("reading %s (%llu, %llu): read failed: %s\n",
+		     f->path, off, len, strerror(errno));
 		return -1;
 	}
 
@@ -112,25 +123,31 @@ static int file_read(struct file *f, char *buf, offset_t off, offset_t len) {
 	return 0;
 }
 
-static int dir_read(struct dir *d, char *buf, offset_t off, offset_t len) {
+static int dir_read(struct dir *d, char *buf, offset_t off, offset_t len)
+{
 	assert(d);
 	assert(buf);
 
 	return buffer_read((char*)d->entries, d->size, buf, off, len);
 }
 
-static int extent_read(struct fs *fs, struct extent *e, char *buf, offset_t off, offset_t len) {
+static int extent_read(struct fs *fs, struct extent *e, char *buf,
+		       offset_t off, offset_t len)
+{
 	assert(fs);
 	assert(e);
 	assert(buf);
 
 	switch (e->type) {
 	case EXTENT_TYPE_BOOT:
-		return buffer_read((char*)&fs->boot, sizeof(fs->boot), buf, off, len);
+		return buffer_read((char*)&fs->boot, sizeof(fs->boot), buf,
+				   off, len);
 	case EXTENT_TYPE_INFO:
-		return buffer_read((char*)&fs->info, sizeof(fs->info), buf, off, len);
+		return buffer_read((char*)&fs->info, sizeof(fs->info), buf,
+				   off, len);
 	case EXTENT_TYPE_FAT:
-		return buffer_read((char*)fs->fat, fs->fat_size, buf, off, len);
+		return buffer_read((char*)fs->fat, fs->fat_size, buf,
+				   off, len);
 	case EXTENT_TYPE_FILE:
 		return file_read((struct file *)e, buf, off, len);
 	case EXTENT_TYPE_DIR:
@@ -141,14 +158,16 @@ static int extent_read(struct fs *fs, struct extent *e, char *buf, offset_t off,
 	}
 }
 
-int fs_read(struct fs *fs, char *buf, offset_t start, offset_t len) {
+int fs_read(struct fs *fs, char *buf, offset_t start, offset_t len)
+{
 	struct extent *e = NULL;
 	offset_t e_start, r_start, rel_len;
 	int ret;
 
 	memset(buf, 0, len);
 
-	while ((e = fs_find_extent(fs, start, len, e, &r_start, &e_start, &rel_len))) {
+	while ((e = fs_find_extent(fs, start, len, e,
+				   &r_start, &e_start, &rel_len))) {
 		ret = extent_read(fs, e, buf + r_start, e_start, rel_len);
 		if (ret == SKY_IS_FALLING)
 			return SKY_IS_FALLING;

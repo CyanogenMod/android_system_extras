@@ -16,7 +16,6 @@
 
 #include <assert.h>
 #include <string.h>
-
 #include <sys/endian.h>
 
 #include "fat.h"
@@ -25,7 +24,8 @@ const char FAT_BOOT_SIG[] = { 0x55, 0xAA };
 const char FAT_INFO_SIG1[4] = { 'R', 'R', 'a', 'A' };
 const char FAT_INFO_SIG2[4] = { 'r', 'r', 'A', 'a' };
 
-void fat_dirent_set_first_cluster(struct fat_dirent *de, cluster_t cluster) {
+void fat_dirent_set_first_cluster(struct fat_dirent *de, cluster_t cluster)
+{
 	assert(de);
 
 	de->first_cluster_hi = htole16((cluster >> 16) & 0xffff);
@@ -34,7 +34,8 @@ void fat_dirent_set_first_cluster(struct fat_dirent *de, cluster_t cluster) {
 
 void fat_dirent_set(struct fat_dirent *de,
                     char *name, uint8_t attr,
-                    cluster_t first_cluster, uint32_t size) {
+                    cluster_t first_cluster, uint32_t size)
+{
 	assert(de);
 	assert(name);
 

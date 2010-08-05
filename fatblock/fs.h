@@ -17,9 +17,8 @@
 #ifndef FS_H
 #define FS_H
 
-#include "extent.h"
+#include "fatblock.h"
 #include "fat.h"
-#include "types.h"
 
 struct fs {
 	uint16_t cluster_size;
@@ -41,7 +40,6 @@ struct fs {
 
 	offset_t data_offset;
 };
-
 
 int fs_alloc_extent(struct fs *fs, struct extent *extent,
                     offset_t len, int type, cluster_t *first_cluster_out);

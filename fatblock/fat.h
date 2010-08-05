@@ -19,8 +19,9 @@
 
 #include <stdint.h>
 
-#include "types.h"
+#include "fatblock.h"
 
+typedef uint32_t cluster_t;
 typedef uint64_t sector_t;
 typedef cluster_t fat_entry_t;
 

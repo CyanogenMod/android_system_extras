@@ -14,22 +14,37 @@
  * limitations under the License.
  */
 
-#ifndef FILEDIR_H
-#define FILEDIR_H
+#ifndef FATBLOCK_H
+#define FATBLOCK_H
 
 #include <stdint.h>
 #include <sys/types.h>
 
-#include "extent.h"
 #include "fdpool.h"
-#include "types.h"
+
+typedef uint64_t offset_t;
+
+typedef enum {
+	EXTENT_TYPE_BOOT,
+	EXTENT_TYPE_INFO,
+	EXTENT_TYPE_FAT,
+	EXTENT_TYPE_FILE,
+	EXTENT_TYPE_DIR
+} extent_type;
+
+struct extent {
+	offset_t start;
+	offset_t len;
+	extent_type type;
+
+	struct extent *next;
+};
 
 struct file {
 	struct extent extent;
 
 	char *path;
 	uint32_t size;
-	cluster_t first_cluster;
 
 	dev_t dev;
 	ino_t ino;
@@ -43,9 +58,16 @@ struct dir {
 
 	char *path;
 	uint32_t size;
-	cluster_t first_cluster;
 
 	struct fat_dirent *entries;
 };
+
+struct fs;
+
+int import_tree(struct fs *fs, char *path);
+int fs_read(struct fs *fs, char *buf, offset_t start, offset_t len);
+
+#define MALLOC_FAIL (-41)    /* memory allocation failed somewhere. */
+#define SKY_IS_FALLING (-42) /* One of the files changed out from under us. */
 
 #endif
