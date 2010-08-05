@@ -16,10 +16,8 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := fatblock
+LOCAL_MODULE_TAGS := optional
 LOCAL_SRC_FILES := fat.c fatblock.c fs.c import.c read.c utils.c fdpool.c
-# TODO: Why doesn't this work?
-#LOCAL_C_INCLUDES := $(call include-path-for, libublock)/include
 LOCAL_C_INCLUDES := system/extras/libublock/include
 LOCAL_SHARED_LIBRARIES := libublock
-
 include $(BUILD_EXECUTABLE)
