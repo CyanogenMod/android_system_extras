@@ -113,9 +113,9 @@ void for_each_data_block(data_block_callback_t data_func,
 		last_block = db->block + DIV_ROUND_UP(db->len, info.block_size) - 1;
 
 		if (db->filename)
-			file_func(out, db->block * info.block_size, db->filename, db->offset, db->len);
+			file_func(out, (u64)db->block * info.block_size, db->filename, db->offset, db->len);
 		else
-			data_func(out, db->block * info.block_size, db->data, db->len);
+			data_func(out, (u64)db->block * info.block_size, db->data, db->len);
 	}
 }
 

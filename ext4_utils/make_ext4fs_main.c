@@ -33,6 +33,7 @@ static void usage(char *path)
         fprintf(stderr, "%s [ -l <len> ] [ -j <journal size> ] [ -b <block_size> ]\n", basename(path));
         fprintf(stderr, "    [ -g <blocks per group> ] [ -i <inodes> ] [ -I <inode size> ]\n");
         fprintf(stderr, "    [ -L <label> ] [ -f ] [ -a <android mountpoint> ]\n");
+        fprintf(stderr, "    [ -z | -s ] [ -J ]\n");
         fprintf(stderr, "    <filename> [<directory>]\n");
 }
 
@@ -44,8 +45,9 @@ int main(int argc, char **argv)
         char *mountpoint = "";
         int android = 0;
         int gzip = 0;
+        int sparse = 0;
 
-        while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:fzJ")) != -1) {
+        while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:fzJs")) != -1) {
                 switch (opt) {
                 case 'l':
                         info.len = parse_num(optarg);
@@ -81,11 +83,20 @@ int main(int argc, char **argv)
 		case 'J':
 			info.no_journal = 1;
 			break;
+                case 's':
+                        sparse = 1;
+                        break;
                 default: /* '?' */
                         usage(argv[0]);
                         exit(EXIT_FAILURE);
                 }
         }
+
+	if (gzip && sparse) {
+                fprintf(stderr, "Cannot specify both gzip and sparse\n");
+                usage(argv[0]);
+                exit(EXIT_FAILURE);
+	}
 
         if (optind >= argc) {
                 fprintf(stderr, "Expected filename after options\n");
@@ -104,5 +115,5 @@ int main(int argc, char **argv)
                 exit(EXIT_FAILURE);
         }
 
-        return make_ext4fs(filename, directory, mountpoint, android, gzip);
+        return make_ext4fs(filename, directory, mountpoint, android, gzip, sparse);
 }

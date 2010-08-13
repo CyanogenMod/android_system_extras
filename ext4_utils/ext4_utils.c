@@ -14,6 +14,19 @@
  * limitations under the License.
  */
 
+#include <fcntl.h>
+#include <arpa/inet.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <string.h>
+
+#if defined(__linux__)
+#include <linux/fs.h>
+#elif defined(__APPLE__) && defined(__MACH__)
+#include <sys/disk.h>
+#endif
+
 #include "ext4_utils.h"
 #include "output_file.h"
 #include "backed_block.h"
@@ -24,18 +37,6 @@
 
 #include "ext4.h"
 #include "jbd2.h"
-
-#include <fcntl.h>
-#include <arpa/inet.h>
-#include <sys/ioctl.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-
-#if defined(__linux__)
-#include <linux/fs.h>
-#elif defined(__APPLE__) && defined(__MACH__)
-#include <sys/disk.h>
-#endif
 
 int force = 0;
 struct fs_info info;
@@ -73,24 +74,36 @@ int ext4_bg_has_super_block(int bg)
 }
 
 /* Write the filesystem image to a file */
-void write_ext4_image(const char *filename, int gz)
+void write_ext4_image(const char *filename, int gz, int sparse)
 {
 	int ret = 0;
-	struct output_file *out = open_output_file(filename, gz);
+	struct output_file *out = open_output_file(filename, gz, sparse);
 	off_t off;
 
 	if (!out)
 		return;
 
-	write_data_block(out, 1024, (u8*)aux_info.sb, 1024);
+	/* The write_data* functions expect only block aligned calls.
+	 * This is not an issue, except when we write out the super
+	 * block on a system with a block size > 1K.  So, we need to
+	 * deal with that here.
+	 */
+	if (info.block_size > 1024) {
+		u8 buf[4096] = { 0 }; 	/* The larget supported ext4 block size */
+		memcpy(buf + 1024, (u8*)aux_info.sb, 1024);
+		write_data_block(out, 0, buf, info.block_size);
 
-	write_data_block(out, (aux_info.first_data_block + 1) * info.block_size,
+	} else {
+		write_data_block(out, 1024, (u8*)aux_info.sb, 1024);
+	}
+
+	write_data_block(out, (u64)(aux_info.first_data_block + 1) * info.block_size,
 			 (u8*)aux_info.bg_desc,
 			 aux_info.bg_desc_blocks * info.block_size);
 
 	for_each_data_block(write_data_block, write_data_file, out);
 
-	write_data_block(out, info.len - 1, (u8*)"", 1);
+	pad_output_file(out, info.len);
 
 	close_output_file(out);
 }

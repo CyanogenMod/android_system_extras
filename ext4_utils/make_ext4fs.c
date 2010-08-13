@@ -62,6 +62,8 @@ static u32 build_default_directory_structure()
 	root_inode = make_directory(0, 1, &dentries, 1);
 	inode = make_directory(root_inode, 0, NULL, 0);
 	*dentries.inode = inode;
+	inode_set_permissions(inode, dentries.mode,
+		dentries.uid, dentries.gid, dentries.mtime);
 
 	return root_inode;
 }
@@ -225,7 +227,7 @@ void reset_ext4fs_info() {
 }
 
 int make_ext4fs(const char *filename, const char *directory,
-                char *mountpoint, int android, int gzip)
+                char *mountpoint, int android, int gzip, int sparse)
 {
         u32 root_inode_num;
         u16 root_mode;
@@ -319,7 +321,7 @@ int make_ext4fs(const char *filename, const char *directory,
 			aux_info.sb->s_blocks_count_lo - aux_info.sb->s_free_blocks_count_lo,
 			aux_info.sb->s_blocks_count_lo);
 
-	write_ext4_image(filename, gzip);
+	write_ext4_image(filename, gzip, sparse);
 
 	return 0;
 }

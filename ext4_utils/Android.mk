@@ -63,6 +63,13 @@ include $(BUILD_HOST_EXECUTABLE)
 
 include $(CLEAR_VARS)
 
+LOCAL_SRC_FILES := simg2img.c
+LOCAL_MODULE := simg2img
+
+include $(BUILD_HOST_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
 LOCAL_MODULE := mkuserimg.sh
 LOCAL_SRC_FILES := mkuserimg.sh
 LOCAL_MODULE_CLASS := EXECUTABLES
