@@ -183,6 +183,7 @@ int main(int argc, char *argv[]) {
     struct process_info *pi;
 
     int i, j, error;
+    size_t k, l;
 
     compfn = &sort_by_pss;
     order = -1;
@@ -227,14 +228,14 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    for (i = 0; i < num_procs; i++) {
-        error = pm_process_create(ker, pids[i], &proc);
+    for (k = 0; k < num_procs; k++) {
+        error = pm_process_create(ker, pids[k], &proc);
         if (error) {
-            fprintf(stderr, "warning: could not create process interface for %d\n", pids[i]);
+            fprintf(stderr, "warning: could not create process interface for %d\n", pids[k]);
             continue;
         }
-        
-        pi = get_process(pids[i]);
+
+        pi = get_process(pids[k]);
 
         error = pm_process_maps(proc, &maps, &num_maps);
         if (error) {
@@ -242,21 +243,21 @@ int main(int argc, char *argv[]) {
             exit(EXIT_FAILURE);
         }
 
-        for (j = 0; j < num_maps; j++) {
-            if (prefix && (strncmp(pm_map_name(maps[j]), prefix, prefix_len)))
+        for (l = 0; l < num_maps; l++) {
+            if (prefix && (strncmp(pm_map_name(maps[l]), prefix, prefix_len)))
                 continue;
 
-            li = get_library(pm_map_name(maps[j]));
+            li = get_library(pm_map_name(maps[l]));
             if (!li)
                 continue;
 
             mi = get_mapping(li, pi);
-            
-            error = pm_map_usage(maps[j], &map_usage);
+
+            error = pm_map_usage(maps[l], &map_usage);
             if (error) {
                 fprintf(stderr, "Error getting map memory usage of "
                                 "map %s in process %d.\n",
-                        pm_map_name(maps[j]), proc->pid);
+                        pm_map_name(maps[l]), proc->pid);
                 exit(EXIT_FAILURE);
             }
             pm_memusage_add(&mi->usage, &map_usage);
