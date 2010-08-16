@@ -1,19 +1,13 @@
-ifeq ($(BUILD_OLD_SU),true)
-
-LOCAL_PATH:= $(call my-dir)
+LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES:= su.c
+LOCAL_MODULE := su
+LOCAL_SRC_FILES := su.c activity.cpp
 
-LOCAL_MODULE:= su
 
-LOCAL_FORCE_STATIC_EXECUTABLE := true
-
-LOCAL_STATIC_LIBRARIES := libc
+LOCAL_C_INCLUDES += external/sqlite/dist
+LOCAL_SHARED_LIBRARIES := liblog libsqlite libandroid_runtime
 
 LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
-LOCAL_MODULE_TAGS := debug
 
 include $(BUILD_EXECUTABLE)
-
-endif
