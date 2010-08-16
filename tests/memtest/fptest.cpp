@@ -26,107 +26,14 @@
 #include <sys/types.h>
 #include <sys/mman.h>
 
-typedef struct {
-    unsigned char x;
-    unsigned char y;
-    unsigned char z;
-    unsigned char w;
-} uchar4;
-
-typedef struct {
-    float x;
-    float y;
-    float z;
-    float w;
-} float4;
-
-
-#define MAX_RADIUS 25
-#define WIDTH 512
-#define HEIGHT 512
-
-uchar4 bufIn[WIDTH * HEIGHT];
-uchar4 bufOut[WIDTH * HEIGHT];
-uchar4 bufTmp[WIDTH * HEIGHT];
-
-static float gaussian[MAX_RADIUS * 2 + 1];
-static int height = 512;
-static int width = 512;
-static int radius = MAX_RADIUS;
-
-
-
-static void horiz(uchar4 *output, const uchar4 *inputBuf, uint32_t x, uint32_t y) {
-    const uchar4 *input = inputBuf + (y * width);
-    float4 blurredPixel = {0,0,0,0};
-    float4 currentPixel;
-
-    for(int r = -radius; r <= radius; r ++) {
-        // Stepping left and right away from the pixel
-        int validW = x + r;
-        // Clamp to zero and width max() isn't exposed for ints yet
-        if(validW < 0) {
-            validW = 0;
-        }
-        if(validW > WIDTH - 1) {
-            validW = WIDTH - 1;
-        }
-        //int validW = rsClamp(w + r, 0, width - 1);
-
-        float weight = gaussian[r + radius];
-        currentPixel.x = (float)(input[validW].x);
-        currentPixel.y = (float)(input[validW].y);
-        currentPixel.z = (float)(input[validW].z);
-        //currentPixel.w = (float)(input->a);
-
-        blurredPixel.x += currentPixel.x * weight;
-        blurredPixel.y += currentPixel.y * weight;
-        blurredPixel.z += currentPixel.z * weight;
-    }
-
-    output->x = (uint8_t)blurredPixel.x;
-    output->y = (uint8_t)blurredPixel.y;
-    output->z = (uint8_t)blurredPixel.z;
-}
-
-
-static void vert(uchar4 *output, const uchar4 *inputBuf, uint32_t x, uint32_t y) {
-    const uchar4 *input = inputBuf + x;
-
-    float4 blurredPixel = {0,0,0,0};
-
-    float4 currentPixel;
-    for(int r = -radius; r <= radius; r ++) {
-        int validH = y + r;
-        // Clamp to zero and width
-        if(validH < 0) {
-            validH = 0;
-        }
-        if(validH > HEIGHT - 1) {
-            validH = HEIGHT - 1;
-        }
-
-        const uchar4 *i = input + validH * WIDTH;
-
-        float weight = gaussian[r + radius];
-
-        currentPixel.x = (float)(i->x);
-        currentPixel.y = (float)(i->y);
-        currentPixel.z = (float)(i->z);
-
-        blurredPixel.x += currentPixel.x * weight;
-        blurredPixel.y += currentPixel.y * weight;
-        blurredPixel.z += currentPixel.z * weight;
-    }
-
-    //output->xyz = convert_uchar3(blurredPixel.xyz);
-    output->x = (uint8_t)blurredPixel.x;
-    output->y = (uint8_t)blurredPixel.y;
-    output->z = (uint8_t)blurredPixel.z;
-}
+#ifdef __ARM_NEON__
+#include <arm_neon.h>
+#endif
 
 
 typedef long long nsecs_t;
+static nsecs_t gTime;
+float data_f[1024 * 128];
 
 static nsecs_t system_time()
 {
@@ -136,30 +43,96 @@ static nsecs_t system_time()
     return nsecs_t(t.tv_sec)*1000000000LL + t.tv_nsec;
 }
 
+static void startTime()
+{
+    gTime = system_time();
+}
+
+static void endTime(const char *str, double ops)
+{
+    nsecs_t t = system_time() - gTime;
+    double ds = ((double)t) / 1e9;
+    printf("Test: %s, %f Mops\n", str, ops / ds / 1e6);
+}
+
+
+static void test_mad() {
+    for(int i=0; i<1020; i++) {
+        data_f[i] = i;
+    }
+
+    startTime();
+
+    float total = 0;
+    // Do ~1 billion ops
+    for (int ct=0; ct < (1000 * (1000 / 20)); ct++) {
+        for (int i=0; i < 1000; i++) {
+            data_f[i] = (data_f[i] * 0.02f +
+                         data_f[i+1] * 0.04f +
+                         data_f[i+2] * 0.05f +
+                         data_f[i+3] * 0.1f +
+                         data_f[i+4] * 0.2f +
+                         data_f[i+5] * 0.2f +
+                         data_f[i+6] * 0.1f +
+                         data_f[i+7] * 0.05f +
+                         data_f[i+8] * 0.04f +
+                         data_f[i+9] * 0.02f + 1.f);
+        }
+    }
+
+    endTime("scalar mad", 1e9);
+}
+
+
+#ifdef __ARM_NEON__
+
+static void test_fma() {
+    for(int i=0; i<1020 * 4; i++) {
+        data_f[i] = i;
+    }
+    float32x4_t c0_02 = vdupq_n_f32(0.02f);
+    float32x4_t c0_04 = vdupq_n_f32(0.04f);
+    float32x4_t c0_05 = vdupq_n_f32(0.05f);
+    float32x4_t c0_10 = vdupq_n_f32(0.1f);
+    float32x4_t c0_20 = vdupq_n_f32(0.2f);
+    float32x4_t c1_00 = vdupq_n_f32(1.0f);
+
+    startTime();
+
+    float total = 0;
+    // Do ~1 billion ops
+    for (int ct=0; ct < (1000 * (1000 / 80)); ct++) {
+        for (int i=0; i < 1000; i++) {
+            float32x4_t t;
+            t = vmulq_f32(vld1q_f32((float32_t *)&data_f[i]), c0_02);
+            t = vmlaq_f32(t, vld1q_f32((float32_t *)&data_f[i+4]), c0_04);
+            t = vmlaq_f32(t, vld1q_f32((float32_t *)&data_f[i+8]), c0_05);
+            t = vmlaq_f32(t, vld1q_f32((float32_t *)&data_f[i+12]), c0_10);
+            t = vmlaq_f32(t, vld1q_f32((float32_t *)&data_f[i+16]), c0_20);
+            t = vmlaq_f32(t, vld1q_f32((float32_t *)&data_f[i+20]), c0_20);
+            t = vmlaq_f32(t, vld1q_f32((float32_t *)&data_f[i+24]), c0_10);
+            t = vmlaq_f32(t, vld1q_f32((float32_t *)&data_f[i+28]), c0_05);
+            t = vmlaq_f32(t, vld1q_f32((float32_t *)&data_f[i+32]), c0_04);
+            t = vmlaq_f32(t, vld1q_f32((float32_t *)&data_f[i+36]), c0_02);
+            t = vaddq_f32(t, c1_00);
+            vst1q_f32((float32_t *)&data_f[i], t);
+        }
+    }
+
+    endTime("neon fma", 1e9);
+}
+#endif
+
 int fp_test(int argc, char** argv) {
-    for (int ct=0; ct < (sizeof(gaussian)/4); ct++) {
-        gaussian[ct] = 1.f;
-    }
-    memset(bufIn, 0, sizeof(bufIn));
+    test_mad();
 
-    nsecs_t t1 = system_time();
-
-    for (int y = 0; y < HEIGHT; y++) {
-        for (int x = 0; x < WIDTH; x++) {
-            horiz(&bufTmp[x + y * WIDTH], bufIn, x, y);
-        }
-    }
-
-    for (int y = 0; y < HEIGHT; y++) {
-        for (int x = 0; x < WIDTH; x++) {
-            vert(&bufOut[x + y * WIDTH], bufTmp, x, y);
-        }
-    }
-
-    nsecs_t t2 = system_time();
-
-    printf("FP Test time %i ms\n", (int)((t2 - t1) / 1000000) );
+#ifdef __ARM_NEON__
+    test_fma();
+#endif
 
     return 0;
 }
+
+
+
 
