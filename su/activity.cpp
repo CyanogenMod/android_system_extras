@@ -99,8 +99,7 @@ int send_intent(struct su_initiator *from, struct su_request *to, const char *so
     data.writeInt32(-1); /* resultCode */
     data.writeString16(NULL, 0); /* resultData */
 
-    data.writeInt32(-1); /* somewhere between these two lines is resultExtras */
-    data.writeInt32(-1); /* not sure which line it is, but they both need to be here*/
+    data.writeInt32(-1); /* resultExtras */
     
     data.writeString16(String16("com.noshufou.android.su.RESPOND")); /* perm */
     data.writeInt32(0); /* serialized */
