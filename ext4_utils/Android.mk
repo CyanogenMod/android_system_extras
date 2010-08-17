@@ -14,6 +14,7 @@ libext4_utils_src_files := \
         indirect.c \
         uuid.c \
         sha1.c \
+	sparse_crc32.c
 
 LOCAL_SRC_FILES := $(libext4_utils_src_files)
 LOCAL_MODULE := libext4_utils
@@ -63,7 +64,8 @@ include $(BUILD_HOST_EXECUTABLE)
 
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES := simg2img.c
+LOCAL_SRC_FILES := simg2img.c \
+	sparse_crc32.c
 LOCAL_MODULE := simg2img
 
 include $(BUILD_HOST_EXECUTABLE)

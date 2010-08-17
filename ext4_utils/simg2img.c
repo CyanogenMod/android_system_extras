@@ -27,6 +27,7 @@
 #include "ext4_utils.h"
 #include "output_file.h"
 #include "sparse_format.h"
+#include "sparse_crc32.h"
 
 #if defined(__APPLE__) && defined(__MACH__)
 #define lseek64 lseek
@@ -35,6 +36,9 @@
 
 #define COPY_BUF_SIZE (1024*1024)
 u8 *copybuf;
+
+/* This will be malloc'ed with the size of blk_sz from the sparse file header */
+u8* zerobuf;
 
 #define SPARSE_HEADER_MAJOR_VER 1
 #define SPARSE_HEADER_LEN       (sizeof(sparse_header_t))
@@ -52,8 +56,15 @@ int process_raw_chunk(FILE *in, FILE *out, u32 blocks, u32 blk_sz, u32 *crc32)
 
 	while (len) {
 		chunk = (len > COPY_BUF_SIZE) ? COPY_BUF_SIZE : len;
-		fread(copybuf, chunk, 1, in);
-		fwrite(copybuf, chunk, 1, out);
+		if (fread(copybuf, chunk, 1, in) != 1) {
+			fprintf(stderr, "fread returned an error copying a raw chunk\n");
+			exit(-1);
+		}
+		*crc32 = sparse_crc32(*crc32, copybuf, chunk);
+		if (fwrite(copybuf, chunk, 1, out) != 1) {
+			fprintf(stderr, "fwrite returned an error copying a raw chunk\n");
+			exit(-1);
+		}
 		len -= chunk;
 	}
 
@@ -67,15 +78,24 @@ int process_skip_chunk(FILE *out, u32 blocks, u32 blk_sz, u32 *crc32)
 	 * as a 32 bit value of blocks.
 	 */
 	u64 len = (u64)blocks * blk_sz;
-	long skip_chunk;
+	u64 len_save;
+	u32 skip_chunk;
 
 	/* Fseek takes the offset as a long, which may be 32 bits on some systems.
 	 * So, lets do a sequence of fseeks() with SEEK_CUR to get the file pointer
 	 * where we want it.
 	 */
+	len_save = len;
 	while (len) {
 		skip_chunk = (len > 0x80000000) ? 0x80000000 : len;
 		fseek(out, skip_chunk, SEEK_CUR);
+		len -= skip_chunk;
+	}
+	/* And compute the CRC of the skipped region a chunk at a time */
+	len = len_save;
+	while (len) {
+		skip_chunk = (skip_chunk > blk_sz) ? blk_sz : skip_chunk;
+		*crc32 = sparse_crc32(*crc32, zerobuf, skip_chunk);
 		len -= skip_chunk;
 	}
 
@@ -133,6 +153,11 @@ int main(int argc, char *argv[])
 		fseek(in, sparse_header.file_hdr_sz - SPARSE_HEADER_LEN, SEEK_CUR);
 	}
 
+	if ( (zerobuf = malloc(sparse_header.blk_sz)) == 0) {
+		fprintf(stderr, "Cannot malloc zero buf\n");
+		exit(-1);
+	}
+
 	for (i=0; i<sparse_header.total_chunks; i++) {
 		if (fread(&chunk_header, sizeof(chunk_header), 1, in) != 1) {
 			fprintf(stderr, "Error reading chunk header\n");
@@ -176,7 +201,10 @@ int main(int argc, char *argv[])
 	 * will make the file the correct size.  Make sure the offset is
 	 * computed in 64 bits, and the function called can handle 64 bits.
 	 */
-	ftruncate(fileno(out), (u64)total_blocks * sparse_header.blk_sz);
+	if (ftruncate(fileno(out), (u64)total_blocks * sparse_header.blk_sz)) {
+		fprintf(stderr, "Error calling ftruncate() to set the image size\n");
+		exit(-1);
+	}
 
 	fclose(in);
 	fclose(out);
@@ -188,7 +216,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (sparse_header.image_checksum != crc32) {
-		fprintf(stderr, "computed crc32 of %d, expected %d\n",
+		fprintf(stderr, "computed crc32 of 0x%8.8x, expected 0x%8.8x\n",
 			 crc32, sparse_header.image_checksum);
 		exit(-1);
 	}
