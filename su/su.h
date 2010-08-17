@@ -12,7 +12,7 @@
 
 #define DEFAULT_COMMAND "/system/bin/sh"
 
-#define VERSION "2.3-ef"
+#define VERSION "2.3.1-ef"
 
 struct su_initiator {
     pid_t pid;
