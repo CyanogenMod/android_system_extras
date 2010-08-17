@@ -27,6 +27,7 @@
 #include "ext4_utils.h"
 #include "output_file.h"
 #include "sparse_format.h"
+#include "sparse_crc32.h"
 
 #if defined(__APPLE__) && defined(__MACH__)
 #define lseek64 lseek
@@ -148,7 +149,7 @@ static u8 *zero_buf;
 static int emit_skip_chunk(struct output_file *out, u64 skip_len)
 {
 	chunk_header_t chunk_header;
-	int ret;
+	int ret, chunk;
 
 	//DBG printf("skip chunk: 0x%llx bytes\n", skip_len);
 
@@ -166,9 +167,16 @@ static int emit_skip_chunk(struct output_file *out, u64 skip_len)
 	ret = out->ops->write(out, (u8 *)&chunk_header, sizeof(chunk_header));
 	if (ret < 0)
 		return -1;
-	// KEN: TODO: CRC computation
+
 	out->cur_out_ptr += skip_len;
 	out->chunk_cnt++;
+
+	/* Compute the CRC for all those zeroes.  Do it block_size bytes at a time. */
+	while (skip_len) {
+		chunk = (skip_len > info.block_size) ? info.block_size : skip_len;
+		out->crc32 = sparse_crc32(out->crc32, zero_buf, chunk);
+		skip_len -= chunk;
+	}
 
 	return 0;
 }
@@ -231,7 +239,9 @@ static int write_chunk_raw(struct output_file *out, u64 off, u8 *data, int len)
 			return -1;
 	}
 
-	// KEN: TODO: CRC computation of both the raw data and and zero buf data written */
+	out->crc32 = sparse_crc32(out->crc32, data, len);
+	if (zero_len)
+		out->crc32 = sparse_crc32(out->crc32, zero_buf, zero_len);
 	out->cur_out_ptr += rnd_up_len;
 	out->chunk_cnt++;
 
@@ -293,6 +303,10 @@ struct output_file *open_output_file(const char *filename, int gz, int sparse)
 	out->sparse = sparse;
 	out->cur_out_ptr = 0ll;
 	out->chunk_cnt = 0;
+
+	/* Initialize the crc32 value */
+	out->crc32 = 0;
+
 	if (out->sparse) {
 		/* Write out the file header.  We'll update the unknown fields
 		 * when we close the file.
@@ -321,7 +335,6 @@ void pad_output_file(struct output_file *out, u64 len)
 		 * cur_out_ptr is not already at the end of the filesystem.
 		 * We also need to compute the CRC for it.
 		 */
-		 //KEN: TODO: CRC computation!
 		if (len < out->cur_out_ptr) {
 			error("attempted to pad file %llu bytes less than the current output pointer",
 					out->cur_out_ptr - len);
