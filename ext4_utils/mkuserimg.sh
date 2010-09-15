@@ -42,7 +42,7 @@ if [ -z $SIZE ]; then
 fi
 
 echo "make_ext4fs -l $SIZE -a $LABEL $OUTPUT_FILE $SRC_DIR"
-make_ext4fs -l $SIZE -a $LABEL $OUTPUT_FILE $SRC_DIR
+make_ext4fs -s -l $SIZE -a $LABEL $OUTPUT_FILE $SRC_DIR
 if [ $? -ne 0 ]; then
   exit 4
 fi
