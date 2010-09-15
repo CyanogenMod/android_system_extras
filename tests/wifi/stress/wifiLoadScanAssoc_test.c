@@ -201,7 +201,7 @@ main(int argc, char *argv[])
             testPrintE("      -t Duration");
             testPrintE("      -d Delay min");
             testPrintE("      -D Delay max");
-            exit((opt == '?') ? 0 : 6);
+            exit(((optopt == 0) || (optopt == '?')) ? 0 : 6);
         }
     }
     if (delayMax < delayMin) {
@@ -327,6 +327,8 @@ main(int argc, char *argv[])
         exit(27);
     }
     execCmd(cmd);
+
+    testPrintI("Successfully completed %u passes", pass - startPass);
 
     return 0;
 }
