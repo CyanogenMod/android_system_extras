@@ -18,15 +18,11 @@ LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := wifiLoadScanAssoc_test
-LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
-LOCAL_MODULE_TAGS := eng
+LOCAL_MODULE_TAGS := eng tests
+LOCAL_MODULE_PATH := $(TARGET_OUT_DATA)/nativestresstest/$(LOCAL_MODULE)
 LOCAL_SRC_FILES := wifiLoadScanAssoc_test.c
 LOCAL_SHARED_LIBRARIES += libcutils libutils libtestUtil libhardware_legacy
 LOCAL_C_INCLUDES += system/extras/tests/include \
     hardware/libhardware_legacy/include
 
-ifdef WIFI_DRIVER_MODULE_PATH
-LOCAL_CFLAGS += -DWIFI_DRIVER_MODULE_PATH=\"$(WIFI_DRIVER_MODULE_PATH)\"
-endif
-
-include $(BUILD_EXECUTABLE)
+include $(BUILD_NATIVE_TEST)
