@@ -17,11 +17,12 @@
 LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
+LOCAL_MODULE_TAGS := tests
 LOCAL_MODULE := wifiLoadScanAssoc_test
-LOCAL_MODULE_TAGS := eng tests
-LOCAL_MODULE_PATH := $(TARGET_OUT_DATA)/nativestresstest/$(LOCAL_MODULE)
+LOCAL_MODULE_PATH := $(TARGET_OUT_DATA)/nativestresstest
 LOCAL_SRC_FILES := wifiLoadScanAssoc_test.c
-LOCAL_SHARED_LIBRARIES += libcutils libutils libtestUtil libhardware_legacy
+LOCAL_SHARED_LIBRARIES += libcutils libutils libhardware_legacy
+LOCAL_STATIC_LIBRARIES += libtestUtil
 LOCAL_C_INCLUDES += system/extras/tests/include \
     hardware/libhardware_legacy/include
 
