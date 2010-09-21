@@ -29,7 +29,7 @@ struct proc_info {
 };
 
 static void usage(char *myname);
-static int getprocname(pid_t pid, char *buf, size_t len);
+static int getprocname(pid_t pid, char *buf, int len);
 static int numcmp(long long a, long long b);
 
 #define declare_sort(field) \
@@ -43,15 +43,13 @@ declare_sort(uss);
 int (*compfn)(const void *a, const void *b);
 static int order;
 
-#define MAX_PROCS 256
-
 int main(int argc, char *argv[]) {
     pm_kernel_t *ker;
     pm_process_t *proc;
     pid_t *pids;
-    struct proc_info *procs[MAX_PROCS];
+    struct proc_info **procs;
     size_t num_procs;
-    char cmdline[256];
+    char cmdline[256]; // this must be within the range of int
     int error;
 
     #define WS_OFF   0
@@ -59,22 +57,23 @@ int main(int argc, char *argv[]) {
     #define WS_RESET 2
     int ws;
 
-    int i, j;
+    int arg;
+    size_t i, j;
 
     compfn = &sort_by_pss;
     order = -1;
     ws = WS_OFF;
 
-    for (i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "-v")) { compfn = &sort_by_vss; continue; }
-        if (!strcmp(argv[i], "-r")) { compfn = &sort_by_rss; continue; }
-        if (!strcmp(argv[i], "-p")) { compfn = &sort_by_pss; continue; }
-        if (!strcmp(argv[i], "-u")) { compfn = &sort_by_uss; continue; }
-        if (!strcmp(argv[i], "-w")) { ws = WS_ONLY; continue; }
-        if (!strcmp(argv[i], "-W")) { ws = WS_RESET; continue; }
-        if (!strcmp(argv[i], "-R")) { order *= -1; continue; }
-        if (!strcmp(argv[i], "-h")) { usage(argv[0]); exit(0); }
-        fprintf(stderr, "Invalid argument \"%s\".\n", argv[i]);
+    for (arg = 1; arg < argc; arg++) {
+        if (!strcmp(argv[arg], "-v")) { compfn = &sort_by_vss; continue; }
+        if (!strcmp(argv[arg], "-r")) { compfn = &sort_by_rss; continue; }
+        if (!strcmp(argv[arg], "-p")) { compfn = &sort_by_pss; continue; }
+        if (!strcmp(argv[arg], "-u")) { compfn = &sort_by_uss; continue; }
+        if (!strcmp(argv[arg], "-w")) { ws = WS_ONLY; continue; }
+        if (!strcmp(argv[arg], "-W")) { ws = WS_RESET; continue; }
+        if (!strcmp(argv[arg], "-R")) { order *= -1; continue; }
+        if (!strcmp(argv[arg], "-h")) { usage(argv[0]); exit(0); }
+        fprintf(stderr, "Invalid argument \"%s\".\n", argv[arg]);
         usage(argv[0]);
         exit(EXIT_FAILURE);
     }
@@ -92,9 +91,15 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    procs = calloc(num_procs, sizeof(struct proc_info*));
+    if (procs == NULL) {
+        fprintf(stderr, "calloc: %s", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
     for (i = 0; i < num_procs; i++) {
         procs[i] = malloc(sizeof(struct proc_info));
-        if (!procs[i]) {
+        if (procs[i] == NULL) {
             fprintf(stderr, "malloc: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
         }
@@ -125,8 +130,11 @@ int main(int argc, char *argv[]) {
 
     j = 0;
     for (i = 0; i < num_procs; i++) {
-        if (procs[i]->usage.vss)
+        if (procs[i]->usage.vss) {
             procs[j++] = procs[i];
+        } else {
+            free(procs[i]);
+        }
     }
     num_procs = j;
 
@@ -136,8 +144,17 @@ int main(int argc, char *argv[]) {
         printf("%5s  %7s  %7s  %7s  %s\n", "PID", "WRss", "WPss", "WUss", "cmdline");
     else
         printf("%5s  %7s  %7s  %7s  %7s  %s\n", "PID", "Vss", "Rss", "Pss", "Uss", "cmdline");
+
     for (i = 0; i < num_procs; i++) {
-        getprocname(procs[i]->pid, cmdline, sizeof(cmdline));
+        if (getprocname(procs[i]->pid, cmdline, (int)sizeof(cmdline)) < 0) {
+            /*
+             * Something is probably seriously wrong if writing to the stack
+             * failed.
+             */
+            free(procs[i]);
+            continue;
+        }
+
         if (ws)
             printf("%5d  %6dK  %6dK  %6dK  %s\n",
                 procs[i]->pid,
@@ -155,8 +172,11 @@ int main(int argc, char *argv[]) {
                 procs[i]->usage.uss / 1024,
                 cmdline
             );
+
+        free(procs[i]);
     }
 
+    free(procs);
     return 0;
 }
 
@@ -174,16 +194,63 @@ static void usage(char *myname) {
     myname);
 }
 
-static int getprocname(pid_t pid, char *buf, size_t len) {
-    char filename[20];
+/*
+ * Get the process name for a given PID. Inserts the process name into buffer
+ * buf of length len. The size of the buffer must be greater than zero to get
+ * any useful output.
+ *
+ * Note that fgets(3) only declares length as an int, so our buffer size is
+ * also declared as an int.
+ *
+ * Returns 0 on success, a positive value on partial success, and -1 on
+ * failure. Other interesting values:
+ *   1 on failure to create string to examine proc cmdline entry
+ *   2 on failure to open proc cmdline entry
+ *   3 on failure to read proc cmdline entry
+ */
+static int getprocname(pid_t pid, char *buf, int len) {
+    char *filename;
     FILE *f;
+    int rc = 0;
+    static const char* unknown_cmdline = "<unknown>";
 
-    sprintf(filename, "/proc/%d/cmdline", pid);
+    if (len <= 0) {
+        return -1;
+    }
+
+    if (asprintf(&filename, "/proc/%zd/cmdline", pid) < 0) {
+        rc = 1;
+        goto exit;
+    }
+
     f = fopen(filename, "r");
-    if (!f) { *buf = '\0'; return 1; }
-    if (!fgets(buf, len, f)) { *buf = '\0'; return 2; }
-    fclose(f);
-    return 0;
+    if (f == NULL) {
+        rc = 2;
+        goto releasefilename;
+    }
+
+    if (fgets(buf, len, f) == NULL) {
+        rc = 3;
+        goto closefile;
+    }
+
+closefile:
+    (void) fclose(f);
+releasefilename:
+    free(filename);
+exit:
+    if (rc != 0) {
+        /*
+         * The process went away before we could read its process name. Try
+         * to give the user "<unknown>" here, but otherwise they get to look
+         * at a blank.
+         */
+        if (strlcpy(buf, unknown_cmdline, (size_t)len) >= (size_t)len) {
+            rc = 4;
+        }
+    }
+
+    return rc;
 }
 
 static int numcmp(long long a, long long b) {
