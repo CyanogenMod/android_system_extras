@@ -305,7 +305,7 @@ void ext4_create_journal_inode()
 
 	u8 *journal_data = inode_allocate_data_extents(inode,
 			info.journal_blocks * info.block_size,
-			info.block_size);
+			info.journal_blocks * info.block_size);
 	if (!journal_data) {
 		error("failed to allocate extents for journal data");
 		return;
