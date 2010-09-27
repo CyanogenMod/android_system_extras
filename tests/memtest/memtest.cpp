@@ -241,17 +241,17 @@ int validate_memcpy(char* s, char* d, size_t size)
     memset(d-4, 0x55, size+8);
     MEMCPY(s, d, size);
     if (memcmp(s,d,size)) {
-        printf("*** memcpy(%p,%p,%lu) destination != source\n",s,d,size);
+        printf("*** memcpy(%p,%p,%zd) destination != source\n",s,d,size);
         nberr++;
     }
     bool r = (d[size]==0x55)&&(d[size+1]==0x55)&&(d[size+2]==0x55)&&(d[size+3]==0x55);
     if (!r) {
-        printf("*** memcpy(%p,%p,%lu) clobbered past end of destination!\n",s,d,size);
+        printf("*** memcpy(%p,%p,%zd) clobbered past end of destination!\n",s,d,size);
         nberr++;
     }
     r = (d[-1]==0x55)&&(d[-2]==0x55)&&(d[-3]==0x55)&&(d[-4]==0x55);
     if (!r) {
-        printf("*** memcpy(%p,%p,%lu) clobbered before start of destination!\n",s,d,size);
+        printf("*** memcpy(%p,%p,%zd) clobbered before start of destination!\n",s,d,size);
         nberr++;
     }
     return nberr;
@@ -350,16 +350,16 @@ int validate_memset(char* d, char c, size_t size)
     d[size+1] = 0x55;
     memset(d, c, size);
     if (d[size+1]!=0x55) {
-        printf("*** memset(%p,%02x,%lu) clobbered past end of destination!\n",d,(int)c,size);
+        printf("*** memset(%p,%02x,%zd) clobbered past end of destination!\n",d,(int)c,size);
         nberr++;
     }
     if (d[-1]!=0x55) {
-        printf("*** memset(%p,%02x,%lu) clobbered before start of destination!\n",d,(int)c,size);
+        printf("*** memset(%p,%02x,%zd) clobbered before start of destination!\n",d,(int)c,size);
         nberr++;
     }
     for (size_t i=0 ; i<size ; i++) {
         if (d[i] != c) {
-            printf("*** memset(%p,%02x,%lu) failed at offset %lu\n",d,(int)c,size, i);
+            printf("*** memset(%p,%02x,%zd) failed at offset %zd\n",d,(int)c,size, i);
             nberr++;
             break;
         }
@@ -394,7 +394,7 @@ int validate_memcmp(const char* s, const char* d, size_t size)
     b = (b < 0 ? -1 : (b > 0 ? 1 : 0));
     //printf("%d, %d\n", a, b);
     if (a != b) {
-        printf("*** memcmp(%p,%p,%lu) failed %d should be %d\n",s,d,size,b,a);
+        printf("*** memcmp(%p,%p,%zd) failed %d should be %d\n",s,d,size,b,a);
         return 1;
     }
     return 0;
@@ -598,21 +598,21 @@ int malloc_test(int argc, char** argv)
     while (size) {
         void* addr = malloc(size);
         if (addr == 0) {
-            printf("size = %9lu failed\n", size);
+            printf("size = %9zd failed\n", size);
             size >>= 1;
         } else {
             total += size;
-            printf("size = %9lu, addr = %p (total = %9lu (%lu MB))\n",
+            printf("size = %9zd, addr = %p (total = %9zd (%zd MB))\n",
                     size, addr, total, total / (1024*1024));
             if (fill) {
                 printf("filling...\n");
                 fflush(stdout);
                 memset(addr, 0, size);
             }
-            size = size + size>>1;
+            size = size + (size>>1);
         }
     }
-    printf("done. allocated %lu MB\n", total / (1024*1024));
+    printf("done. allocated %zd MB\n", total / (1024*1024));
     return 0;
 }
 
@@ -625,7 +625,7 @@ int madvise_test(int argc, char** argv)
 {
     for (int i=0 ; i<2 ; i++) {
         size_t size = i==0 ? 4096 : 48*1024*1024; // 48 MB
-        printf("Allocating %lu MB... ", size/(1024*1024)); fflush(stdout);
+        printf("Allocating %zd MB... ", size/(1024*1024)); fflush(stdout);
         void* addr1 = mmap(0, size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
         printf("%p (%s)\n", addr1, addr1==(void*)-1 ? "failed" : "OK"); fflush(stdout);
 
@@ -644,7 +644,7 @@ int madvise_test(int argc, char** argv)
             printf("getting garbage back\n");
         }
 
-        printf("Allocating %lu MB... ", size/(1024*1024)); fflush(stdout);
+        printf("Allocating %zd MB... ", size/(1024*1024)); fflush(stdout);
         void* addr2 = mmap(0, size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
         printf("%p (%s)\n", addr2, addr2==(void*)-1 ? "failed" : "OK"); fflush(stdout);
 
