@@ -236,7 +236,7 @@ main(int argc, char *argv[])
         delta = tvDelta(&startTime, &currentTime);
         if (tv2double(&delta) > duration) { break; }
 
-        testPrintI("==== pass %u", pass);
+        testPrintI("==== Starting pass: %u", pass);
 
         // Use a pass dependent sequence of random numbers
         srand48(pass);
@@ -293,6 +293,8 @@ main(int argc, char *argv[])
             exit(24);
         }
         testPrintI("CPU: %i wifi_unload_driver succeeded", cpu);
+
+        testPrintI("==== Completed pass: %u", pass);
     }
 
     // If needed restore WiFi driver to state it was in at the
