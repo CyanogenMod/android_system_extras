@@ -43,13 +43,11 @@ declare_sort(uss);
 int (*compfn)(const void *a, const void *b);
 static int order;
 
-#define MAX_PROCS 256
-
 int main(int argc, char *argv[]) {
     pm_kernel_t *ker;
     pm_process_t *proc;
     pid_t *pids;
-    struct proc_info *procs[MAX_PROCS];
+    struct proc_info **procs;
     size_t num_procs;
     char cmdline[256];
     int error;
@@ -89,6 +87,12 @@ int main(int argc, char *argv[]) {
     error = pm_kernel_pids(ker, &pids, &num_procs);
     if (error) {
         fprintf(stderr, "Error listing processes.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    procs = malloc(num_procs * sizeof(struct proc_info*));
+    if (!procs) {
+        fprintf(stderr, "malloc: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
