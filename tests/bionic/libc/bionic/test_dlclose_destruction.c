@@ -35,34 +35,35 @@
 #include <dlfcn.h>
 #include <stdio.h>
 
-int main(void)
+static int
+check_library(const char*  libname)
 {
-    void*  lib = dlopen("libdlclosetest1.so", RTLD_NOW);
+    void*  lib = dlopen(libname, RTLD_NOW);
     int*   to_x;
     void  (*set_y)(int *);
     int    y = 0;
 
     if (lib == NULL) {
-        fprintf(stderr, "Could not load shared library: %s\n", dlerror());
+        fprintf(stderr, "Could not load shared library %s: %s\n", libname, dlerror());
         return 1;
     }
 
-    fprintf(stderr, "Loaded !!\n");
+    fprintf(stderr, "%s loaded.\n", libname);
 
     to_x = dlsym(lib, "x");
-    if (to_x == NULL) { 
-        fprintf(stderr, "Could not access global DLL variable (x): %s\n", dlerror());
+    if (to_x == NULL) {
+        fprintf(stderr, "Could not access global DLL variable (x) in %s: %s\n", libname, dlerror());
         return 10;
     }
 
     if (*to_x != 1) {
-        fprintf(stderr, "Static C++ constructor was not run on dlopen() !\n");
+        fprintf(stderr, "Constructor was not run on dlopen(\"%s\") !\n", libname);
         return 11;
     }
 
     set_y = dlsym(lib, "set_y");
     if (set_y == NULL) {
-        fprintf(stderr, "Could not access global DLL function (set_y): %s\n", dlerror());
+        fprintf(stderr, "Could not access global DLL function (set_y) in %s: %s\n", libname, dlerror());
         return 12;
     }
 
@@ -70,16 +71,20 @@ int main(void)
     (*set_y)(&y);
 
     if (dlclose(lib) < 0) {
-        fprintf(stderr, "Could not unload shared library: %s\n", dlerror());
+        fprintf(stderr, "Could not unload shared library %s: %s\n", libname, dlerror());
         return 2;
     }
 
-    fprintf(stderr, "Unloaded !!\n");
+    fprintf(stderr, "%s unloaded.\n", libname);
+    return 0;
+}
 
-    if (y != 2) {
-        fprintf(stderr, "Static C++ destructor was not run on dlclose() !\n");
-        return 11;
-    }
-
+int main(void)
+{
+    /* Testing static C++ construction/destruction */
+    if (check_library("libdlclosetest1.so"))
+        return 1;
+    if (check_library("libdlclosetest2.so"))
+        return 2;
     return 0;
 }

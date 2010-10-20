@@ -25,23 +25,49 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
-#include <unistd.h>
-#include <errno.h>
-#include <string.h>
+
 #include <stdio.h>
-#include <sys/types.h>
 
-int  main( void )
+/* This library is used to ensure that static C construction
+ * and destruction operate normally on dlopen() and dlclose().
+ *
+ * We use a global variable inside the DLL called "x"
+ * and initialize it to 1 in the static Foo_create constructor.
+ *
+ * The main program can access its address through dlsym()
+ * then later check that it was properly initialized.
+ */
+int x = 0;
+
+static void __attribute__((constructor))
+Foo_create(void)
 {
-    char  hostname[512];
-    int   ret;
+    x = 1;
+    fprintf(stderr, "%s: setting x to 1\n", __FUNCTION__);
+}
 
-    ret = gethostname(hostname, sizeof(hostname));
-    if (ret < 0) {
-        printf("gethostname() returned error %d: %s\n", errno, strerror(errno));
-        return 1;
+/* Similarly, the main program can provide the address of
+ * an integer, named "y", that will be set to 2 when the
+ * destructor is called on dlclose().
+ *
+ * This address must be provided through the "set_y" function
+ * that can also be resolved through dlsym() by the program.
+ */
+static int *to_y = NULL;
+
+static void __attribute__((destructor))
+Foo_destroy(void)
+{
+    if (to_y == NULL) {
+        fprintf(stderr, "%s: to_y uninitialized!!\n", __FUNCTION__);
+        *(int *)NULL = 0; // crash
     }
+    *to_y = 2;
+    fprintf(stderr, "%s: setting y(%p) to 2!\n", __FUNCTION__, to_y);
+}
 
-    printf("gethostname() returned '%s'\n", hostname);
-    return 0;
+void set_y(int *y)
+{
+    to_y = y;
+    fprintf(stderr, "%s: setting to_y=%p\n", __FUNCTION__, y);
 }
