@@ -22,15 +22,18 @@
 #include <stdio.h>
 #include <sys/time.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+__BEGIN_DECLS
 
 // Time Utilities
-double tv2double(const struct timeval *val);
 struct timespec double2ts(double amt);
+struct timeval  double2tv(double amt);
+double ts2double(const struct timespec *val);
+double tv2double(const struct timeval  *val);
+struct timespec tsDelta(const struct timespec *first,
+    const struct timespec *second);
 struct timeval tvDelta(const struct timeval *first,
     const struct timeval *second);
+
 void delay(float amt);
 
 // Pseudo Random Utilities
@@ -47,8 +50,6 @@ void testPrint(FILE *stream, const char *fmt, ...);
         testPrint(stderr, __VA_ARGS__); \
     } while (0)
 
-#ifdef __cplusplus
-}
-#endif
+__END_DECLS
 
 #endif

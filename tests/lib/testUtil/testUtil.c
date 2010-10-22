@@ -33,13 +33,25 @@ typedef unsigned int bool_t;
 #define false (!true)
 
 #define MAXSTR 200
+
 static const char *logCatTag;
+static const unsigned int uSecsPerSec = 1000000;
+static const unsigned int nSecsPerSec = 1000000000;
+
+// struct timespec to double
+double ts2double(const struct timespec *val)
+{
+    double rv;
+
+    rv = val->tv_sec;
+    rv += (double) val->tv_nsec / nSecsPerSec;
+
+    return rv;
+}
 
 // struct timeval to double
-double
-tv2double(const struct timeval *val)
+double tv2double(const struct timeval *val)
 {
-    const unsigned int uSecsPerSec = 1000000;
     double rv;
 
     rv = val->tv_sec;
@@ -49,10 +61,8 @@ tv2double(const struct timeval *val)
 }
 
 // double to struct timespec
-struct timespec
-double2ts(double amt)
+struct timespec double2ts(double amt)
 {
-    const unsigned int nSecsPerSec = 1000000000;
     struct timespec rv;
 
     rv.tv_sec = floor(amt);
@@ -66,14 +76,51 @@ double2ts(double amt)
     return rv;
 }
 
+// double to struct timeval
+struct timeval double2tv(double amt)
+{
+    struct timeval rv;
+
+    rv.tv_sec = floor(amt);
+    rv.tv_usec = (amt - rv.tv_sec) * uSecsPerSec;
+    // TODO: Handle cases where amt is negative
+    while ((unsigned) rv.tv_usec >= uSecsPerSec) {
+        rv.tv_usec -= uSecsPerSec;
+        rv.tv_sec++;
+    }
+
+    return rv;
+}
+
+// Delta (difference) between two struct timespec.
+// It is expected that the time given by the structure pointed to by
+// second, is later than the time pointed to by first.
+struct timespec tsDelta(const struct timespec *first,
+                        const struct timespec *second)
+{
+    struct timespec rv;
+
+    assert(first != NULL);
+    assert(second != NULL);
+    assert(first->tv_nsec >= 0 && first->tv_nsec < nSecsPerSec);
+    assert(second->tv_nsec >= 0 && second->tv_nsec < nSecsPerSec);
+    rv.tv_sec = second->tv_sec - first->tv_sec;
+    if (second->tv_nsec >= first->tv_nsec) {
+        rv.tv_nsec = second->tv_nsec - first->tv_nsec;
+    } else {
+        rv.tv_nsec = (second->tv_nsec + nSecsPerSec) - first->tv_nsec;
+        rv.tv_sec--;
+    }
+
+    return rv;
+}
+
 // Delta (difference) between two struct timeval.
 // It is expected that the time given by the structure pointed to by
 // second, is later than the time pointed to by first.
-struct timeval
-tvDelta(const struct timeval *first,
-    const struct timeval *second)
+struct timeval tvDelta(const struct timeval *first,
+                       const struct timeval *second)
 {
-    const unsigned int uSecsPerSec = 1000000;
     struct timeval rv;
 
     assert(first != NULL);
@@ -91,8 +138,7 @@ tvDelta(const struct timeval *first,
     return rv;
 }
 
-void
-testPrint(FILE *stream, const char *fmt, ...)
+void testPrint(FILE *stream, const char *fmt, ...)
 {
     char line[MAXSTR];
     va_list args;
@@ -109,15 +155,13 @@ testPrint(FILE *stream, const char *fmt, ...)
 }
 
 // Set tag used while logging to the logcat error interface
-void
-testSetLogCatTag(const char *tag)
+void testSetLogCatTag(const char *tag)
 {
     logCatTag = tag;
 }
 
 // Obtain pointer to current log to logcat error interface tag
-const char *
-testGetLogCatTag(void)
+const char * testGetLogCatTag(void)
 {
     return logCatTag;
 }
@@ -130,8 +174,7 @@ testGetLogCatTag(void)
  * Precondition: srand48() called to set the seed of
  *   the pseudo random number generator.
  */
-int
-testRandBool(void)
+int testRandBool(void)
 {
     /* Use the most significant bit from lrand48(), because the
      * less significant bits are less random across different seeds
@@ -145,25 +188,24 @@ testRandBool(void)
 // The amt variable is of type float and thus non-integer amounts
 // of time can be specified.  This function automatically handles cases
 // where nanosleep(2) returns early due to reception of a signal.
-void
-delay(float amt)
+void delay(float amt)
 {
-    struct timeval    start, current, delta;
+    struct timespec   start, current, delta;
     struct timespec   remaining;
 
     // Get the time at which we started
-    gettimeofday(&start, NULL);
+    clock_gettime(CLOCK_MONOTONIC, &start);
 
     do {
         // Get current time
-        gettimeofday(&current, NULL);
+        clock_gettime(CLOCK_MONOTONIC, &current);
 
         // How much time is left
-        delta = tvDelta(&start, &current);
-        if (tv2double(&delta) > amt) { break; }
+        delta = tsDelta(&start, &current);
+        if (ts2double(&delta) > amt) { break; }
 
         // Request to sleep for the remaining time
-        remaining = double2ts(amt - tv2double(&delta));
+        remaining = double2ts(amt - ts2double(&delta));
         (void) nanosleep(&remaining, NULL);
     } while (true);
 }
