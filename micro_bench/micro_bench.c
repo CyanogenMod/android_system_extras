@@ -24,6 +24,8 @@
 #include <sys/uio.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <stdint.h>
+#include <string.h>
 
 /* tv2 -= tv1 */
 static void tv_sub(struct timeval *tv2, struct timeval *tv1) {
