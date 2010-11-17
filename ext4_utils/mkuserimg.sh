@@ -5,11 +5,17 @@
 function usage() {
 cat<<EOT
 Usage:
-mkuserimg.sh SRC_DIR OUTPUT_FILE EXT_VARIANT MOUNT_POINT SIZE
+mkuserimg.sh [-s] SRC_DIR OUTPUT_FILE EXT_VARIANT MOUNT_POINT SIZE
 EOT
 }
 
 echo "in mkuserimg.sh PATH=$PATH"
+
+ENABLE_SPARSE_IMAGE=
+if [ "$1" = "-s" ]; then
+  ENABLE_SPARSE_IMAGE="-s"
+  shift
+fi
 
 if [ $# -ne 4 -a $# -ne 5 ]; then
   usage
@@ -41,8 +47,9 @@ if [ -z $SIZE ]; then
     SIZE=128M
 fi
 
-echo "make_ext4fs -l $SIZE -a $MOUNT_POINT $OUTPUT_FILE $SRC_DIR"
-make_ext4fs -s -l $SIZE -a $MOUNT_POINT $OUTPUT_FILE $SRC_DIR
+MAKE_EXT4FS_CMD="make_ext4fs $ENABLE_SPARSE_IMAGE -l $SIZE -a $MOUNT_POINT $OUTPUT_FILE $SRC_DIR"
+echo $MAKE_EXT4FS_CMD
+$MAKE_EXT4FS_CMD
 if [ $? -ne 0 ]; then
   exit 4
 fi
