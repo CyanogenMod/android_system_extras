@@ -167,6 +167,40 @@ const char * testGetLogCatTag(void)
 }
 
 /*
+ * Random Modulus
+ *
+ * Pseudo randomly returns unsigned integer in the range [0, mod).
+ *
+ * Precondition: srand48() called to set the seed of
+ *   the pseudo random number generator.
+ */
+unsigned int testRandMod(unsigned int mod)
+{
+    // Obtain the random value
+    uint32_t val = lrand48();
+
+    /*
+     * The contents of individual bytes tend to be less than random
+     * across different seeds.  For example, srand48(x) and
+     * srand48(x + n * 4) cause lrand48() to return the same sequence of
+     * least significant bits.  For small mod values this can produce
+     * noticably non-random sequnces.  For mod values of less than 2
+     * byte, will use the randomness from all the bytes.
+     */
+    if (mod <= 0x10000) {
+        val = (val & 0xffff) ^ (val >> 16);
+
+        // If mod less than a byte, can further combine down to
+        // a single byte.
+        if (mod <= 0x100) {
+            val = (val & 0xff) ^ (val >> 8);
+        }
+    }
+
+    return val % mod;
+}
+
+/*
  * Random Boolean
  *
  * Pseudo randomly returns 0 (false) or 1 (true).
@@ -176,19 +210,28 @@ const char * testGetLogCatTag(void)
  */
 int testRandBool(void)
 {
-    /* Use the most significant bit from lrand48(), because the
-     * less significant bits are less random across different seeds
-     * (e.g. srand48(x) and srand48(x + n * 4) cause lrand48() to
-     * return the same sequence of least significant bits.)
-     */
-    return (lrand48() & (1U << 30)) ? 0 : 1;
+    return (testRandMod(2));
+}
+
+/*
+ * Random Fraction
+ *
+ * Pseudo randomly return a value in the range [0.0, 1.0).
+ *
+ * Precondition: srand48() called to set the seed of
+ *   the pseudo random number generator.
+ */
+double testRandFract(void)
+{
+    // TODO: use drand48(), after issue 2838717 has been fixed
+    return (double) lrand48() / (double) (1UL << 31);
 }
 
 // Delays for the number of seconds specified by amt or a greater amount.
 // The amt variable is of type float and thus non-integer amounts
 // of time can be specified.  This function automatically handles cases
 // where nanosleep(2) returns early due to reception of a signal.
-void delay(float amt)
+void testDelay(float amt)
 {
     struct timespec   start, current, delta;
     struct timespec   remaining;
@@ -208,4 +251,81 @@ void delay(float amt)
         remaining = double2ts(amt - ts2double(&delta));
         (void) nanosleep(&remaining, NULL);
     } while (true);
+}
+
+/*
+ * Hex Dump
+ *
+ * Displays in hex the contents of the memory starting at the location
+ * pointed to by buf, for the number of bytes given by size.
+ * Each line of output is indented by a number of spaces that
+ * can be set by calling xDumpSetIndent().  It is also possible
+ * to offset the displayed address by an amount set by calling
+ * xDumpSetOffset.
+ */
+static uint8_t     xDumpIndent;
+static uint64_t    xDumpOffset;
+void
+testXDump(const void *buf, size_t size)
+{
+    const unsigned int bytesPerLine = 16;
+    int rv;
+    char line[MAXSTR];
+    const unsigned char *ptr = buf, *start = buf;
+    size_t num = size;
+    char *linep = line;
+
+    while (num) {
+        if (((ptr - start) % bytesPerLine) == 0) {
+            if (linep != line) {
+                testPrintE("%s", line);
+            }
+            linep = line;
+            rv = snprintf(linep, ALEN(line) - (linep - line),
+                "%*s%06llx:", xDumpIndent, "",
+                (long long) (ptr - start) + xDumpOffset);
+            linep += rv;
+        }
+
+        // Check that there is at least room for 4
+        // more characters.  The 4 characters being
+        // a space, 2 hex digits and the terminating
+        // '\0'.
+        assert((ALEN(line) - 4) >= (linep - line));
+        rv = snprintf(linep, ALEN(line) - (linep - line),
+            " %02x", *ptr++);
+        linep += rv;
+        num--;
+    }
+    if (linep != line) {
+        testPrintE("%s", line);
+    }
+}
+
+// Set an indent of spaces for each line of hex dump output
+void
+testXDumpSetIndent(uint8_t indent)
+{
+    xDumpIndent = indent;
+}
+
+// Obtain the current hex dump indent amount
+uint8_t
+testXDumpGetIndent(void)
+{
+    return xDumpIndent;
+}
+
+// Set the hex dump address offset amount
+void
+testXDumpSetOffset(uint64_t offset)
+{
+    xDumpOffset = offset;
+}
+
+// Get the current hex dump address offset amount
+uint64_t
+testXDumpGetOffset(void)
+{
+    return xDumpOffset;
 }

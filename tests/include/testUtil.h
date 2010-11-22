@@ -34,10 +34,12 @@ struct timespec tsDelta(const struct timespec *first,
 struct timeval tvDelta(const struct timeval *first,
     const struct timeval *second);
 
-void delay(float amt);
+void testDelay(float amt);
 
 // Pseudo Random Utilities
 int testRandBool(void);
+unsigned int testRandMod(unsigned int mod);
+double testRandFract(void);
 
 // Testcase Output
 void testSetLogCatTag(const char *tag);
@@ -49,6 +51,13 @@ void testPrint(FILE *stream, const char *fmt, ...);
 #define testPrintE(...) do { \
         testPrint(stderr, __VA_ARGS__); \
     } while (0)
+
+// Hex Dump
+void testXDump(const void *buf, size_t size);
+void testXDumpSetIndent(uint8_t indent);
+uint8_t testXDumpGetIndent(void);
+void testXDumpSetOffset(uint64_t offset);
+uint64_t testXDumpGetOffset(void);
 
 __END_DECLS
 

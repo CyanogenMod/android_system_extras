@@ -442,7 +442,7 @@ execCmd(const char *cmd)
             str[strlen(str) - 1] = '\0';
         }
         testPrintI(" out: %s", str);
-        delay(0.1);
+        testDelay(0.1);
     }
 
     // Obtain and check return status of executed command.
@@ -486,7 +486,7 @@ void randDelay(void)
     // Determine random amount to sleep.
     // Values closer to delayMin are prefered by an amount
     // determined by the value of DELAY_EXP.
-    fract = (double) lrand48() / (double) (1UL << 31);
+    fract = testRandFract();
     biasedFract = pow(DELAY_EXP, fract) / pow(DELAY_EXP, 1.0);
     amt = delayMin + ((delayMax - delayMin) * biasedFract);
 
@@ -518,7 +518,7 @@ randBind(const cpu_set_t *availSet, int *chosenCPU)
     // Lower 16 bits from random number generator thrown away,
     // because the low-order bits tend to have the same sequence for
     // different seed values.
-    chosenAvail = (lrand48() >> 16) % numAvailCPU;
+    chosenAvail = testRandMod(numAvailCPU);
     CPU_ZERO(&cpuset);
     avail = 0;
     for (cpu = 0; cpu < CPU_SETSIZE; cpu++) {
