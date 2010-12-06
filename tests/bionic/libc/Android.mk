@@ -61,6 +61,7 @@ endef
 # First, the tests in 'common'
 
 sources := \
+    common/test_cpu_set.c \
     common/test_executable_destructor.c \
     common/test_getaddrinfo.c \
     common/test_gethostbyname.c \
