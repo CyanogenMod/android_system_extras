@@ -89,6 +89,8 @@ class AddIntsService : public BBinder
 };
 
 // Workaround for missing sched_setaffinity(2) and getcpu(2)
+#ifndef CPU_SETSIZE
+#define HAVE_CUSTOM_CPU_SETSIZE 1
 #define CPU_SETSIZE 1024
 struct getcpu_cache;
 typedef struct { uint64_t bits[CPU_SETSIZE / 64]; } cpu_set_t;
@@ -96,10 +98,12 @@ static int sched_getaffinity(pid_t pid, unsigned int cpusetsize,
                              cpu_set_t *set);
 static int sched_setaffinity(pid_t pid, unsigned int cpusetsize,
                              cpu_set_t *mask);
-static int getcpu(unsigned *cpu, unsigned *node, struct getcpu_cache *tcache);
+//static int getcpu(unsigned *cpu, unsigned *node, struct getcpu_cache *tcache);
+static int sched_getcpu(void);
 static int CPU_ISSET(int cpu, const cpu_set_t *set);
 static void CPU_SET(int cpu, cpu_set_t *set);
 static void CPU_ZERO(cpu_set_t *set);
+#endif /* !CPU_SETSIZE */
 
 // File scope function prototypes
 static void server(void);
@@ -331,7 +335,7 @@ status_t AddIntsService::onTransact(uint32_t code, const Parcel &data,
     // If server bound to a particular CPU, check that
     // were executing on that CPU.
     if (cpu_ != unbound) {
-        getcpu((unsigned int *) &cpu, NULL, NULL);
+        cpu = sched_getcpu();
         if (cpu != cpu_) {
             cerr << "server onTransact on CPU " << cpu << " expected CPU "
                   << cpu_ << endl;
@@ -396,6 +400,7 @@ static ostream &operator<<(ostream &stream, const cpu_set_t& set)
     return stream;
 }
 
+#ifdef HAVE_CUSTOM_CPU_SETSIZE
 // ======== Local implementation of system calls with missing bionic call stubs
 static int sched_getaffinity(pid_t pid, unsigned int cpusetsize,
                              cpu_set_t *set)
@@ -432,6 +437,14 @@ static int getcpu(unsigned *cpu, unsigned *node, struct getcpu_cache *tcache)
     return rv;
 }
 
+static int sched_getcpu(void)
+{
+    unsigned cpu;
+    int ret = getcpu(&cpu, NULL, NULL);
+    if (ret == 0)
+        ret = (int)cpu;
+}
+
 static int CPU_ISSET(int cpu, const cpu_set_t *set)
 {
     if (cpu < 0) { return 0; }
@@ -456,3 +469,4 @@ static void CPU_ZERO(cpu_set_t *set)
 {
     memset(set, 0x00, sizeof(cpu_set_t));
 }
+#endif /* HAVE_CUSTOM_CPU_SETSIZE */
