@@ -39,15 +39,17 @@
  * Each sequence is refered to as a pass and by default an unlimited
  * number of passes are performed.  An override of the range of passes
  * to be executed is available through the use of the -s (start) and
- * -e (end) command-line options.  There is also a default time in
- * which the test executes, which is given by DEFAULT_DURATION and
- * can be overriden through the use of the -t command-line option.
+ * -e (end) command-line options.  Can also specify a single specific
+ * pass via the -p option.  There is also a default time in which the
+ * test executes, which is given by DEFAULT_DURATION and can be overriden
+ * through the use of the -t command-line option.
  */
 
 #include <assert.h>
 #include <errno.h>
 #include <libgen.h>
 #include <math.h>
+#define _GNU_SOURCE
 #include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -86,25 +88,16 @@ typedef unsigned int bool_t;
 #define true (0 == 0)
 #define false (!true)
 
-// Local description of sched_setaffinity(2), sched_getaffinity(2), and
-// getcpu(2)
-#define CPU_SETSIZE 1024
-typedef struct {uint64_t bits[CPU_SETSIZE / 64]; } cpu_set_t;
-int sched_setaffinity(pid_t pid, unsigned int cpusetsize, const cpu_set_t *set);
-int sched_getaffinity(pid_t pid, unsigned int cpusetsize, cpu_set_t *set);
-struct getcpu_cache;
-int getcpu(unsigned *cpu, unsigned *node, struct getcpu_cache *tcache);
-void CPU_CLR(int cpu, cpu_set_t *set);
-int CPU_ISSET(int cpu, const cpu_set_t *set);
-void CPU_SET(int cpu, cpu_set_t *set);
-void CPU_ZERO(cpu_set_t *set);
-
 // File scope variables
 cpu_set_t availCPU;
 unsigned int numAvailCPU;
 float delayMin = DEFAULT_DELAY_MIN;
 float delayMax = DEFAULT_DELAY_MAX;
 bool_t driverLoadedAtStart;
+
+// Command-line mutual exclusion detection flags.
+// Corresponding flag set true once an option is used.
+bool_t eFlag, sFlag, pFlag;
 
 // File scope prototypes
 static void init(void);
@@ -145,7 +138,7 @@ main(int argc, char *argv[])
     testSetLogCatTag(LOG_TAG);
 
     // Parse command line arguments
-    while ((opt = getopt(argc, argv, "d:D:s:e:t:?")) != -1) {
+    while ((opt = getopt(argc, argv, "d:D:s:e:p:t:?")) != -1) {
         switch (opt) {
         case 'd': // Minimum Delay
             delayMin = strtod(optarg, &chptr);
@@ -175,6 +168,16 @@ main(int argc, char *argv[])
             break;
 
         case 's': // Starting Pass
+            if (sFlag || pFlag) {
+                testPrintE("Invalid combination of command-line options,");
+                if (sFlag) {
+                    testPrintE("  -s flag specified multiple times.");
+                } else {
+                    testPrintE("  -s and -p flags are mutually exclusive.");
+                }
+                exit(10);
+            }
+            sFlag = true;
             startPass = strtoul(optarg, &chptr, 10);
             if (*chptr != '\0') {
                 testPrintE("Invalid command-line specified starting pass "
@@ -184,11 +187,41 @@ main(int argc, char *argv[])
             break;
 
         case 'e': // Ending Pass
+            if (eFlag || pFlag) {
+                testPrintE("Invalid combination of command-line options,");
+                if (sFlag) {
+                    testPrintE("  -e flag specified multiple times.");
+                } else {
+                    testPrintE("  -e and -p flags are mutually exclusive.");
+                }
+                exit(11);
+            }
+            eFlag = true;
             endPass = strtoul(optarg, &chptr, 10);
             if (*chptr != '\0') {
                 testPrintE("Invalid command-line specified ending pass "
                     "of: %s", optarg);
                 exit(5);
+            }
+            break;
+
+        case 'p': // Single Specific Pass
+            if (pFlag || sFlag || eFlag) {
+                testPrintE("Invalid combination of command-line options,");
+                if (pFlag) {
+                    testPrintE("  -p flag specified multiple times.");
+                } else {
+                    testPrintE("  -p and -%c flags are mutually exclusive.",
+                        (sFlag) ? 's' : 'e');
+                }
+                exit(12);
+            }
+            pFlag = true;
+            endPass = startPass = strtoul(optarg, &chptr, 10);
+            if (*chptr != '\0') {
+                testPrintE("Invalid command-line specified pass "
+                    "of: %s", optarg);
+                exit(13);
             }
             break;
 
@@ -198,6 +231,7 @@ main(int argc, char *argv[])
             testPrintE("    options:");
             testPrintE("      -s Starting pass");
             testPrintE("      -e Ending pass");
+            testPrintE("      -p Specific single pass");
             testPrintE("      -t Duration");
             testPrintE("      -d Delay min");
             testPrintE("      -D Delay max");
@@ -512,7 +546,7 @@ randBind(const cpu_set_t *availSet, int *chosenCPU)
 {
     int rv;
     cpu_set_t cpuset;
-    unsigned int chosenAvail, avail, cpu, currentCPU;
+    int chosenAvail, avail, cpu, currentCPU;
 
     // Randomly bind to a CPU
     // Lower 16 bits from random number generator thrown away,
@@ -534,8 +568,9 @@ randBind(const cpu_set_t *availSet, int *chosenCPU)
     sched_setaffinity(0, sizeof(cpuset), &cpuset);
 
     // Confirm executing on requested CPU
-    if ((rv = getcpu(&currentCPU, NULL, NULL)) != 0) {
-        testPrintE("randBind getcpu() failed, rv: %i errno: %i", rv, errno);
+    if ((currentCPU = sched_getcpu()) < 0) {
+        testPrintE("randBind sched_getcpu() failed, rv: %i errno: %i",
+                   currentCPU, errno);
         exit(80);
 
     }
@@ -547,79 +582,4 @@ randBind(const cpu_set_t *availSet, int *chosenCPU)
 
     // Let the caller know which CPU was chosen
     *chosenCPU = cpu;
-}
-
-// Local implementation of sched_setaffinity(2), sched_getaffinity(2), and
-// getcpu(2)
-int
-sched_setaffinity(pid_t pid, unsigned int cpusetsize, const cpu_set_t *set)
-{
-    int rv;
-
-    rv = syscall(__NR_sched_setaffinity, pid, cpusetsize, set);
-
-    return rv;
-}
-
-int
-sched_getaffinity(pid_t pid, unsigned int cpusetsize, cpu_set_t *set)
-{
-    int rv;
-
-    rv = syscall(__NR_sched_getaffinity, pid, cpusetsize, set);
-    if (rv < 0) { return rv; }
-
-    // Kernel implementation of sched_getaffinity() returns the number
-    // of bytes in the set that it set.  Set the rest of our set bits
-    // to 0.
-    memset(((char *) set) + rv, 0x00, sizeof(cpu_set_t) - rv);
-
-    return 0;
-}
-
-int
-getcpu(unsigned *cpu, unsigned *node, struct getcpu_cache *tcache)
-{
-    int rv;
-
-    rv = syscall(345, cpu, node, tcache);
-
-    return rv;
-}
-
-void
-CPU_CLR(int cpu, cpu_set_t *set)
-{
-    if (cpu < 0) { return; }
-    if ((unsigned) cpu >= (sizeof(cpu_set_t) * CHAR_BIT)) { return; }
-
-    *((uint64_t *)set + (cpu / 64)) &= ~(1ULL << (cpu % 64));
-}
-
-int
-CPU_ISSET(int cpu, const cpu_set_t *set)
-{
-    if (cpu < 0) { return 0; }
-    if ((unsigned) cpu >= (sizeof(cpu_set_t) * CHAR_BIT)) { return 0; }
-
-    if ((*((uint64_t *)set + (cpu / 64))) & (1ULL << (cpu % 64))) {
-        return true;
-    }
-
-    return false;
-}
-
-void
-CPU_SET(int cpu, cpu_set_t *set)
-{
-    if (cpu < 0) { return; }
-    if ((unsigned) cpu > (sizeof(cpu_set_t) * CHAR_BIT)) { return; }
-
-    *((uint64_t *)set + (cpu / 64)) |= 1ULL << (cpu % 64);
-}
-
-void
-CPU_ZERO(cpu_set_t *set)
-{
-    memset(set, 0x00, sizeof(cpu_set_t));
 }
