@@ -241,6 +241,17 @@ static sqlite3 *database_init()
         return NULL;
     }
 
+    if (sqlite3_exec(db,
+        "PRAGMA journal_mode = delete;",
+        NULL,
+        NULL,
+        NULL
+    ) != SQLITE_OK) {
+        LOGE("Could not set journal mode");
+        sqlite3_close(db);
+        return NULL;
+    }
+
     chmod(REQUESTOR_DATABASE_PATH, 0660);
     chown(REQUESTOR_DATABASE_PATH, req_uid, req_uid);
 
