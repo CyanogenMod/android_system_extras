@@ -223,8 +223,7 @@ int testRandBool(void)
  */
 double testRandFract(void)
 {
-    // TODO: use drand48(), after issue 2838717 has been fixed
-    return (double) lrand48() / (double) (1UL << 31);
+    return drand48();
 }
 
 // Delays for the number of seconds specified by amt or a greater amount.
