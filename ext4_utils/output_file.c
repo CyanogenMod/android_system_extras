@@ -49,7 +49,7 @@ struct output_file {
 	gzFile gz_fd;
 	int sparse;
 	u64 cur_out_ptr;
-	int chunk_cnt;
+	u32 chunk_cnt;
 	u32 crc32;
 	struct output_file_ops *ops;
 };
@@ -250,24 +250,18 @@ static int write_chunk_raw(struct output_file *out, u64 off, u8 *data, int len)
 void close_output_file(struct output_file *out)
 {
 	int ret;
+	chunk_header_t chunk_header;
 
 	if (out->sparse) {
-		/* we need to seek back to the beginning and update the file header */
-		sparse_header.total_chunks = out->chunk_cnt;
-		sparse_header.image_checksum = out->crc32;
-
-		ret = out->ops->seek(out, 0);
-		if (ret < 0)
-			error("failure seeking to start of sparse file");
-
-		ret = out->ops->write(out, (u8 *)&sparse_header, sizeof(sparse_header));
-		if (ret < 0)
-			error("failure updating sparse file header");
+		if (out->chunk_cnt != sparse_header.total_chunks)
+			error("sparse chunk count did not match: %d %d", out->chunk_cnt,
+					sparse_header.total_chunks);
 	}
 	out->ops->close(out);
 }
 
-struct output_file *open_output_file(const char *filename, int gz, int sparse)
+struct output_file *open_output_file(const char *filename, int gz, int sparse,
+        int chunks)
 {
 	int ret;
 	struct output_file *out = malloc(sizeof(struct output_file));
@@ -291,13 +285,17 @@ struct output_file *open_output_file(const char *filename, int gz, int sparse)
 			return NULL;
 		}
 	} else {
-		out->ops = &file_ops;
-		out->fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-		if (out->fd < 0) {
-			error_errno("open");
-			free(out);
-			return NULL;
+		if (strcmp(filename, "-")) {
+			out->fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+			if (out->fd < 0) {
+				error_errno("open");
+				free(out);
+				return NULL;
+			}
+		} else {
+			out->fd = STDOUT_FILENO;
 		}
+		out->ops = &file_ops;
 	}
 	out->sparse = sparse;
 	out->cur_out_ptr = 0ll;
@@ -312,6 +310,7 @@ struct output_file *open_output_file(const char *filename, int gz, int sparse)
 		 */
 		sparse_header.blk_sz = info.block_size,
 		sparse_header.total_blks = info.len / info.block_size,
+		sparse_header.total_chunks = chunks;
 		ret = out->ops->write(out, (u8 *)&sparse_header, sizeof(sparse_header));
 		if (ret < 0)
 			return NULL;

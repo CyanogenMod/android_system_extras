@@ -73,34 +73,63 @@ int ext4_bg_has_super_block(int bg)
 	return 0;
 }
 
+struct count_chunks {
+	u32 chunks;
+	u64 cur_ptr;
+};
+
+void count_data_block(void *priv, u64 off, u8 *data, int len)
+{
+	struct count_chunks *count_chunks = priv;
+	if (off > count_chunks->cur_ptr)
+		count_chunks->chunks++;
+	count_chunks->cur_ptr = off + ALIGN(len, info.block_size);
+	count_chunks->chunks++;
+}
+
+void count_file_block(void *priv, u64 off, const char *file,
+		off64_t offset, int len)
+{
+	struct count_chunks *count_chunks = priv;
+	if (off > count_chunks->cur_ptr)
+		count_chunks->chunks++;
+	count_chunks->cur_ptr = off + ALIGN(len, info.block_size);
+	count_chunks->chunks++;
+}
+
+int count_sparse_chunks()
+{
+	struct count_chunks count_chunks = {0, 0};
+
+	for_each_data_block(count_data_block, count_file_block, &count_chunks);
+
+	if (count_chunks.cur_ptr != info.len)
+		count_chunks.chunks++;
+
+	return count_chunks.chunks;
+}
+
+static void ext4_write_data_block(void *priv, u64 off, u8 *data, int len)
+{
+	write_data_block(priv, off, data, len);
+}
+static void ext4_write_data_file(void *priv, u64 off, const char *file,
+		off64_t offset, int len)
+{
+	write_data_file(priv, off, file, offset, len);
+}
+
 /* Write the filesystem image to a file */
 void write_ext4_image(const char *filename, int gz, int sparse)
 {
 	int ret = 0;
-	struct output_file *out = open_output_file(filename, gz, sparse);
+	struct output_file *out = open_output_file(filename, gz, sparse,
+	        count_sparse_chunks());
 
 	if (!out)
 		return;
 
-	/* The write_data* functions expect only block aligned calls.
-	 * This is not an issue, except when we write out the super
-	 * block on a system with a block size > 1K.  So, we need to
-	 * deal with that here.
-	 */
-	if (info.block_size > 1024) {
-		u8 buf[4096] = { 0 }; 	/* The larget supported ext4 block size */
-		memcpy(buf + 1024, (u8*)aux_info.sb, 1024);
-		write_data_block(out, 0, buf, info.block_size);
-
-	} else {
-		write_data_block(out, 1024, (u8*)aux_info.sb, 1024);
-	}
-
-	write_data_block(out, (u64)(aux_info.first_data_block + 1) * info.block_size,
-			 (u8*)aux_info.bg_desc,
-			 aux_info.bg_desc_blocks * info.block_size);
-
-	for_each_data_block(write_data_block, write_data_file, out);
+	for_each_data_block(ext4_write_data_block, ext4_write_data_file, out);
 
 	pad_output_file(out, info.len);
 
@@ -233,12 +262,11 @@ void ext4_fill_in_sb()
 			info.blocks_per_group;
 		u32 header_size = 0;
 		if (ext4_bg_has_super_block(i)) {
-			if (i != 0) {
+			if (i != 0)
 				queue_data_block((u8 *)sb, info.block_size, group_start_block);
-				queue_data_block((u8 *)aux_info.bg_desc,
-					aux_info.bg_desc_blocks * info.block_size,
-					group_start_block + 1);
-			}
+			queue_data_block((u8 *)aux_info.bg_desc,
+				aux_info.bg_desc_blocks * info.block_size,
+				group_start_block + 1);
 			header_size = 1 + aux_info.bg_desc_blocks + info.bg_desc_reserve_blocks;
 		}
 
@@ -249,6 +277,22 @@ void ext4_fill_in_sb()
 		aux_info.bg_desc[i].bg_free_blocks_count = sb->s_blocks_per_group;
 		aux_info.bg_desc[i].bg_free_inodes_count = sb->s_inodes_per_group;
 		aux_info.bg_desc[i].bg_used_dirs_count = 0;
+	}
+}
+
+void ext4_queue_sb(void)
+{
+	/* The write_data* functions expect only block aligned calls.
+	 * This is not an issue, except when we write out the super
+	 * block on a system with a block size > 1K.  So, we need to
+	 * deal with that here.
+	 */
+	if (info.block_size > 1024) {
+		u8 *buf = calloc(info.block_size, 1);
+		memcpy(buf + 1024, (u8*)aux_info.sb, 1024);
+		queue_data_block(buf, info.block_size, 0);
+	} else {
+		queue_data_block((u8*)aux_info.sb, 1024, 1);
 	}
 }
 

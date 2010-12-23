@@ -332,6 +332,8 @@ int make_ext4fs(const char *filename, const char *directory,
 
 	ext4_update_free();
 
+	ext4_queue_sb();
+
 	printf("Created filesystem with %d/%d inodes and %d/%d blocks\n",
 			aux_info.sb->s_inodes_count - aux_info.sb->s_free_inodes_count,
 			aux_info.sb->s_inodes_count,

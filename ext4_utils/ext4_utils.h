@@ -143,6 +143,7 @@ void ext4_fill_in_sb(void);
 void ext4_create_resize_inode(void);
 void ext4_create_journal_inode(void);
 void ext4_update_free(void);
+void ext4_queue_sb(void);
 u64 get_file_size(const char *filename);
 u64 parse_num(const char *arg);
 
