@@ -218,6 +218,23 @@ static u32 compute_inodes_per_group()
 	return DIV_ROUND_UP(info.inodes, block_groups);
 }
 
+static u32 compute_bg_desc_reserve_blocks()
+{
+	u32 blocks = DIV_ROUND_UP(info.len, info.block_size);
+	u32 block_groups = DIV_ROUND_UP(blocks, info.blocks_per_group);
+	u32 bg_desc_blocks = DIV_ROUND_UP(block_groups * sizeof(struct ext2_group_desc),
+			info.block_size);
+
+	u32 bg_desc_reserve_blocks =
+			DIV_ROUND_UP(block_groups * 1024 * sizeof(struct ext2_group_desc),
+					info.block_size) - bg_desc_blocks;
+
+	if (bg_desc_reserve_blocks > info.block_size / sizeof(u32))
+		bg_desc_reserve_blocks = info.block_size / sizeof(u32);
+
+	return bg_desc_reserve_blocks;
+}
+
 void reset_ext4fs_info() {
     // Reset all the global data structures used by make_ext4fs so it
     // can be called again.
@@ -277,6 +294,8 @@ int make_ext4fs(const char *filename, const char *directory,
 			EXT4_FEATURE_INCOMPAT_FILETYPE;
 
 
+	info.bg_desc_reserve_blocks = compute_bg_desc_reserve_blocks();
+
 	printf("Creating filesystem with parameters:\n");
 	printf("    Size: %llu\n", info.len);
 	printf("    Block size: %d\n", info.block_size);
@@ -290,7 +309,7 @@ int make_ext4fs(const char *filename, const char *directory,
 
 	printf("    Blocks: %llu\n", aux_info.len_blocks);
 	printf("    Block groups: %d\n", aux_info.groups);
-	printf("    Reserved block group size: %d\n", aux_info.bg_desc_reserve_blocks);
+	printf("    Reserved block group size: %d\n", info.bg_desc_reserve_blocks);
 
 	block_allocator_init();
 

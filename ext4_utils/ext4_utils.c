@@ -125,20 +125,13 @@ void ext4_create_fs_aux_info()
 		DIV_ROUND_UP(aux_info.groups * sizeof(struct ext2_group_desc),
 			info.block_size);
 
-	aux_info.bg_desc_reserve_blocks =
-		DIV_ROUND_UP(aux_info.groups * 1024 * sizeof(struct ext2_group_desc),
-			info.block_size) - aux_info.bg_desc_blocks;
-
-	if (aux_info.bg_desc_reserve_blocks > aux_info.blocks_per_ind)
-		aux_info.bg_desc_reserve_blocks = aux_info.blocks_per_ind;
-
 	aux_info.default_i_flags = EXT4_NOATIME_FL;
 
 	u32 last_group_size = aux_info.len_blocks % info.blocks_per_group;
 	u32 last_header_size = 2 + aux_info.inode_table_blocks;
 	if (ext4_bg_has_super_block(aux_info.groups - 1))
 		last_header_size += 1 + aux_info.bg_desc_blocks +
-			aux_info.bg_desc_reserve_blocks;
+			info.bg_desc_reserve_blocks;
 	if (last_group_size > 0 && last_group_size < last_header_size) {
 		aux_info.groups--;
 		aux_info.len_blocks -= last_group_size;
@@ -203,7 +196,7 @@ void ext4_fill_in_sb()
 	memset(sb->s_last_mounted, 0, sizeof(sb->s_last_mounted));
 	sb->s_algorithm_usage_bitmap = 0;
 
-	sb->s_reserved_gdt_blocks = aux_info.bg_desc_reserve_blocks;
+	sb->s_reserved_gdt_blocks = info.bg_desc_reserve_blocks;
 	sb->s_prealloc_blocks = 0;
 	sb->s_prealloc_dir_blocks = 0;
 
@@ -247,7 +240,7 @@ void ext4_fill_in_sb()
 					aux_info.bg_desc_blocks * info.block_size,
 					group_start_block + 1);
 			}
-			header_size = 1 + aux_info.bg_desc_blocks + aux_info.bg_desc_reserve_blocks;
+			header_size = 1 + aux_info.bg_desc_blocks + info.bg_desc_reserve_blocks;
 		}
 
 		aux_info.bg_desc[i].bg_block_bitmap = group_start_block + header_size;
@@ -278,7 +271,7 @@ void ext4_create_resize_inode()
 				info.blocks_per_group;
 			u32 reserved_block_start = group_start_block + 1 +
 				aux_info.bg_desc_blocks;
-			u32 reserved_block_len = aux_info.bg_desc_reserve_blocks;
+			u32 reserved_block_len = info.bg_desc_reserve_blocks;
 			append_region(reserve_inode_alloc, reserved_block_start,
 				reserved_block_len, i);
 			reserve_inode_len += reserved_block_len;

@@ -148,7 +148,7 @@ static void allocate_bg_inode_table(struct block_group_info *bg)
 	u32 block = bg->first_block + 2;
 
 	if (bg->has_superblock)
-		block += aux_info.bg_desc_blocks + aux_info.bg_desc_reserve_blocks + 1;
+		block += aux_info.bg_desc_blocks + info.bg_desc_reserve_blocks + 1;
 
 	bg->inode_table = calloc(aux_info.inode_table_blocks, info.block_size);
 	if (bg->inode_table == NULL)
@@ -258,7 +258,7 @@ static void init_bg(struct block_group_info *bg, unsigned int i)
 	bg->has_superblock = ext4_bg_has_super_block(i);
 
 	if (bg->has_superblock)
-		header_blocks += 1 + aux_info.bg_desc_blocks + aux_info.bg_desc_reserve_blocks;
+		header_blocks += 1 + aux_info.bg_desc_blocks + info.bg_desc_reserve_blocks;
 
 	bg->bitmaps = calloc(info.block_size, 2);
 	bg->block_bitmap = bg->bitmaps;
@@ -269,7 +269,7 @@ static void init_bg(struct block_group_info *bg, unsigned int i)
 
 	u32 block = bg->first_block;
 	if (bg->has_superblock)
-		block += 1 + aux_info.bg_desc_blocks +  aux_info.bg_desc_reserve_blocks;
+		block += 1 + aux_info.bg_desc_blocks +  info.bg_desc_reserve_blocks;
 	queue_data_block(bg->bitmaps, 2 * info.block_size, block);
 
 	bg->data_blocks_used = 0;

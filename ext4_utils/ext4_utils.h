@@ -82,6 +82,7 @@ struct fs_info {
 	u16 feat_ro_compat;
 	u16 feat_compat;
 	u16 feat_incompat;
+	u32 bg_desc_reserve_blocks;
 	const char *label;
 	u8 no_journal;
 };
@@ -95,7 +96,6 @@ struct fs_aux_info {
 	u32 inode_table_blocks;
 	u32 groups;
 	u32 bg_desc_blocks;
-	u32 bg_desc_reserve_blocks;
 	u32 default_i_flags;
 	u32 blocks_per_ind;
 	u32 blocks_per_dind;
