@@ -48,9 +48,9 @@ extern int force;
 
 #define warn(fmt, args...) do { fprintf(stderr, "warning: %s: " fmt "\n", __func__, ## args); } while (0)
 #define error(fmt, args...) do { fprintf(stderr, "error: %s: " fmt "\n", __func__, ## args); if (!force) exit(EXIT_FAILURE); } while (0)
-#define error_errno(s) error(s ": %s", strerror(errno))
+#define error_errno(s, args...) error(s ": %s", ##args, strerror(errno))
 #define critical_error(fmt, args...) do { fprintf(stderr, "critical error: %s: " fmt "\n", __func__, ## args); exit(EXIT_FAILURE); } while (0)
-#define critical_error_errno(s) critical_error(s ": %s", strerror(errno))
+#define critical_error_errno(s, args...) critical_error(s ": %s", ##args, strerror(errno))
 
 #define EXT4_SUPER_MAGIC 0xEF53
 #define EXT4_JNL_BACKUP_BLOCKS 1
@@ -146,5 +146,6 @@ void ext4_update_free(void);
 void ext4_queue_sb(void);
 u64 get_file_size(const char *filename);
 u64 parse_num(const char *arg);
+void ext4_parse_sb(struct ext4_super_block *sb);
 
 #endif
