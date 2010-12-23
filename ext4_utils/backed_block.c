@@ -14,17 +14,17 @@
  * limitations under the License.
  */
 
-#include <stdlib.h>
-
 #include "ext4_utils.h"
 #include "backed_block.h"
+
+#include <stdlib.h>
 
 struct data_block {
 	u32 block;
 	u32 len;
 	u8 *data;
 	const char *filename;
-	off_t offset;
+	off64_t offset;
 	struct data_block *next;
 };
 
@@ -83,7 +83,7 @@ void queue_data_block(u8 *data, u32 len, u32 block)
 }
 
 /* Queues a chunk of a file on disk to be written to the specified data blocks */
-void queue_data_file(const char *filename, off_t offset, u32 len,
+void queue_data_file(const char *filename, off64_t offset, u32 len,
 	u32 block)
 {
 	struct data_block *db = malloc(sizeof(struct data_block));

@@ -14,6 +14,14 @@
  * limitations under the License.
  */
 
+#include "ext4_utils.h"
+#include "output_file.h"
+#include "backed_block.h"
+#include "uuid.h"
+#include "allocate.h"
+#include "indirect.h"
+#include "extent.h"
+
 #include <fcntl.h>
 #include <arpa/inet.h>
 #include <sys/ioctl.h>
@@ -26,14 +34,6 @@
 #elif defined(__APPLE__) && defined(__MACH__)
 #include <sys/disk.h>
 #endif
-
-#include "ext4_utils.h"
-#include "output_file.h"
-#include "backed_block.h"
-#include "uuid.h"
-#include "allocate.h"
-#include "indirect.h"
-#include "extent.h"
 
 #include "ext4.h"
 #include "jbd2.h"
@@ -78,7 +78,6 @@ void write_ext4_image(const char *filename, int gz, int sparse)
 {
 	int ret = 0;
 	struct output_file *out = open_output_file(filename, gz, sparse);
-	off_t off;
 
 	if (!out)
 		return;

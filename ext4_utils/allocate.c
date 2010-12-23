@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-
 #include "ext4_utils.h"
 #include "allocate.h"
 #include "backed_block.h"
 #include "ext4.h"
+
+#include <stdio.h>
+#include <stdlib.h>
 
 struct region_list {
 	struct region *first;

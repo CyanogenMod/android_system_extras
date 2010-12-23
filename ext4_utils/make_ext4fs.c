@@ -14,7 +14,12 @@
  * limitations under the License.
  */
 
-#define _GNU_SOURCE
+#include "make_ext4fs.h"
+#include "output_file.h"
+#include "ext4_utils.h"
+#include "allocate.h"
+#include "contents.h"
+#include "uuid.h"
 
 #include <dirent.h>
 #include <libgen.h>
@@ -24,13 +29,6 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-
-#include "make_ext4fs.h"
-#include "output_file.h"
-#include "ext4_utils.h"
-#include "allocate.h"
-#include "contents.h"
-#include "uuid.h"
 
 #ifdef ANDROID
 #include <private/android_filesystem_config.h>

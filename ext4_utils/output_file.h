@@ -14,11 +14,16 @@
  * limitations under the License.
  */
 
+#ifndef _OUTPUT_FILE_H_
+#define _OUTPUT_FILE_H_
+
 struct output_file;
 
 struct output_file *open_output_file(const char *filename, int gz, int sparse);
 void write_data_block(struct output_file *out, u64 off, u8 *data, int len);
 void write_data_file(struct output_file *out, u64 off, const char *file,
-		     off_t offset, int len);
+		     off64_t offset, int len);
 void pad_output_file(struct output_file *out, u64 len);
 void close_output_file(struct output_file *out);
+
+#endif

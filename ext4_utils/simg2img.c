@@ -13,8 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define _LARGEFILE64_SOURCE
-#define _FILE_OFFSET_BITS 64
+
+#include "ext4_utils.h"
+#include "output_file.h"
+#include "sparse_format.h"
+#include "sparse_crc32.h"
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -23,11 +26,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdio.h>
-
-#include "ext4_utils.h"
-#include "output_file.h"
-#include "sparse_format.h"
-#include "sparse_crc32.h"
 
 #if defined(__APPLE__) && defined(__MACH__)
 #define lseek64 lseek

@@ -17,12 +17,32 @@
 #ifndef _EXT4_UTILS_H_
 #define _EXT4_UTILS_H_
 
+#define _GNU_SOURCE
+#define _FILE_OFFSET_BITS 64
+#define _LARGEFILE64_SOURCE
+#include <sys/types.h>
+#include <unistd.h>
+
 #include <sys/types.h>
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(__APPLE__) && defined(__MACH__)
+#define lseek64 lseek
+#define off64_t off_t
+#endif
+
+#ifdef __BIONIC__
+extern void*  __mmap2(void *, size_t, int, int, int, off_t);
+static inline void *mmap64(void *addr, size_t length, int prot, int flags,
+        int fd, off64_t offset)
+{
+    return __mmap2(addr, length, prot, flags, fd, offset >> 12);
+}
+#endif
 
 extern int force;
 

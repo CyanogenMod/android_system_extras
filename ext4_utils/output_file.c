@@ -13,7 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define _LARGEFILE64_SOURCE
+
+#include "ext4_utils.h"
+#include "output_file.h"
+#include "sparse_format.h"
+#include "sparse_crc32.h"
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -23,11 +27,6 @@
 #include <fcntl.h>
 
 #include <zlib.h>
-
-#include "ext4_utils.h"
-#include "output_file.h"
-#include "sparse_format.h"
-#include "sparse_crc32.h"
 
 #if defined(__APPLE__) && defined(__MACH__)
 #define lseek64 lseek
@@ -384,9 +383,11 @@ void write_data_block(struct output_file *out, u64 off, u8 *data, int len)
 
 /* Write a contiguous region of data blocks from a file */
 void write_data_file(struct output_file *out, u64 off, const char *file,
-		     off_t offset, int len)
+		     off64_t offset, int len)
 {
 	int ret;
+	off64_t aligned_offset;
+	int aligned_diff;
 
 	if (off + len >= info.len) {
 		error("attempted to write block %llu past end of filesystem",
@@ -400,21 +401,25 @@ void write_data_file(struct output_file *out, u64 off, const char *file,
 		return;
 	}
 
-	u8 *data = mmap(NULL, len, PROT_READ, MAP_SHARED, file_fd, offset);
+	aligned_offset = offset & ~(4096 - 1);
+	aligned_diff = offset - aligned_offset;
+
+	u8 *data = mmap64(NULL, len + aligned_diff, PROT_READ, MAP_SHARED, file_fd,
+			aligned_offset);
 	if (data == MAP_FAILED) {
-		error_errno("mmap");
+		error_errno("mmap64");
 		close(file_fd);
 		return;
 	}
 
 	if (out->sparse) {
-		write_chunk_raw(out, off, data, len);
+		write_chunk_raw(out, off, data + aligned_diff, len);
 	} else {
 		ret = out->ops->seek(out, off);
 		if (ret < 0)
 			goto err;
 
-		ret = out->ops->write(out, data, len);
+		ret = out->ops->write(out, data + aligned_diff, len);
 		if (ret < 0)
 			goto err;
 	}
