@@ -242,7 +242,8 @@ void reset_ext4fs_info() {
 }
 
 int make_ext4fs(const char *filename, const char *directory,
-                char *mountpoint, int android, int gzip, int sparse)
+                char *mountpoint, int android, int gzip, int sparse,
+                int crc)
 {
         u32 root_inode_num;
         u16 root_mode;
@@ -340,7 +341,7 @@ int make_ext4fs(const char *filename, const char *directory,
 			aux_info.sb->s_blocks_count_lo - aux_info.sb->s_free_blocks_count_lo,
 			aux_info.sb->s_blocks_count_lo);
 
-	write_ext4_image(filename, gzip, sparse);
+	write_ext4_image(filename, gzip, sparse, crc);
 
 	return 0;
 }

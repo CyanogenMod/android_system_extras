@@ -76,28 +76,36 @@ int process_skip_chunk(FILE *out, u32 blocks, u32 blk_sz, u32 *crc32)
 	 * as a 32 bit value of blocks.
 	 */
 	u64 len = (u64)blocks * blk_sz;
-	u64 len_save;
 	u32 skip_chunk;
 
 	/* Fseek takes the offset as a long, which may be 32 bits on some systems.
 	 * So, lets do a sequence of fseeks() with SEEK_CUR to get the file pointer
 	 * where we want it.
 	 */
-	len_save = len;
 	while (len) {
 		skip_chunk = (len > 0x80000000) ? 0x80000000 : len;
 		fseek(out, skip_chunk, SEEK_CUR);
 		len -= skip_chunk;
 	}
-	/* And compute the CRC of the skipped region a chunk at a time */
-	len = len_save;
-	while (len) {
-		skip_chunk = (skip_chunk > blk_sz) ? blk_sz : skip_chunk;
-		*crc32 = sparse_crc32(*crc32, zerobuf, skip_chunk);
-		len -= skip_chunk;
-	}
 
 	return blocks;
+}
+
+int process_crc32_chunk(FILE *in, u32 crc32)
+{
+	u32 file_crc32;
+	if (fread(&file_crc32, 4, 1, in) != 1) {
+		fprintf(stderr, "fread returned an error copying a crc32 chunk\n");
+		exit(-1);
+	}
+
+	if (file_crc32 != crc32) {
+		fprintf(stderr, "computed crc32 of 0x%8.8x, expected 0x%8.8x\n",
+			 crc32, file_crc32);
+		exit(-1);
+	}
+
+	return 0;
 }
 
 int main(int argc, char *argv[])
@@ -187,6 +195,9 @@ int main(int argc, char *argv[])
 			total_blocks += process_skip_chunk(out,
 					 chunk_header.chunk_sz, sparse_header.blk_sz, &crc32);
 			break;
+		    case CHUNK_TYPE_CRC32:
+			process_crc32_chunk(in, crc32);
+			break;
 		    default:
 			fprintf(stderr, "Unknown chunk type 0x%4.4x\n", chunk_header.chunk_type);
 			exit(-1);
@@ -210,12 +221,6 @@ int main(int argc, char *argv[])
 	if (sparse_header.total_blks != total_blocks) {
 		fprintf(stderr, "Wrote %d blocks, expected to write %d blocks\n",
 			 total_blocks, sparse_header.total_blks);
-		exit(-1);
-	}
-
-	if (sparse_header.image_checksum != crc32) {
-		fprintf(stderr, "computed crc32 of 0x%8.8x, expected 0x%8.8x\n",
-			 crc32, sparse_header.image_checksum);
 		exit(-1);
 	}
 

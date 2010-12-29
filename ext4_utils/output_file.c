@@ -52,6 +52,7 @@ struct output_file {
 	u32 chunk_cnt;
 	u32 crc32;
 	struct output_file_ops *ops;
+	int use_crc;
 };
 
 static int file_seek(struct output_file *out, off64_t off)
@@ -170,13 +171,6 @@ static int emit_skip_chunk(struct output_file *out, u64 skip_len)
 	out->cur_out_ptr += skip_len;
 	out->chunk_cnt++;
 
-	/* Compute the CRC for all those zeroes.  Do it block_size bytes at a time. */
-	while (skip_len) {
-		chunk = (skip_len > info.block_size) ? info.block_size : skip_len;
-		out->crc32 = sparse_crc32(out->crc32, zero_buf, chunk);
-		skip_len -= chunk;
-	}
-
 	return 0;
 }
 
@@ -238,9 +232,12 @@ static int write_chunk_raw(struct output_file *out, u64 off, u8 *data, int len)
 			return -1;
 	}
 
-	out->crc32 = sparse_crc32(out->crc32, data, len);
-	if (zero_len)
-		out->crc32 = sparse_crc32(out->crc32, zero_buf, zero_len);
+	if (out->use_crc) {
+		out->crc32 = sparse_crc32(out->crc32, data, len);
+		if (zero_len)
+			out->crc32 = sparse_crc32(out->crc32, zero_buf, zero_len);
+	}
+
 	out->cur_out_ptr += rnd_up_len;
 	out->chunk_cnt++;
 
@@ -253,6 +250,18 @@ void close_output_file(struct output_file *out)
 	chunk_header_t chunk_header;
 
 	if (out->sparse) {
+		if (out->use_crc) {
+			chunk_header.chunk_type = CHUNK_TYPE_CRC32;
+			chunk_header.reserved1 = 0;
+			chunk_header.chunk_sz = 0;
+			chunk_header.total_sz = CHUNK_HEADER_LEN + 4;
+
+			out->ops->write(out, (u8 *)&chunk_header, sizeof(chunk_header));
+			out->ops->write(out, (u8 *)&out->crc32, 4);
+
+			out->chunk_cnt++;
+		}
+
 		if (out->chunk_cnt != sparse_header.total_chunks)
 			error("sparse chunk count did not match: %d %d", out->chunk_cnt,
 					sparse_header.total_chunks);
@@ -261,7 +270,7 @@ void close_output_file(struct output_file *out)
 }
 
 struct output_file *open_output_file(const char *filename, int gz, int sparse,
-        int chunks)
+        int chunks, int crc)
 {
 	int ret;
 	struct output_file *out = malloc(sizeof(struct output_file));
@@ -303,14 +312,15 @@ struct output_file *open_output_file(const char *filename, int gz, int sparse,
 
 	/* Initialize the crc32 value */
 	out->crc32 = 0;
+	out->use_crc = crc;
 
 	if (out->sparse) {
-		/* Write out the file header.  We'll update the unknown fields
-		 * when we close the file.
-		 */
 		sparse_header.blk_sz = info.block_size,
 		sparse_header.total_blks = info.len / info.block_size,
 		sparse_header.total_chunks = chunks;
+		if (out->use_crc)
+			sparse_header.total_chunks++;
+
 		ret = out->ops->write(out, (u8 *)&sparse_header, sizeof(sparse_header));
 		if (ret < 0)
 			return NULL;
@@ -331,7 +341,6 @@ void pad_output_file(struct output_file *out, u64 len)
 	if (out->sparse) {
 		/* We need to emit a DONT_CARE chunk to pad out the file if the
 		 * cur_out_ptr is not already at the end of the filesystem.
-		 * We also need to compute the CRC for it.
 		 */
 		if (len < out->cur_out_ptr) {
 			error("attempted to pad file %llu bytes less than the current output pointer",
@@ -431,4 +440,3 @@ err:
 	munmap(data, len);
 	close(file_fd);
 }
-
