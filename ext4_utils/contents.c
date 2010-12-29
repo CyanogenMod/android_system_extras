@@ -115,7 +115,7 @@ u32 make_directory(u32 dir_inode_num, u32 entries, struct dentry *dentries,
 
 	data = inode_allocate_data_extents(inode, len, len);
 	if (data == NULL) {
-		error("failed to allocate %llu extents", len);
+		error("failed to allocate %u extents", len);
 		return EXT4_ALLOCATE_FAILED;
 	}
 

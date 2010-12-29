@@ -20,6 +20,7 @@
 #include "allocate.h"
 #include "contents.h"
 #include "uuid.h"
+#include "backed_block.h"
 
 #include <dirent.h>
 #include <libgen.h>
