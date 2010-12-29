@@ -253,7 +253,6 @@ int main(int argc, char *argv[])
 			break;
 		    default:
 			fprintf(stderr, "Unknown chunk type 0x%4.4x\n", chunk_header.chunk_type);
-			exit(-1);
 		}
 
 	}
