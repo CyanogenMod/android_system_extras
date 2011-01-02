@@ -76,6 +76,10 @@ check_library(const char*  libname)
     }
 
     fprintf(stderr, "%s unloaded.\n", libname);
+    if (y != 2) {
+        fprintf(stderr, "Static destructors was not called on dlclose()!\n");
+        return 2;
+    }
     return 0;
 }
 

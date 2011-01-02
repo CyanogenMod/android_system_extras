@@ -165,7 +165,7 @@ set_adb_cmd_log $TMPDIR/adb.log.txt
 
 DEVICE_TEST_DIR=/data/local/bionic-test
 DEVICE_TEST=$DEVICE_TEST_DIR/$TESTNAME
-adb_cmd mkdir -p $DEVICE_TEST_DIR
+adb_cmd mkdir $DEVICE_TEST_DIR
 $ADB_CMD push $TESTEXE $DEVICE_TEST_DIR/
 if [ $? != 0 ] ; then
     echo "ERROR: Can't push test to device!"
