@@ -62,6 +62,7 @@ endef
 
 sources := \
     common/test_cpu_set.c \
+    common/test_drand48.c \
     common/test_executable_destructor.c \
     common/test_getaddrinfo.c \
     common/test_gethostbyname.c \
