@@ -38,7 +38,8 @@ void testDelay(float amt);
 
 // Pseudo Random Utilities
 int testRandBool(void);
-unsigned int testRandMod(unsigned int mod);
+uint32_t testRand(void);
+uint32_t testRandMod(uint32_t mod);
 double testRandFract(void);
 
 // Testcase Output
@@ -58,6 +59,9 @@ void testXDumpSetIndent(uint8_t indent);
 uint8_t testXDumpGetIndent(void);
 void testXDumpSetOffset(uint64_t offset);
 uint64_t testXDumpGetOffset(void);
+
+// Command Execution
+void testExecCmd(const char *cmd);
 
 __END_DECLS
 

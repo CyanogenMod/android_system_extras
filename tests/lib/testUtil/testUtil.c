@@ -18,13 +18,17 @@
 #include <testUtil.h>
 
 #include <assert.h>
+#include <errno.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+
 #include <sys/time.h>
+#include <sys/wait.h>
+
 #include <cutils/log.h>
 
 #define ALEN(a) (sizeof(a) / sizeof(a [0]))  // Array length
@@ -167,6 +171,29 @@ const char * testGetLogCatTag(void)
 }
 
 /*
+ * Random
+ *
+ * Returns a pseudo random number in the range [0:2^32-1].
+ *
+ * Precondition: srand48() called to set the seed of
+ *   the pseudo random number generator.
+ */
+uint32_t testRand(void)
+{
+    uint32_t val;
+
+    // Use lrand48() to obtain 31 bits worth
+    // of randomness.
+    val = lrand48();
+
+    // Make an additional lrand48() call and merge
+    // the randomness into the most significant bits.
+    val ^= lrand48() << 1;
+
+    return val;
+}
+
+/*
  * Random Modulus
  *
  * Pseudo randomly returns unsigned integer in the range [0, mod).
@@ -174,10 +201,13 @@ const char * testGetLogCatTag(void)
  * Precondition: srand48() called to set the seed of
  *   the pseudo random number generator.
  */
-unsigned int testRandMod(unsigned int mod)
+uint32_t testRandMod(uint32_t mod)
 {
     // Obtain the random value
-    uint32_t val = lrand48();
+    // Use lrand48() when it would produce a sufficient
+    // number of random bits, otherwise use testRand().
+    const uint32_t lrand48maxVal = ((uint32_t) 1 << 31) - 1;
+    uint32_t val = (mod <= lrand48maxVal) ? (uint32_t) lrand48() : testRand();
 
     /*
      * The contents of individual bytes tend to be less than random
@@ -185,7 +215,7 @@ unsigned int testRandMod(unsigned int mod)
      * srand48(x + n * 4) cause lrand48() to return the same sequence of
      * least significant bits.  For small mod values this can produce
      * noticably non-random sequnces.  For mod values of less than 2
-     * byte, will use the randomness from all the bytes.
+     * bytes, will use the randomness from all the bytes.
      */
     if (mod <= 0x10000) {
         val = (val & 0xffff) ^ (val >> 16);
@@ -327,4 +357,55 @@ uint64_t
 testXDumpGetOffset(void)
 {
     return xDumpOffset;
+}
+
+/*
+ * Execute Command
+ *
+ * Executes the command pointed to by cmd.  Output from the
+ * executed command is captured and sent to LogCat Info.  Once
+ * the command has finished execution, it's exit status is captured
+ * and checked for an exit status of zero.  Any other exit status
+ * causes diagnostic information to be printed and an immediate
+ * testcase failure.
+ */
+void testExecCmd(const char *cmd)
+{
+    FILE *fp;
+    int rv;
+    int status;
+    char str[MAXSTR];
+
+    // Display command to be executed
+    testPrintI("cmd: %s", cmd);
+
+    // Execute the command
+    fflush(stdout);
+    if ((fp = popen(cmd, "r")) == NULL) {
+        testPrintE("execCmd popen failed, errno: %i", errno);
+        exit(100);
+    }
+
+    // Obtain and display each line of output from the executed command
+    while (fgets(str, sizeof(str), fp) != NULL) {
+        if ((strlen(str) > 1) && (str[strlen(str) - 1] == '\n')) {
+            str[strlen(str) - 1] = '\0';
+        }
+        testPrintI(" out: %s", str);
+    }
+
+    // Obtain and check return status of executed command.
+    // Fail on non-zero exit status
+    status = pclose(fp);
+    if (!(WIFEXITED(status) && (WEXITSTATUS(status) == 0))) {
+        testPrintE("Unexpected command failure");
+        testPrintE("  status: %#x", status);
+        if (WIFEXITED(status)) {
+            testPrintE("WEXITSTATUS: %i", WEXITSTATUS(status));
+        }
+        if (WIFSIGNALED(status)) {
+            testPrintE("WTERMSIG: %i", WTERMSIG(status));
+        }
+        exit(101);
+    }
 }
