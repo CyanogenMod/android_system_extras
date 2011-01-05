@@ -101,7 +101,6 @@ bool_t eFlag, sFlag, pFlag;
 
 // File scope prototypes
 static void init(void);
-static void execCmd(const char *cmd);
 static void randDelay(void);
 static void randBind(const cpu_set_t *availSet, int *chosenCPU);
 
@@ -307,7 +306,7 @@ main(int argc, char *argv[])
                 testPrintE("Command too long for: %s\n", CMD_STATUS);
                 exit(22);
             }
-            execCmd(cmd);
+            testExecCmd(cmd);
         }
 
         // Stop Supplicant
@@ -353,7 +352,7 @@ main(int argc, char *argv[])
             testPrintE("Command too long for: %s\n", CMD_STATUS);
             exit(22);
         }
-        execCmd(cmd);
+        testExecCmd(cmd);
     }
 
     // Start framework
@@ -362,7 +361,7 @@ main(int argc, char *argv[])
         testPrintE("Command too long for: %s\n", CMD_START_FRAMEWORK);
         exit(27);
     }
-    execCmd(cmd);
+    testExecCmd(cmd);
 
     testPrintI("Successfully completed %u passes", pass - startPass);
 
@@ -411,7 +410,7 @@ init(void)
         testPrintE("Command too long for: %s\n", CMD_STOP_FRAMEWORK);
         exit(41);
     }
-    execCmd(cmd);
+    testExecCmd(cmd);
 
     // Is WiFi driver loaded?
     // If so stop the wpa_supplicant and unload the driver.
@@ -437,65 +436,6 @@ init(void)
 }
 
 /*
- * Execute Command
- *
- * Executes the command pointed to by cmd.  Which CPU executes the
- * command is randomly selected from the set of CPUs that were
- * available during testcase initialization.  Output from the
- * executed command is captured and sent to LogCat Info.  Once
- * the command has finished execution, it's exit status is captured
- * and checked for an exit status of zero.  Any other exit status
- * causes diagnostic information to be printed and an immediate
- * testcase failure.
- */
-void
-execCmd(const char *cmd)
-{
-    FILE *fp;
-    int rv;
-    int status;
-    char str[MAXSTR];
-    int cpu;
-
-    // Randomly bind to one of the available CPUs
-    randBind(&availCPU, &cpu);
-
-    // Display CPU executing on and command to be executed
-    testPrintI("CPU: %u cmd: %s", cpu, cmd);
-
-    // Execute the command
-    fflush(stdout);
-    if ((fp = popen(cmd, "r")) == NULL) {
-        testPrintE("execCmd popen failed, errno: %i", errno);
-        exit(61);
-    }
-
-    // Obtain and display each line of output from the executed command
-    while (fgets(str, sizeof(str), fp) != NULL) {
-        if ((strlen(str) > 1) && (str[strlen(str) - 1] == '\n')) {
-            str[strlen(str) - 1] = '\0';
-        }
-        testPrintI(" out: %s", str);
-        testDelay(0.1);
-    }
-
-    // Obtain and check return status of executed command.
-    // Fail on non-zero exit status
-    status = pclose(fp);
-    if (!(WIFEXITED(status) && (WEXITSTATUS(status) == 0))) {
-        testPrintE("Unexpected command failure");
-        testPrintE("  status: %#x", status);
-        if (WIFEXITED(status)) {
-            testPrintE("WEXITSTATUS: %i", WEXITSTATUS(status));
-        }
-        if (WIFSIGNALED(status)) {
-            testPrintE("WTERMSIG: %i", WTERMSIG(status));
-        }
-        exit(62);
-    }
-}
-
-/*
  * Random Delay
  *
  * Delays for a random amount of time within the range given
@@ -511,11 +451,10 @@ void randDelay(void)
 {
     const unsigned long nanosecspersec = 1000000000;
     float            fract, biasedFract, amt;
-    struct timespec  remaining;
-    struct timeval   start, current, delta;
+    struct timeval   startTime, endTime;
 
     // Obtain start time
-    gettimeofday(&start, NULL);
+    gettimeofday(&startTime, NULL);
 
     // Determine random amount to sleep.
     // Values closer to delayMin are prefered by an amount
@@ -524,21 +463,13 @@ void randDelay(void)
     biasedFract = pow(DELAY_EXP, fract) / pow(DELAY_EXP, 1.0);
     amt = delayMin + ((delayMax - delayMin) * biasedFract);
 
-    do {
-        // Get current time
-        gettimeofday(&current, NULL);
+    // Delay
+    testDelay(amt);
 
-        // How much time is left
-        delta = tvDelta(&start, &current);
-        if (tv2double(&delta) > amt) { break; }
-
-        // Request to sleep for the remaining time
-        remaining = double2ts(amt - tv2double(&delta));
-        (void) nanosleep(&remaining, NULL);
-    } while (true);
-
+    // Obtain end time and display delta
+    gettimeofday(&endTime, NULL);
     testPrintI("delay: %.2f",
-        (float) (tv2double(&current) - tv2double(&start)));
+        (float) (tv2double(&endTime) - tv2double(&startTime)));
 }
 
 static void
