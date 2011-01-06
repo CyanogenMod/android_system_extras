@@ -32,6 +32,8 @@
 
 #if defined(__APPLE__) && defined(__MACH__)
 #define lseek64 lseek
+#define ftruncate64 ftruncate
+#define mmap64 mmap
 #define off64_t off_t
 #endif
 

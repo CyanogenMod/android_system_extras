@@ -26,11 +26,6 @@
 #include <fcntl.h>
 #include <stdio.h>
 
-#if defined(__APPLE__) && defined(__MACH__)
-#define lseek64 lseek
-#define off64_t off_t
-#endif
-
 #define COPY_BUF_SIZE (1024*1024)
 u8 *copybuf;
 
