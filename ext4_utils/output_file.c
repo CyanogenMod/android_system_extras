@@ -13,7 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define _LARGEFILE64_SOURCE
+
+#include "ext4_utils.h"
+#include "output_file.h"
+#include "sparse_format.h"
+#include "sparse_crc32.h"
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -23,11 +27,6 @@
 #include <fcntl.h>
 
 #include <zlib.h>
-
-#include "ext4_utils.h"
-#include "output_file.h"
-#include "sparse_format.h"
-#include "sparse_crc32.h"
 
 #if defined(__APPLE__) && defined(__MACH__)
 #define lseek64 lseek
@@ -50,9 +49,10 @@ struct output_file {
 	gzFile gz_fd;
 	int sparse;
 	u64 cur_out_ptr;
-	int chunk_cnt;
+	u32 chunk_cnt;
 	u32 crc32;
 	struct output_file_ops *ops;
+	int use_crc;
 };
 
 static int file_seek(struct output_file *out, off64_t off)
@@ -171,13 +171,6 @@ static int emit_skip_chunk(struct output_file *out, u64 skip_len)
 	out->cur_out_ptr += skip_len;
 	out->chunk_cnt++;
 
-	/* Compute the CRC for all those zeroes.  Do it block_size bytes at a time. */
-	while (skip_len) {
-		chunk = (skip_len > info.block_size) ? info.block_size : skip_len;
-		out->crc32 = sparse_crc32(out->crc32, zero_buf, chunk);
-		skip_len -= chunk;
-	}
-
 	return 0;
 }
 
@@ -239,9 +232,12 @@ static int write_chunk_raw(struct output_file *out, u64 off, u8 *data, int len)
 			return -1;
 	}
 
-	out->crc32 = sparse_crc32(out->crc32, data, len);
-	if (zero_len)
-		out->crc32 = sparse_crc32(out->crc32, zero_buf, zero_len);
+	if (out->use_crc) {
+		out->crc32 = sparse_crc32(out->crc32, data, len);
+		if (zero_len)
+			out->crc32 = sparse_crc32(out->crc32, zero_buf, zero_len);
+	}
+
 	out->cur_out_ptr += rnd_up_len;
 	out->chunk_cnt++;
 
@@ -251,24 +247,30 @@ static int write_chunk_raw(struct output_file *out, u64 off, u8 *data, int len)
 void close_output_file(struct output_file *out)
 {
 	int ret;
+	chunk_header_t chunk_header;
 
 	if (out->sparse) {
-		/* we need to seek back to the beginning and update the file header */
-		sparse_header.total_chunks = out->chunk_cnt;
-		sparse_header.image_checksum = out->crc32;
+		if (out->use_crc) {
+			chunk_header.chunk_type = CHUNK_TYPE_CRC32;
+			chunk_header.reserved1 = 0;
+			chunk_header.chunk_sz = 0;
+			chunk_header.total_sz = CHUNK_HEADER_LEN + 4;
 
-		ret = out->ops->seek(out, 0);
-		if (ret < 0)
-			error("failure seeking to start of sparse file");
+			out->ops->write(out, (u8 *)&chunk_header, sizeof(chunk_header));
+			out->ops->write(out, (u8 *)&out->crc32, 4);
 
-		ret = out->ops->write(out, (u8 *)&sparse_header, sizeof(sparse_header));
-		if (ret < 0)
-			error("failure updating sparse file header");
+			out->chunk_cnt++;
+		}
+
+		if (out->chunk_cnt != sparse_header.total_chunks)
+			error("sparse chunk count did not match: %d %d", out->chunk_cnt,
+					sparse_header.total_chunks);
 	}
 	out->ops->close(out);
 }
 
-struct output_file *open_output_file(const char *filename, int gz, int sparse)
+struct output_file *open_output_file(const char *filename, int gz, int sparse,
+        int chunks, int crc)
 {
 	int ret;
 	struct output_file *out = malloc(sizeof(struct output_file));
@@ -292,13 +294,17 @@ struct output_file *open_output_file(const char *filename, int gz, int sparse)
 			return NULL;
 		}
 	} else {
-		out->ops = &file_ops;
-		out->fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-		if (out->fd < 0) {
-			error_errno("open");
-			free(out);
-			return NULL;
+		if (strcmp(filename, "-")) {
+			out->fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+			if (out->fd < 0) {
+				error_errno("open");
+				free(out);
+				return NULL;
+			}
+		} else {
+			out->fd = STDOUT_FILENO;
 		}
+		out->ops = &file_ops;
 	}
 	out->sparse = sparse;
 	out->cur_out_ptr = 0ll;
@@ -306,13 +312,15 @@ struct output_file *open_output_file(const char *filename, int gz, int sparse)
 
 	/* Initialize the crc32 value */
 	out->crc32 = 0;
+	out->use_crc = crc;
 
 	if (out->sparse) {
-		/* Write out the file header.  We'll update the unknown fields
-		 * when we close the file.
-		 */
 		sparse_header.blk_sz = info.block_size,
 		sparse_header.total_blks = info.len / info.block_size,
+		sparse_header.total_chunks = chunks;
+		if (out->use_crc)
+			sparse_header.total_chunks++;
+
 		ret = out->ops->write(out, (u8 *)&sparse_header, sizeof(sparse_header));
 		if (ret < 0)
 			return NULL;
@@ -333,7 +341,6 @@ void pad_output_file(struct output_file *out, u64 len)
 	if (out->sparse) {
 		/* We need to emit a DONT_CARE chunk to pad out the file if the
 		 * cur_out_ptr is not already at the end of the filesystem.
-		 * We also need to compute the CRC for it.
 		 */
 		if (len < out->cur_out_ptr) {
 			error("attempted to pad file %llu bytes less than the current output pointer",
@@ -384,9 +391,11 @@ void write_data_block(struct output_file *out, u64 off, u8 *data, int len)
 
 /* Write a contiguous region of data blocks from a file */
 void write_data_file(struct output_file *out, u64 off, const char *file,
-		     off_t offset, int len)
+		     off64_t offset, int len)
 {
 	int ret;
+	off64_t aligned_offset;
+	int aligned_diff;
 
 	if (off + len >= info.len) {
 		error("attempted to write block %llu past end of filesystem",
@@ -400,21 +409,25 @@ void write_data_file(struct output_file *out, u64 off, const char *file,
 		return;
 	}
 
-	u8 *data = mmap(NULL, len, PROT_READ, MAP_SHARED, file_fd, offset);
+	aligned_offset = offset & ~(4096 - 1);
+	aligned_diff = offset - aligned_offset;
+
+	u8 *data = mmap64(NULL, len + aligned_diff, PROT_READ, MAP_SHARED, file_fd,
+			aligned_offset);
 	if (data == MAP_FAILED) {
-		error_errno("mmap");
+		error_errno("mmap64");
 		close(file_fd);
 		return;
 	}
 
 	if (out->sparse) {
-		write_chunk_raw(out, off, data, len);
+		write_chunk_raw(out, off, data + aligned_diff, len);
 	} else {
 		ret = out->ops->seek(out, off);
 		if (ret < 0)
 			goto err;
 
-		ret = out->ops->write(out, data, len);
+		ret = out->ops->write(out, data + aligned_diff, len);
 		if (ret < 0)
 			goto err;
 	}
@@ -427,4 +440,3 @@ err:
 	munmap(data, len);
 	close(file_fd);
 }
-

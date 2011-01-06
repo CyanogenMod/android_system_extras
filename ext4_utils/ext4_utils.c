@@ -14,6 +14,14 @@
  * limitations under the License.
  */
 
+#include "ext4_utils.h"
+#include "output_file.h"
+#include "backed_block.h"
+#include "uuid.h"
+#include "allocate.h"
+#include "indirect.h"
+#include "extent.h"
+
 #include <fcntl.h>
 #include <arpa/inet.h>
 #include <sys/ioctl.h>
@@ -26,14 +34,6 @@
 #elif defined(__APPLE__) && defined(__MACH__)
 #include <sys/disk.h>
 #endif
-
-#include "ext4_utils.h"
-#include "output_file.h"
-#include "backed_block.h"
-#include "uuid.h"
-#include "allocate.h"
-#include "indirect.h"
-#include "extent.h"
 
 #include "ext4.h"
 #include "jbd2.h"
@@ -73,35 +73,63 @@ int ext4_bg_has_super_block(int bg)
 	return 0;
 }
 
+struct count_chunks {
+	u32 chunks;
+	u64 cur_ptr;
+};
+
+void count_data_block(void *priv, u64 off, u8 *data, int len)
+{
+	struct count_chunks *count_chunks = priv;
+	if (off > count_chunks->cur_ptr)
+		count_chunks->chunks++;
+	count_chunks->cur_ptr = off + ALIGN(len, info.block_size);
+	count_chunks->chunks++;
+}
+
+void count_file_block(void *priv, u64 off, const char *file,
+		off64_t offset, int len)
+{
+	struct count_chunks *count_chunks = priv;
+	if (off > count_chunks->cur_ptr)
+		count_chunks->chunks++;
+	count_chunks->cur_ptr = off + ALIGN(len, info.block_size);
+	count_chunks->chunks++;
+}
+
+int count_sparse_chunks()
+{
+	struct count_chunks count_chunks = {0, 0};
+
+	for_each_data_block(count_data_block, count_file_block, &count_chunks);
+
+	if (count_chunks.cur_ptr != info.len)
+		count_chunks.chunks++;
+
+	return count_chunks.chunks;
+}
+
+static void ext4_write_data_block(void *priv, u64 off, u8 *data, int len)
+{
+	write_data_block(priv, off, data, len);
+}
+static void ext4_write_data_file(void *priv, u64 off, const char *file,
+		off64_t offset, int len)
+{
+	write_data_file(priv, off, file, offset, len);
+}
+
 /* Write the filesystem image to a file */
-void write_ext4_image(const char *filename, int gz, int sparse)
+void write_ext4_image(const char *filename, int gz, int sparse, int crc)
 {
 	int ret = 0;
-	struct output_file *out = open_output_file(filename, gz, sparse);
-	off_t off;
+	struct output_file *out = open_output_file(filename, gz, sparse,
+	        count_sparse_chunks(), crc);
 
 	if (!out)
 		return;
 
-	/* The write_data* functions expect only block aligned calls.
-	 * This is not an issue, except when we write out the super
-	 * block on a system with a block size > 1K.  So, we need to
-	 * deal with that here.
-	 */
-	if (info.block_size > 1024) {
-		u8 buf[4096] = { 0 }; 	/* The larget supported ext4 block size */
-		memcpy(buf + 1024, (u8*)aux_info.sb, 1024);
-		write_data_block(out, 0, buf, info.block_size);
-
-	} else {
-		write_data_block(out, 1024, (u8*)aux_info.sb, 1024);
-	}
-
-	write_data_block(out, (u64)(aux_info.first_data_block + 1) * info.block_size,
-			 (u8*)aux_info.bg_desc,
-			 aux_info.bg_desc_blocks * info.block_size);
-
-	for_each_data_block(write_data_block, write_data_file, out);
+	for_each_data_block(ext4_write_data_block, ext4_write_data_file, out);
 
 	pad_output_file(out, info.len);
 
@@ -125,20 +153,13 @@ void ext4_create_fs_aux_info()
 		DIV_ROUND_UP(aux_info.groups * sizeof(struct ext2_group_desc),
 			info.block_size);
 
-	aux_info.bg_desc_reserve_blocks =
-		DIV_ROUND_UP(aux_info.groups * 1024 * sizeof(struct ext2_group_desc),
-			info.block_size) - aux_info.bg_desc_blocks;
-
-	if (aux_info.bg_desc_reserve_blocks > aux_info.blocks_per_ind)
-		aux_info.bg_desc_reserve_blocks = aux_info.blocks_per_ind;
-
 	aux_info.default_i_flags = EXT4_NOATIME_FL;
 
 	u32 last_group_size = aux_info.len_blocks % info.blocks_per_group;
 	u32 last_header_size = 2 + aux_info.inode_table_blocks;
 	if (ext4_bg_has_super_block(aux_info.groups - 1))
 		last_header_size += 1 + aux_info.bg_desc_blocks +
-			aux_info.bg_desc_reserve_blocks;
+			info.bg_desc_reserve_blocks;
 	if (last_group_size > 0 && last_group_size < last_header_size) {
 		aux_info.groups--;
 		aux_info.len_blocks -= last_group_size;
@@ -203,7 +224,7 @@ void ext4_fill_in_sb()
 	memset(sb->s_last_mounted, 0, sizeof(sb->s_last_mounted));
 	sb->s_algorithm_usage_bitmap = 0;
 
-	sb->s_reserved_gdt_blocks = aux_info.bg_desc_reserve_blocks;
+	sb->s_reserved_gdt_blocks = info.bg_desc_reserve_blocks;
 	sb->s_prealloc_blocks = 0;
 	sb->s_prealloc_dir_blocks = 0;
 
@@ -241,13 +262,12 @@ void ext4_fill_in_sb()
 			info.blocks_per_group;
 		u32 header_size = 0;
 		if (ext4_bg_has_super_block(i)) {
-			if (i != 0) {
+			if (i != 0)
 				queue_data_block((u8 *)sb, info.block_size, group_start_block);
-				queue_data_block((u8 *)aux_info.bg_desc,
-					aux_info.bg_desc_blocks * info.block_size,
-					group_start_block + 1);
-			}
-			header_size = 1 + aux_info.bg_desc_blocks + aux_info.bg_desc_reserve_blocks;
+			queue_data_block((u8 *)aux_info.bg_desc,
+				aux_info.bg_desc_blocks * info.block_size,
+				group_start_block + 1);
+			header_size = 1 + aux_info.bg_desc_blocks + info.bg_desc_reserve_blocks;
 		}
 
 		aux_info.bg_desc[i].bg_block_bitmap = group_start_block + header_size;
@@ -258,6 +278,53 @@ void ext4_fill_in_sb()
 		aux_info.bg_desc[i].bg_free_inodes_count = sb->s_inodes_per_group;
 		aux_info.bg_desc[i].bg_used_dirs_count = 0;
 	}
+}
+
+void ext4_queue_sb(void)
+{
+	/* The write_data* functions expect only block aligned calls.
+	 * This is not an issue, except when we write out the super
+	 * block on a system with a block size > 1K.  So, we need to
+	 * deal with that here.
+	 */
+	if (info.block_size > 1024) {
+		u8 *buf = calloc(info.block_size, 1);
+		memcpy(buf + 1024, (u8*)aux_info.sb, 1024);
+		queue_data_block(buf, info.block_size, 0);
+	} else {
+		queue_data_block((u8*)aux_info.sb, 1024, 1);
+	}
+}
+
+void ext4_parse_sb(struct ext4_super_block *sb)
+{
+	if (sb->s_magic != EXT4_SUPER_MAGIC)
+		error("superblock magic incorrect");
+
+	if (sb->s_state != EXT4_VALID_FS)
+		error("filesystem state not valid");
+
+	info.block_size = 1024 << sb->s_log_block_size;
+	info.blocks_per_group = sb->s_blocks_per_group;
+	info.inodes_per_group = sb->s_inodes_per_group;
+	info.inode_size = sb->s_inode_size;
+	info.inodes = sb->s_inodes_count;
+	info.feat_ro_compat = sb->s_feature_ro_compat;
+	info.feat_compat = sb->s_feature_compat;
+	info.feat_incompat = sb->s_feature_incompat;
+	info.bg_desc_reserve_blocks = sb->s_reserved_gdt_blocks;
+	info.label = sb->s_volume_name;
+
+	aux_info.len_blocks = ((u64)sb->s_blocks_count_hi << 32) +
+			sb->s_blocks_count_lo;
+	info.len = (u64)info.block_size * aux_info.len_blocks;
+
+	ext4_create_fs_aux_info();
+
+	memcpy(aux_info.sb, sb, sizeof(*sb));
+
+	if (aux_info.first_data_block != sb->s_first_data_block)
+		critical_error("first data block does not match");
 }
 
 void ext4_create_resize_inode()
@@ -278,7 +345,7 @@ void ext4_create_resize_inode()
 				info.blocks_per_group;
 			u32 reserved_block_start = group_start_block + 1 +
 				aux_info.bg_desc_blocks;
-			u32 reserved_block_len = aux_info.bg_desc_reserve_blocks;
+			u32 reserved_block_len = info.bg_desc_reserve_blocks;
 			append_region(reserve_inode_alloc, reserved_block_start,
 				reserved_block_len, i);
 			reserve_inode_len += reserved_block_len;

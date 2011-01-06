@@ -17,6 +17,12 @@
 #ifndef _EXT4_UTILS_H_
 #define _EXT4_UTILS_H_
 
+#define _GNU_SOURCE
+#define _FILE_OFFSET_BITS 64
+#define _LARGEFILE64_SOURCE
+#include <sys/types.h>
+#include <unistd.h>
+
 #include <sys/types.h>
 #include <errno.h>
 #include <stdarg.h>
@@ -24,13 +30,27 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(__APPLE__) && defined(__MACH__)
+#define lseek64 lseek
+#define off64_t off_t
+#endif
+
+#ifdef __BIONIC__
+extern void*  __mmap2(void *, size_t, int, int, int, off_t);
+static inline void *mmap64(void *addr, size_t length, int prot, int flags,
+        int fd, off64_t offset)
+{
+    return __mmap2(addr, length, prot, flags, fd, offset >> 12);
+}
+#endif
+
 extern int force;
 
 #define warn(fmt, args...) do { fprintf(stderr, "warning: %s: " fmt "\n", __func__, ## args); } while (0)
 #define error(fmt, args...) do { fprintf(stderr, "error: %s: " fmt "\n", __func__, ## args); if (!force) exit(EXIT_FAILURE); } while (0)
-#define error_errno(s) error(s ": %s", strerror(errno))
+#define error_errno(s, args...) error(s ": %s", ##args, strerror(errno))
 #define critical_error(fmt, args...) do { fprintf(stderr, "critical error: %s: " fmt "\n", __func__, ## args); exit(EXIT_FAILURE); } while (0)
-#define critical_error_errno(s) critical_error(s ": %s", strerror(errno))
+#define critical_error_errno(s, args...) critical_error(s ": %s", ##args, strerror(errno))
 
 #define EXT4_SUPER_MAGIC 0xEF53
 #define EXT4_JNL_BACKUP_BLOCKS 1
@@ -82,6 +102,7 @@ struct fs_info {
 	u16 feat_ro_compat;
 	u16 feat_compat;
 	u16 feat_incompat;
+	u32 bg_desc_reserve_blocks;
 	const char *label;
 	u8 no_journal;
 };
@@ -95,7 +116,6 @@ struct fs_aux_info {
 	u32 inode_table_blocks;
 	u32 groups;
 	u32 bg_desc_blocks;
-	u32 bg_desc_reserve_blocks;
 	u32 default_i_flags;
 	u32 blocks_per_ind;
 	u32 blocks_per_dind;
@@ -116,14 +136,16 @@ static inline int log_2(int j)
 }
 
 int ext4_bg_has_super_block(int bg);
-void write_ext4_image(const char *filename, int gz, int sparse);
+void write_ext4_image(const char *filename, int gz, int sparse, int crc);
 void ext4_create_fs_aux_info(void);
 void ext4_free_fs_aux_info(void);
 void ext4_fill_in_sb(void);
 void ext4_create_resize_inode(void);
 void ext4_create_journal_inode(void);
 void ext4_update_free(void);
+void ext4_queue_sb(void);
 u64 get_file_size(const char *filename);
 u64 parse_num(const char *arg);
+void ext4_parse_sb(struct ext4_super_block *sb);
 
 #endif

@@ -14,17 +14,17 @@
  * limitations under the License.
  */
 
-#include <stdlib.h>
-
 #include "ext4_utils.h"
 #include "backed_block.h"
+
+#include <stdlib.h>
 
 struct data_block {
 	u32 block;
 	u32 len;
 	u8 *data;
 	const char *filename;
-	off_t offset;
+	off64_t offset;
 	struct data_block *next;
 };
 
@@ -83,7 +83,7 @@ void queue_data_block(u8 *data, u32 len, u32 block)
 }
 
 /* Queues a chunk of a file on disk to be written to the specified data blocks */
-void queue_data_file(const char *filename, off_t offset, u32 len,
+void queue_data_file(const char *filename, off64_t offset, u32 len,
 	u32 block)
 {
 	struct data_block *db = malloc(sizeof(struct data_block));
@@ -102,7 +102,7 @@ void queue_data_file(const char *filename, off_t offset, u32 len,
 /* Iterates over the queued data blocks, calling data_func for each contiguous
    data block, and file_func for each contiguous file block */
 void for_each_data_block(data_block_callback_t data_func,
-	data_block_file_callback_t file_func, struct output_file *out)
+	data_block_file_callback_t file_func, void *priv)
 {
 	struct data_block *db;
 	u32 last_block = 0;
@@ -113,9 +113,9 @@ void for_each_data_block(data_block_callback_t data_func,
 		last_block = db->block + DIV_ROUND_UP(db->len, info.block_size) - 1;
 
 		if (db->filename)
-			file_func(out, (u64)db->block * info.block_size, db->filename, db->offset, db->len);
+			file_func(priv, (u64)db->block * info.block_size, db->filename, db->offset, db->len);
 		else
-			data_func(out, (u64)db->block * info.block_size, db->data, db->len);
+			data_func(priv, (u64)db->block * info.block_size, db->data, db->len);
 	}
 }
 

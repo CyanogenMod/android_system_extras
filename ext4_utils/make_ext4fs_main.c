@@ -46,8 +46,9 @@ int main(int argc, char **argv)
         int android = 0;
         int gzip = 0;
         int sparse = 0;
+        int crc = 0;
 
-        while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:fzJs")) != -1) {
+        while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:fzJsc")) != -1) {
                 switch (opt) {
                 case 'l':
                         info.len = parse_num(optarg);
@@ -83,6 +84,9 @@ int main(int argc, char **argv)
 		case 'J':
 			info.no_journal = 1;
 			break;
+		case 'c':
+			crc = 1;
+			break;
                 case 's':
                         sparse = 1;
                         break;
@@ -115,5 +119,6 @@ int main(int argc, char **argv)
                 exit(EXIT_FAILURE);
         }
 
-        return make_ext4fs(filename, directory, mountpoint, android, gzip, sparse);
+        return make_ext4fs(filename, directory, mountpoint, android, gzip,
+        		sparse, crc);
 }

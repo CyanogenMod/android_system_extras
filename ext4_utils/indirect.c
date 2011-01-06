@@ -14,15 +14,15 @@
  * limitations under the License.
  */
 
-#include <stdlib.h>
-#include <stdio.h>
-
 #include "ext4_utils.h"
 #include "ext4.h"
 #include "ext4_extents.h"
 #include "backed_block.h"
 #include "indirect.h"
 #include "allocate.h"
+
+#include <stdlib.h>
+#include <stdio.h>
 
 /* Creates data buffers for the first backing_len bytes of a block allocation
    and queues them to be written */
@@ -425,14 +425,14 @@ void inode_attach_resize(struct ext4_inode *inode,
 		struct block_allocation *alloc)
 {
 	u32 block_len = block_allocation_len(alloc);
-	u32 superblocks = block_len / aux_info.bg_desc_reserve_blocks;
+	u32 superblocks = block_len / info.bg_desc_reserve_blocks;
 	u32 i, j;
 	u64 blocks;
 	u64 size;
 
-	if (block_len % aux_info.bg_desc_reserve_blocks)
+	if (block_len % info.bg_desc_reserve_blocks)
 		critical_error("reserved blocks not a multiple of %d",
-				aux_info.bg_desc_reserve_blocks);
+				info.bg_desc_reserve_blocks);
 
 	append_oob_allocation(alloc, 1);
 	u32 dind_block = get_oob_block(alloc, 0);
@@ -442,28 +442,28 @@ void inode_attach_resize(struct ext4_inode *inode,
 		critical_error_errno("calloc");
 	queue_data_block((u8 *)dind_block_data, info.block_size, dind_block);
 
-	u32 *ind_block_data = calloc(info.block_size, aux_info.bg_desc_reserve_blocks);
+	u32 *ind_block_data = calloc(info.block_size, info.bg_desc_reserve_blocks);
 	if (!ind_block_data)
 		critical_error_errno("calloc");
 	queue_data_block((u8 *)ind_block_data,
-			info.block_size * aux_info.bg_desc_reserve_blocks,
+			info.block_size * info.bg_desc_reserve_blocks,
 			get_block(alloc, 0));
 
-	for (i = 0; i < aux_info.bg_desc_reserve_blocks; i++) {
-		int r = (i - aux_info.bg_desc_blocks) % aux_info.bg_desc_reserve_blocks;
+	for (i = 0; i < info.bg_desc_reserve_blocks; i++) {
+		int r = (i - aux_info.bg_desc_blocks) % info.bg_desc_reserve_blocks;
 		if (r < 0)
-			r += aux_info.bg_desc_reserve_blocks;
+			r += info.bg_desc_reserve_blocks;
 
 		dind_block_data[i] = get_block(alloc, r);
 
 		for (j = 1; j < superblocks; j++) {
-			u32 b = j * aux_info.bg_desc_reserve_blocks + r;
+			u32 b = j * info.bg_desc_reserve_blocks + r;
 			ind_block_data[r * aux_info.blocks_per_ind + j - 1] = get_block(alloc, b);
 		}
 	}
 
 	u32 last_block = EXT4_NDIR_BLOCKS + aux_info.blocks_per_ind +
-			aux_info.blocks_per_ind * (aux_info.bg_desc_reserve_blocks - 1) +
+			aux_info.blocks_per_ind * (info.bg_desc_reserve_blocks - 1) +
 			superblocks - 2;
 
 	blocks = ((u64)block_len + 1) * info.block_size / 512;

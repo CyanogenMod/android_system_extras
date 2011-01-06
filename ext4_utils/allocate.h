@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+#ifndef _ALLOCATE_H_
+#define _ALLOCATE_H_
+
 #define EXT4_ALLOCATE_FAILED (u32)(~0)
 
 #include "ext4_utils.h"
@@ -49,3 +52,5 @@ void append_region(struct block_allocation *alloc,
 	u32 block, u32 len, int bg);
 struct block_allocation *create_allocation();
 int append_oob_allocation(struct block_allocation *alloc, u32 len);
+
+#endif

@@ -64,11 +64,37 @@ include $(BUILD_HOST_EXECUTABLE)
 
 include $(CLEAR_VARS)
 
+LOCAL_SRC_FILES := ext2simg.c
+LOCAL_MODULE := ext2simg
+LOCAL_MODULE_TAGS := optional
+LOCAL_SHARED_LIBRARIES += libext4_utils libz
+
+include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := ext2simg.c
+LOCAL_MODULE := ext2simg
+LOCAL_MODULE_TAGS := optional
+LOCAL_STATIC_LIBRARIES += libext4_utils libz
+
+include $(BUILD_HOST_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
 LOCAL_SRC_FILES := simg2img.c \
 	sparse_crc32.c
 LOCAL_MODULE := simg2img
 
 include $(BUILD_HOST_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := simg2img.c \
+	sparse_crc32.c
+LOCAL_MODULE := simg2img
+
+include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
 
