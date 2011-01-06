@@ -177,7 +177,7 @@ int main(int argc, char *argv[])
 	if (strcmp(argv[2], "-") == 0) {
 		out = STDOUT_FILENO;
 	} else {
-		if ((out = open(argv[2], O_WRONLY | O_CREAT | O_TRUNC)) == 0) {
+		if ((out = open(argv[2], O_WRONLY | O_CREAT | O_TRUNC, 0666)) == 0) {
 			fprintf(stderr, "Cannot open output file %s\n", argv[2]);
 			exit(-1);
 		}
