@@ -88,23 +88,6 @@ class AddIntsService : public BBinder
     int cpu_;
 };
 
-// Workaround for missing sched_setaffinity(2) and getcpu(2)
-#ifndef CPU_SETSIZE
-#define HAVE_CUSTOM_CPU_SETSIZE 1
-#define CPU_SETSIZE 1024
-struct getcpu_cache;
-typedef struct { uint64_t bits[CPU_SETSIZE / 64]; } cpu_set_t;
-static int sched_getaffinity(pid_t pid, unsigned int cpusetsize,
-                             cpu_set_t *set);
-static int sched_setaffinity(pid_t pid, unsigned int cpusetsize,
-                             cpu_set_t *mask);
-//static int getcpu(unsigned *cpu, unsigned *node, struct getcpu_cache *tcache);
-static int sched_getcpu(void);
-static int CPU_ISSET(int cpu, const cpu_set_t *set);
-static void CPU_SET(int cpu, cpu_set_t *set);
-static void CPU_ZERO(cpu_set_t *set);
-#endif /* !CPU_SETSIZE */
-
 // File scope function prototypes
 static void server(void);
 static void client(void);
@@ -399,74 +382,3 @@ static ostream &operator<<(ostream &stream, const cpu_set_t& set)
 
     return stream;
 }
-
-#ifdef HAVE_CUSTOM_CPU_SETSIZE
-// ======== Local implementation of system calls with missing bionic call stubs
-static int sched_getaffinity(pid_t pid, unsigned int cpusetsize,
-                             cpu_set_t *set)
-{
-    int rv;
-
-    rv = syscall(__NR_sched_getaffinity, pid, cpusetsize, set);
-    if (rv < 0) { return rv; }
-
-    // Kernel implementation of sched_getaffinity() returns the number
-    // of bytes in the set that it set.  Set the rest of our set bits
-    // to 0.
-    memset(((char *) set) + rv, 0x00, sizeof(cpu_set_t) - rv);
-
-    return 0;
-}
-
-static int sched_setaffinity(pid_t pid, unsigned int cpusetsize,
-                             cpu_set_t *mask)
-{
-    int rv;
-
-    rv = syscall(__NR_sched_setaffinity, pid, cpusetsize, mask);
-
-    return rv;
-}
-
-static int getcpu(unsigned *cpu, unsigned *node, struct getcpu_cache *tcache)
-{
-    int rv;
-
-    rv = syscall(345, cpu, node, tcache);
-
-    return rv;
-}
-
-static int sched_getcpu(void)
-{
-    unsigned cpu;
-    int ret = getcpu(&cpu, NULL, NULL);
-    if (ret == 0)
-        ret = (int)cpu;
-}
-
-static int CPU_ISSET(int cpu, const cpu_set_t *set)
-{
-    if (cpu < 0) { return 0; }
-    if ((unsigned) cpu >= (sizeof(cpu_set_t) * CHAR_BIT)) { return 0; }
-
-    if ((*((uint64_t *)set + (cpu / 64))) & (1ULL << (cpu % 64))) {
-        return true;
-    }
-
-    return false;
-}
-
-static void CPU_SET(int cpu, cpu_set_t *set)
-{
-    if (cpu < 0) { return; }
-    if ((unsigned) cpu > (sizeof(cpu_set_t) * CHAR_BIT)) { return; }
-
-    *((uint64_t *)set + (cpu / 64)) |= 1ULL << (cpu % 64);
-}
-
-static void CPU_ZERO(cpu_set_t *set)
-{
-    memset(set, 0x00, sizeof(cpu_set_t));
-}
-#endif /* HAVE_CUSTOM_CPU_SETSIZE */
