@@ -294,7 +294,7 @@ static void client(void)
             cerr << "expected: " << expected << endl;
         }
 
-        if (options.iterDelay > 0.0) { testDelay(options.iterDelay); }
+        if (options.iterDelay > 0.0) { testDelaySpin(options.iterDelay); }
     }
 
     // Display the results

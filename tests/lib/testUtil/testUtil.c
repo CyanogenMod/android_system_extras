@@ -282,6 +282,27 @@ void testDelay(float amt)
     } while (true);
 }
 
+// Delay spins for the number of seconds specified by amt or a greater
+// amount.  The amt variable is of type float and thus non-integer amounts
+// of time can be specified.  Differs from testDelay() in that
+// testDelaySpin() performs a spin loop, instead of using nanosleep().
+void testDelaySpin(float amt)
+{
+    struct timespec   start, current, delta;
+
+    // Get the time at which we started
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
+    do {
+        // Get current time
+        clock_gettime(CLOCK_MONOTONIC, &current);
+
+        // How much time is left
+        delta = tsDelta(&start, &current);
+        if (ts2double(&delta) > amt) { break; }
+    } while (true);
+}
+
 /*
  * Hex Dump
  *

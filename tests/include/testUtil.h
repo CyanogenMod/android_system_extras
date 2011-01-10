@@ -35,6 +35,7 @@ struct timeval tvDelta(const struct timeval *first,
     const struct timeval *second);
 
 void testDelay(float amt);
+void testDelaySpin(float amt);
 
 // Pseudo Random Utilities
 int testRandBool(void);
