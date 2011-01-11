@@ -28,19 +28,15 @@
 #include <linux/fb.h>
 #include <linux/kd.h>
 
-#include <pixelflinger/pixelflinger.h>
+struct simple_fb {
+    void *data;
+    int width;
+    int height;
+    int stride;
+    int bpp;
+};
 
-#include "minui.h"
-
-typedef struct {
-    GGLSurface texture;
-    unsigned cwidth;
-    unsigned cheight;
-    unsigned ascent;
-} GRFont;
-
-static GGLContext *gr_context = 0;
-static GGLSurface gr_framebuffer[2];
+static struct simple_fb gr_fbs[2];
 static unsigned gr_active_fb = 0;
 
 static int gr_fb_fd = -1;
@@ -53,10 +49,11 @@ struct timespec tv, tv2;
 static void dumpinfo(struct fb_fix_screeninfo *fi,
                      struct fb_var_screeninfo *vi);
 
-static int get_framebuffer(GGLSurface *fb)
+static int get_framebuffer(struct simple_fb *fb, unsigned bpp)
 {
     int fd;
     void *bits;
+    int bytes_per_pixel;
 
     fd = open("/dev/graphics/fb0", O_RDWR);
     if (fd < 0) {
@@ -67,12 +64,21 @@ static int get_framebuffer(GGLSurface *fb)
         }
     }
 
-    if(ioctl(fd, FBIOGET_FSCREENINFO, &fi) < 0) {
+    if(ioctl(fd, FBIOGET_VSCREENINFO, &vi) < 0) {
         perror("failed to get fb0 info");
         return -1;
     }
 
-    if(ioctl(fd, FBIOGET_VSCREENINFO, &vi) < 0) {
+    if (bpp && vi.bits_per_pixel != bpp) {
+        printf("bpp != %d, forcing...\n", bpp);
+        vi.bits_per_pixel = bpp;
+        if(ioctl(fd, FBIOPUT_VSCREENINFO, &vi) < 0) {
+            perror("failed to force bpp");
+            return -1;
+        }
+    }
+
+    if(ioctl(fd, FBIOGET_FSCREENINFO, &fi) < 0) {
         perror("failed to get fb0 info");
         return -1;
     }
@@ -85,21 +91,22 @@ static int get_framebuffer(GGLSurface *fb)
         return -1;
     }
 
-    fb->version = sizeof(*fb);
+    bytes_per_pixel = vi.bits_per_pixel >> 3;
+
     fb->width = vi.xres;
     fb->height = vi.yres;
-    fb->stride = fi.line_length / (vi.bits_per_pixel >> 3);
+    fb->stride = fi.line_length / bytes_per_pixel;
     fb->data = bits;
-    fb->format = GGL_PIXEL_FORMAT_RGB_565;
+    fb->bpp = vi.bits_per_pixel;
 
     fb++;
 
-    fb->version = sizeof(*fb);
     fb->width = vi.xres;
     fb->height = vi.yres;
-    fb->stride = fi.line_length / (vi.bits_per_pixel >> 3);
-    fb->data = (void*) (((unsigned) bits) + vi.yres * vi.xres * 2);
-    fb->format = GGL_PIXEL_FORMAT_RGB_565;
+    fb->stride = fi.line_length / bytes_per_pixel;
+    fb->data = (void *)((unsigned long)bits +
+                        vi.yres * vi.xres * bytes_per_pixel);
+    fb->bpp = vi.bits_per_pixel;
 
     return fd;
 }
@@ -129,7 +136,7 @@ static void dumpinfo(struct fb_fix_screeninfo *fi, struct fb_var_screeninfo *vi)
 
 }
 
-int gr_init(void)
+int gr_init(int bpp, int id)
 {
     int fd = -1;
 
@@ -144,7 +151,7 @@ int gr_init(void)
         }
     }
 
-    gr_fb_fd = get_framebuffer(gr_framebuffer);
+    gr_fb_fd = get_framebuffer(gr_fbs, bpp);
 
     if(gr_fb_fd < 0) {
         if (fd >= 0) {
@@ -157,8 +164,8 @@ int gr_init(void)
     gr_vt_fd = fd;
 
         /* start with 0 as front (displayed) and 1 as back (drawing) */
-    gr_active_fb = 0;
-    set_active_framebuffer(0);
+    gr_active_fb = id;
+    set_active_framebuffer(id);
 
     return 0;
 }
@@ -177,67 +184,103 @@ void gr_exit(void)
 
 int gr_fb_width(void)
 {
-    return gr_framebuffer[0].width;
+    return gr_fbs[0].width;
 }
 
 int gr_fb_height(void)
 {
-    return gr_framebuffer[0].height;
+    return gr_fbs[0].height;
 }
 
 uint16_t red = 0xf800;
 uint16_t green = 0x07e0;
 uint16_t blue = 0x001f;
+uint16_t white = 0xffff;
+uint16_t black = 0x0;
 
-void draw_grid(int w, int h, uint16_t* loc) {
-  int i, j;
-  int v;
-  int stride = fi.line_length / (vi.bits_per_pixel >> 3);
+uint32_t red32 = 0x00ff0000;
+uint32_t green32 = 0x0000ff00;
+uint32_t blue32 = 0x000000ff;
+uint32_t white32 = 0x00ffffff;
+uint32_t black32 = 0x0;
 
-  for (j = 0; j < h/2; j++) {
-    for (i = 0; i < w/2; i++)
-      loc[i + j*(stride)] = red;
-    for (; i < w; i++)
-      loc[i + j*(stride)] = green;
-  }
-  for (; j < h; j++) {
-    for (i = 0; i < w/2; i++)
-      loc[i + j*(stride)] = blue;
-    for (; i < w; i++)
-      loc[i + j*(stride)] = 0xffff;
-  }
+void draw_grid(int w, int h, void* _loc) {
+    int i, j;
+    int v;
+    int stride = fi.line_length / (vi.bits_per_pixel >> 3);
+    uint16_t *loc = _loc;
+    uint32_t *loc32 = _loc;
+
+    for (j = 0; j < h/2; j++) {
+        for (i = 0; i < w/2; i++)
+            if (vi.bits_per_pixel == 16)
+                loc[i + j*(stride)] = red;
+            else
+                loc32[i + j*(stride)] = red32;
+        for (; i < w; i++)
+            if (vi.bits_per_pixel == 16)
+                loc[i + j*(stride)] = green;
+            else
+                loc32[i + j*(stride)] = green32;
+    }
+
+    for (; j < h; j++) {
+        for (i = 0; i < w/2; i++)
+            if (vi.bits_per_pixel == 16)
+                loc[i + j*(stride)] = blue;
+            else
+                loc32[i + j*(stride)] = blue32;
+        for (; i < w; i++)
+            if (vi.bits_per_pixel == 16)
+                loc[i + j*(stride)] = white;
+            else
+                loc32[i + j*(stride)] = white32;
+    }
 
 }
 
-void clear_screen(int w, int h, uint16_t* loc)
+void clear_screen(int w, int h, void* _loc)
 {
     int i,j;
     int stride = fi.line_length / (vi.bits_per_pixel >> 3);
+    uint16_t *loc = _loc;
+    uint32_t *loc32 = _loc;
 
-  for (j = 0; j < h; j++)
-    for (i = 0; i < w; i++)
-      loc[i + j*(stride)] = 0x0000;
+    for (j = 0; j < h; j++)
+        for (i = 0; i < w; i++)
+            if (vi.bits_per_pixel == 16)
+                loc[i + j*(stride)] = black;
+            else
+                loc32[i + j*(stride)] = black32;
 }
 
 int main(int argc, char **argv) {
   int w;
   int h;
   int id = 0;
-  gr_init();
-  w = vi.xres;
-  h = vi.yres;
-  clear_screen(w, h, (uint16_t *)gr_framebuffer[0].data);
-  clear_screen(w, h, (uint16_t *)gr_framebuffer[1].data);
+  int bpp = 0;
 
-  if (argc > 2) {
-    w = atoi(argv[1]);
-    h = atoi(argv[2]);
+  if (argc > 1)
+      bpp = atoi(argv[1]);
+
+  if (argc > 4)
+      id = !!atoi(argv[4]);
+
+  gr_init(bpp, id);
+
+  if (argc > 3) {
+      w = atoi(argv[2]);
+      h = atoi(argv[3]);
+  } else {
+      w = vi.xres;
+      h = vi.yres;
   }
 
-  if (argc > 3)
-      id = !!atoi(argv[3]);
+  clear_screen(vi.xres, vi.yres, gr_fbs[0].data);
+  clear_screen(vi.xres, vi.yres, gr_fbs[1].data);
 
-  draw_grid(w, h, (uint16_t *)gr_framebuffer[id].data);
+  draw_grid(w, h, gr_fbs[id].data);
+
   set_active_framebuffer(!id);
   set_active_framebuffer(id);
 
