@@ -142,6 +142,8 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 		dentries[i].size = stat.st_size;
 		dentries[i].mode = stat.st_mode & (S_ISUID|S_ISGID|S_ISVTX|S_IRWXU|S_IRWXG|S_IRWXO);
 		dentries[i].mtime = stat.st_mtime;
+		dentries[i].uid = stat.st_uid;
+		dentries[i].gid = stat.st_gid;
 		if (fs_config_func != NULL) {
 #ifdef ANDROID
 			unsigned int mode = 0;
