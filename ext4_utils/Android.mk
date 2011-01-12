@@ -57,6 +57,20 @@ include $(BUILD_EXECUTABLE)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := make_ext4fs_main.c
+LOCAL_MODULE := utility_make_ext4fs
+LOCAL_MODULE_STEM := make_ext4fs
+LOCAL_MODULE_TAGS := optional
+LOCAL_FORCE_STATIC_EXECUTABLE := true
+LOCAL_MODULE_CLASS := UTILITY_EXECUTABLES
+LOCAL_MODULE_PATH := $(PRODUCT_OUT)/utilities
+LOCAL_UNSTRIPPED_PATH := $(PRODUCT_OUT)/symbols/utilities
+LOCAL_STATIC_LIBRARIES += libext4_utils libz libcutils libc
+
+include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := make_ext4fs_main.c
 LOCAL_MODULE := make_ext4fs
 LOCAL_STATIC_LIBRARIES += libext4_utils libz
 
