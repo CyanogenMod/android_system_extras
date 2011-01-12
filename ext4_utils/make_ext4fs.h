@@ -23,5 +23,6 @@
 void reset_ext4fs_info();
 int make_ext4fs(const char *filename, const char *directory,
                 char *mountpoint, int android, int gzip, int sparse);
+void set_ext4fs_len(int len);
 
 #endif

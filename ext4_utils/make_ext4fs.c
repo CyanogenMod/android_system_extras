@@ -228,6 +228,10 @@ void reset_ext4fs_info() {
     free_data_blocks();
 }
 
+void set_ext4fs_len(int len) {
+    info.len = len;
+}
+
 int make_ext4fs(const char *filename, const char *directory,
                 char *mountpoint, int android, int gzip, int sparse)
 {
