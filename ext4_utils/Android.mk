@@ -96,8 +96,6 @@ LOCAL_SHARED_LIBRARIES += libselinux
 LOCAL_CFLAGS += -DHAVE_SELINUX
 endif # HAVE_SELINUX
 
-include $(BUILD_EXECUTABLE)
-
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := ext2simg.c
