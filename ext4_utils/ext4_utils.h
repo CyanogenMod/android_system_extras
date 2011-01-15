@@ -76,6 +76,7 @@ extern int force;
 #define __u8 u8
 
 typedef unsigned long long u64;
+typedef signed long long s64;
 typedef unsigned int u32;
 typedef unsigned short int u16;
 typedef unsigned char u8;
@@ -94,7 +95,9 @@ struct ext2_group_desc {
 };
 
 struct fs_info {
-	u64 len;
+	s64 len;	/* If set to 0, ask the block device for the size,
+			 * if less than 0, reserve that much space at the
+			 * end of the partition, else use the size given. */
 	u32 block_size;
 	u32 blocks_per_group;
 	u32 inodes_per_group;
