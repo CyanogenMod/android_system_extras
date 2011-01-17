@@ -61,6 +61,7 @@ endef
 # First, the tests in 'common'
 
 sources := \
+    common/test_clock.c \
     common/test_cpu_set.c \
     common/test_drand48.c \
     common/test_executable_destructor.c \
