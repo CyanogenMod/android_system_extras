@@ -333,7 +333,7 @@ void pad_output_file(struct output_file *out, u64 len)
 {
 	int ret;
 
-	if (len > info.len) {
+	if (len > (u64) info.len) {
 		error("attempted to pad file %llu bytes past end of filesystem",
 				len - info.len);
 		return;
@@ -370,7 +370,7 @@ void write_data_block(struct output_file *out, u64 off, u8 *data, int len)
 {
 	int ret;
 	
-	if (off + len > info.len) {
+	if (off + len > (u64) info.len) {
 		error("attempted to write block %llu past end of filesystem",
 				off + len - info.len);
 		return;
@@ -397,7 +397,7 @@ void write_data_file(struct output_file *out, u64 off, const char *file,
 	off64_t aligned_offset;
 	int aligned_diff;
 
-	if (off + len >= info.len) {
+	if (off + len >= (u64) info.len) {
 		error("attempted to write block %llu past end of filesystem",
 				off + len - info.len);
 		return;

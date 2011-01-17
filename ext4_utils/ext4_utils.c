@@ -103,7 +103,7 @@ int count_sparse_chunks()
 
 	for_each_data_block(count_data_block, count_file_block, &count_chunks);
 
-	if (count_chunks.cur_ptr != info.len)
+	if (count_chunks.cur_ptr != (u64) info.len)
 		count_chunks.chunks++;
 
 	return count_chunks.chunks;
@@ -442,17 +442,29 @@ u64 get_file_size(const char *filename)
 {
 	struct stat buf;
 	int ret;
+	u64 reserve_len = 0;
+	s64 computed_size;
 
 	ret = stat(filename, &buf);
 	if (ret)
 		return 0;
 
+	if (info.len < 0)
+		reserve_len = -info.len;
+
 	if (S_ISREG(buf.st_mode))
-		return buf.st_size;
+		computed_size = buf.st_size - reserve_len;
 	else if (S_ISBLK(buf.st_mode))
-		return get_block_device_size(filename);
+		computed_size = get_block_device_size(filename) - reserve_len;
 	else
-		return 0;
+		computed_size = 0;
+
+	if (computed_size < 0) {
+		warn("Computed filesystem size less than 0");
+		computed_size = 0;
+	}
+
+	return computed_size;
 }
 
 u64 parse_num(const char *arg)

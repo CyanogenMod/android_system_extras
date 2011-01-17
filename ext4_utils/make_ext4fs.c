@@ -249,7 +249,7 @@ int make_ext4fs(const char *filename, const char *directory,
         u32 root_inode_num;
         u16 root_mode;
 
-	if (info.len == 0)
+	if (info.len <= 0)
 		info.len = get_file_size(filename);
 
 	if (info.len <= 0) {
