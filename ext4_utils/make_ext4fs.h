@@ -21,8 +21,9 @@
 #include "ext4.h"
 
 void reset_ext4fs_info();
-int make_ext4fs(const char *filename, const char *directory,
-                char *mountpoint, int android, int gzip, int sparse,
-                int crc);
+int make_ext4fs(const char *filename, s64 len);
+int make_ext4fs_internal(const char *filename, const char *directory,
+                         char *mountpoint, int android, int gzip, int sparse,
+                         int crc);
 
 #endif

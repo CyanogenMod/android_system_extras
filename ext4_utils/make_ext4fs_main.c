@@ -119,6 +119,6 @@ int main(int argc, char **argv)
                 exit(EXIT_FAILURE);
         }
 
-        return make_ext4fs(filename, directory, mountpoint, android, gzip,
+        return make_ext4fs_internal(filename, directory, mountpoint, android, gzip,
         		sparse, crc);
 }

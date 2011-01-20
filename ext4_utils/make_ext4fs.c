@@ -242,9 +242,16 @@ void reset_ext4fs_info() {
     free_data_blocks();
 }
 
-int make_ext4fs(const char *filename, const char *directory,
-                char *mountpoint, int android, int gzip, int sparse,
-                int crc)
+int make_ext4fs(const char *filename, s64 len)
+{
+    reset_ext4fs_info();
+    info.len = len;
+    return make_ext4fs_internal(filename, NULL, NULL, 0, 0, 0, 0);
+}
+
+int make_ext4fs_internal(const char *filename, const char *directory,
+                         char *mountpoint, int android, int gzip, int sparse,
+                         int crc)
 {
         u32 root_inode_num;
         u16 root_mode;
