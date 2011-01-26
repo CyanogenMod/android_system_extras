@@ -51,7 +51,7 @@ static struct ext4_dir_entry_2 *add_dentry(u8 *data, u32 *offset,
 	struct ext4_dir_entry_2 *dentry;
 
 	u32 start_block = *offset / info.block_size;
-	u32 end_block = (*offset + rec_len) / info.block_size;
+	u32 end_block = (*offset + rec_len - 1) / info.block_size;
 	if (start_block != end_block) {
 		/* Adding this dentry will cross a block boundary, so pad the previous
 		   dentry to the block boundary */
