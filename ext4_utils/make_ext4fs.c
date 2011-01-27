@@ -246,12 +246,12 @@ int make_ext4fs(const char *filename, s64 len)
 {
     reset_ext4fs_info();
     info.len = len;
-    return make_ext4fs_internal(filename, NULL, NULL, 0, 0, 0, 0);
+    return make_ext4fs_internal(filename, NULL, NULL, 0, 0, 0, 0, 1);
 }
 
 int make_ext4fs_internal(const char *filename, const char *directory,
                          char *mountpoint, int android, int gzip, int sparse,
-                         int crc)
+                         int crc, int wipe)
 {
         u32 root_inode_num;
         u16 root_mode;
@@ -349,7 +349,7 @@ int make_ext4fs_internal(const char *filename, const char *directory,
 			aux_info.sb->s_blocks_count_lo - aux_info.sb->s_free_blocks_count_lo,
 			aux_info.sb->s_blocks_count_lo);
 
-	write_ext4_image(filename, gzip, sparse, crc);
+	write_ext4_image(filename, gzip, sparse, crc, wipe);
 
 	return 0;
 }

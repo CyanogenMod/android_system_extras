@@ -141,7 +141,8 @@ static inline int log_2(int j)
 }
 
 int ext4_bg_has_super_block(int bg);
-void write_ext4_image(const char *filename, int gz, int sparse, int crc);
+void write_ext4_image(const char *filename, int gz, int sparse, int crc,
+		int wipe);
 void ext4_create_fs_aux_info(void);
 void ext4_free_fs_aux_info(void);
 void ext4_fill_in_sb(void);
