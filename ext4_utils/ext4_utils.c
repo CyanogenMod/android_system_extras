@@ -120,11 +120,12 @@ static void ext4_write_data_file(void *priv, u64 off, const char *file,
 }
 
 /* Write the filesystem image to a file */
-void write_ext4_image(const char *filename, int gz, int sparse, int crc)
+void write_ext4_image(const char *filename, int gz, int sparse, int crc,
+		int wipe)
 {
 	int ret = 0;
 	struct output_file *out = open_output_file(filename, gz, sparse,
-	        count_sparse_chunks(), crc);
+	        count_sparse_chunks(), crc, wipe);
 
 	if (!out)
 		return;

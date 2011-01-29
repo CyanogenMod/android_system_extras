@@ -222,7 +222,7 @@ int main(int argc, char **argv)
 
 	close(fd);
 
-	write_ext4_image(out, gzip, sparse, crc);
+	write_ext4_image(out, gzip, sparse, crc, 0);
 
 	return 0;
 }

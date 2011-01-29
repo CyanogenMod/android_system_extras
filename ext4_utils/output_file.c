@@ -18,6 +18,7 @@
 #include "output_file.h"
 #include "sparse_format.h"
 #include "sparse_crc32.h"
+#include "wipe.h"
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -270,7 +271,7 @@ void close_output_file(struct output_file *out)
 }
 
 struct output_file *open_output_file(const char *filename, int gz, int sparse,
-        int chunks, int crc)
+        int chunks, int crc, int wipe)
 {
 	int ret;
 	struct output_file *out = malloc(sizeof(struct output_file));
@@ -313,6 +314,9 @@ struct output_file *open_output_file(const char *filename, int gz, int sparse,
 	/* Initialize the crc32 value */
 	out->crc32 = 0;
 	out->use_crc = crc;
+
+	if (wipe)
+		wipe_block_device(out->fd, info.len);
 
 	if (out->sparse) {
 		sparse_header.blk_sz = info.block_size,

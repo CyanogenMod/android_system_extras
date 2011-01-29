@@ -20,7 +20,7 @@
 struct output_file;
 
 struct output_file *open_output_file(const char *filename, int gz, int sparse,
-        int chunks, int crc);
+        int chunks, int crc, int wipe);
 void write_data_block(struct output_file *out, u64 off, u8 *data, int len);
 void write_data_file(struct output_file *out, u64 off, const char *file,
 		     off64_t offset, int len);

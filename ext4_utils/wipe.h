@@ -14,16 +14,9 @@
  * limitations under the License.
  */
 
-#ifndef _MAKE_EXT4FS_H_
-#define _MAKE_EXT4FS_H_
+#ifndef _WIPE_H_
+#define _WIPE_H_
 
-#include "ext4_utils.h"
-#include "ext4.h"
-
-void reset_ext4fs_info();
-int make_ext4fs(const char *filename, s64 len);
-int make_ext4fs_internal(const char *filename, const char *directory,
-                         char *mountpoint, int android, int gzip, int sparse,
-                         int crc, int wipe);
+int wipe_block_device(int fd, int len);
 
 #endif
