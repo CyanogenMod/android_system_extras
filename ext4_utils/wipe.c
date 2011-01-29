@@ -54,7 +54,7 @@ int wipe_block_device(int fd, int len)
 	return 0;
 }
 #else
-int wipe_block_device(int fd)
+int wipe_block_device(int fd, int len)
 {
 	error("wipe not supported on non-linux platforms");
 	return 1;
