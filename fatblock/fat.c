@@ -16,7 +16,7 @@
 
 #include <assert.h>
 #include <string.h>
-#include <sys/endian.h>
+#include <endian.h>
 
 #include "fat.h"
 
