@@ -17,6 +17,6 @@
 #ifndef _WIPE_H_
 #define _WIPE_H_
 
-int wipe_block_device(int fd, int len);
+int wipe_block_device(int fd, s64 len);
 
 #endif
