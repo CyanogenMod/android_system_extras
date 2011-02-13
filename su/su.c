@@ -24,7 +24,7 @@
 
 #include <sqlite3.h>
 
-extern char* mktemp(char*); /* mktemp links okay*/
+//extern char* mktemp(char*); /* mktemp links okay*/
 
 #include "su.h"
 
