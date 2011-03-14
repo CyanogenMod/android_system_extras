@@ -171,7 +171,7 @@ $(call device-test, $(sources))
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := bionic/lib_relocs.c
 LOCAL_MODULE    := libtest_relocs
-LOCAL_PRELINK_MODULE := false
+
 LOCAL_MODULE_TAGS := tests
 include $(BUILD_SHARED_LIBRARY)
 
@@ -190,7 +190,7 @@ include $(BUILD_EXECUTABLE)
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := bionic/lib_static_init.cpp
 LOCAL_MODULE    := libtest_static_init
-LOCAL_PRELINK_MODULE := false
+
 LOCAL_MODULE_TAGS := tests
 include $(BUILD_SHARED_LIBRARY)
 
@@ -206,7 +206,7 @@ include $(BUILD_EXECUTABLE)
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := bionic/libdlclosetest1.cpp
 LOCAL_MODULE := libdlclosetest1
-LOCAL_PRELINK_MODULE := false
+
 LOCAL_MODULE_TAGS := tests
 include $(BUILD_SHARED_LIBRARY)
 
@@ -215,7 +215,7 @@ include $(BUILD_SHARED_LIBRARY)
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := bionic/libdlclosetest2.c
 LOCAL_MODULE := libdlclosetest2
-LOCAL_PRELINK_MODULE := false
+
 LOCAL_MODULE_TAGS := tests
 include $(BUILD_SHARED_LIBRARY)
 

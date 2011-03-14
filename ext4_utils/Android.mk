@@ -22,7 +22,7 @@ LOCAL_MODULE := libext4_utils
 LOCAL_MODULE_TAGS := optional
 LOCAL_C_INCLUDES += external/zlib
 LOCAL_SHARED_LIBRARIES := libz
-LOCAL_PRELINK_MODULE := false
+
 
 include $(BUILD_SHARED_LIBRARY)
 
@@ -33,7 +33,7 @@ LOCAL_MODULE := libext4_utils
 LOCAL_MODULE_TAGS := optional
 LOCAL_C_INCLUDES += external/zlib
 LOCAL_STATIC_LIBRARIES := libz
-LOCAL_PRELINK_MODULE := false
+
 
 include $(BUILD_STATIC_LIBRARY)
 

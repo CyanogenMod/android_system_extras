@@ -23,6 +23,6 @@ LOCAL_SRC_FILES:= testUtil.c
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/../../include
 LOCAL_CFLAGS += -std=c99
 LOCAL_SHARED_LIBRARIES += libcutils libutils
-LOCAL_PRELINK_MODULE := false
+
 
 include $(BUILD_STATIC_LIBRARY)
