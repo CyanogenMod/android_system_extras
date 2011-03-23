@@ -30,7 +30,7 @@
 #define BLKSECDISCARD _IO(0x12,125)
 #endif
 
-int wipe_block_device(int fd, int len)
+int wipe_block_device(int fd, s64 len)
 {
 	u64 range[2];
 	int ret;
@@ -43,7 +43,7 @@ int wipe_block_device(int fd, int len)
 		range[1] = len;
 		ret = ioctl(fd, BLKDISCARD, &range);
 		if (ret < 0) {
-			error("Discard failed\n");
+			warn("Discard failed\n");
 			return 1;
 		} else {
 			warn("Wipe via secure discard failed, used discard instead\n");
@@ -54,7 +54,7 @@ int wipe_block_device(int fd, int len)
 	return 0;
 }
 #else
-int wipe_block_device(int fd, int len)
+int wipe_block_device(int fd, s64 len)
 {
 	error("wipe not supported on non-linux platforms");
 	return 1;
