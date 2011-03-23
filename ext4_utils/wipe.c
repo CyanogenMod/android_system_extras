@@ -43,7 +43,7 @@ int wipe_block_device(int fd, s64 len)
 		range[1] = len;
 		ret = ioctl(fd, BLKDISCARD, &range);
 		if (ret < 0) {
-			error("Discard failed\n");
+			warn("Discard failed\n");
 			return 1;
 		} else {
 			warn("Wipe via secure discard failed, used discard instead\n");
