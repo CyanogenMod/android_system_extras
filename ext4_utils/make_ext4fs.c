@@ -256,6 +256,9 @@ int make_ext4fs_internal(const char *filename, const char *directory,
         u32 root_inode_num;
         u16 root_mode;
 
+	if (setjmp(setjmp_env))
+		return EXIT_FAILURE; /* Handle a call to longjmp() */
+
 	if (info.len <= 0)
 		info.len = get_file_size(filename);
 
