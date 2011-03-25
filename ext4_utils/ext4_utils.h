@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <setjmp.h>
 
 #if defined(__APPLE__) && defined(__MACH__)
 #define lseek64 lseek
@@ -49,9 +50,9 @@ static inline void *mmap64(void *addr, size_t length, int prot, int flags,
 extern int force;
 
 #define warn(fmt, args...) do { fprintf(stderr, "warning: %s: " fmt "\n", __func__, ## args); } while (0)
-#define error(fmt, args...) do { fprintf(stderr, "error: %s: " fmt "\n", __func__, ## args); if (!force) exit(EXIT_FAILURE); } while (0)
+#define error(fmt, args...) do { fprintf(stderr, "error: %s: " fmt "\n", __func__, ## args); if (!force) longjmp(setjmp_env, EXIT_FAILURE); } while (0)
 #define error_errno(s, args...) error(s ": %s", ##args, strerror(errno))
-#define critical_error(fmt, args...) do { fprintf(stderr, "critical error: %s: " fmt "\n", __func__, ## args); exit(EXIT_FAILURE); } while (0)
+#define critical_error(fmt, args...) do { fprintf(stderr, "critical error: %s: " fmt "\n", __func__, ## args); longjmp(setjmp_env, EXIT_FAILURE); } while (0)
 #define critical_error_errno(s, args...) critical_error(s ": %s", ##args, strerror(errno))
 
 #define EXT4_SUPER_MAGIC 0xEF53
@@ -129,6 +130,8 @@ struct fs_aux_info {
 
 extern struct fs_info info;
 extern struct fs_aux_info aux_info;
+
+extern jmp_buf setjmp_env;
 
 static inline int log_2(int j)
 {

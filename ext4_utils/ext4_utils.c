@@ -42,6 +42,8 @@ int force = 0;
 struct fs_info info;
 struct fs_aux_info aux_info;
 
+jmp_buf setjmp_env;
+
 /* returns 1 if a is a power of b */
 static int is_power_of(int a, int b)
 {
