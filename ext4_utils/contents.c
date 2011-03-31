@@ -39,6 +39,11 @@ static u32 dentry_size(u32 entries, struct dentry *dentries)
 		len += dentry_len;
 	}
 
+	/* include size of the dentry used to pad until the end of the block */
+	if (len % info.block_size + 8 > info.block_size)
+		len += info.block_size - (len % info.block_size);
+	len += 8;
+
 	return len;
 }
 
