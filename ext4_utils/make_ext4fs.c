@@ -214,7 +214,8 @@ static u32 compute_inodes_per_group()
 {
 	u32 blocks = DIV_ROUND_UP(info.len, info.block_size);
 	u32 block_groups = DIV_ROUND_UP(blocks, info.blocks_per_group);
-	return DIV_ROUND_UP(info.inodes, block_groups);
+	u32 inodes = DIV_ROUND_UP(info.inodes, block_groups);
+	return ALIGN(inodes, (info.block_size / info.inode_size));
 }
 
 static u32 compute_bg_desc_reserve_blocks()
