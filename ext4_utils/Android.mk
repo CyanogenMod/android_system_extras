@@ -98,6 +98,13 @@ LOCAL_MODULE := simg2img
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
+LOCAL_SRC_FILES := setup_fs.c
+LOCAL_MODULE := setup_fs
+LOCAL_MODULE_TAGS := optional
+LOCAL_SHARED_LIBRARIES += libcutils
+include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
 
 LOCAL_MODULE := mkuserimg.sh
 LOCAL_SRC_FILES := mkuserimg.sh
