@@ -279,6 +279,7 @@ struct output_file *open_output_file(const char *filename, int gz, int sparse)
 	zero_buf = malloc(info.block_size);
 	if (!zero_buf) {
 		error_errno("malloc zero_buf");
+		free(out);
 		return NULL;
 	}
 	memset(zero_buf, '\0', info.block_size);
@@ -418,10 +419,6 @@ void write_data_file(struct output_file *out, u64 off, const char *file,
 		if (ret < 0)
 			goto err;
 	}
-
-	munmap(data, len);
-
-	close(file_fd);
 
 err:
 	munmap(data, len);
