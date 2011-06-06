@@ -14,6 +14,7 @@ int setup_fs(const char *blockdev)
     char buf[256], path[128];
     pid_t child;
     int status, n;
+    pid_t pid;
 
         /* we might be looking at an indirect reference */
     n = readlink(blockdev, path, sizeof(path) - 1);
@@ -27,13 +28,13 @@ int setup_fs(const char *blockdev)
         fprintf(stderr,"not a block device name: %s\n", blockdev);
         return 0;
     }
-    
-    sprintf(buf,"/sys/fs/ext4/%s", blockdev);
+
+    snprintf(buf, sizeof(buf), "/sys/fs/ext4/%s", blockdev);
     if (access(buf, F_OK) == 0) {
         fprintf(stderr,"device %s already has a filesystem\n", blockdev);
         return 0;
     }
-    sprintf(buf,"/dev/block/%s", blockdev);
+    snprintf(buf, sizeof(buf), "/dev/block/%s", blockdev);
 
     if (!partition_wiped(buf)) {
         fprintf(stderr,"device %s not wiped, probably encrypted, not wiping\n", blockdev);
@@ -44,7 +45,7 @@ int setup_fs(const char *blockdev)
 
     child = fork();
     if (child < 0) {
-        fprintf(stderr,"error: fork failed\n");
+        fprintf(stderr,"error: setup_fs: fork failed\n");
         return 0;
     }
     if (child == 0) {
@@ -52,7 +53,12 @@ int setup_fs(const char *blockdev)
         exit(-1);
     }
 
-    while (waitpid(-1, &status, 0) != child) ;
+    while ((pid=waitpid(-1, &status, 0)) != child) {
+        if (pid == -1) {
+            fprintf(stderr, "error: setup_fs: waitpid failed!\n");
+            return 1;
+        }
+    }
 
     fprintf(stderr,"---\n");
     return 1;
