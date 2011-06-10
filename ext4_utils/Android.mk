@@ -5,6 +5,7 @@ include $(CLEAR_VARS)
 
 libext4_utils_src_files := \
 	make_ext4fs.c \
+        ext4fixup.c \
         ext4_utils.c \
         allocate.c \
         backed_block.c \
@@ -103,6 +104,24 @@ LOCAL_MODULE := setup_fs
 LOCAL_MODULE_TAGS := optional
 LOCAL_SHARED_LIBRARIES += libcutils
 include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := ext4fixup_main.c
+LOCAL_MODULE := ext4fixup
+LOCAL_MODULE_TAGS := optional
+LOCAL_SHARED_LIBRARIES += libext4_utils libz
+
+include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := ext4fixup_main.c
+LOCAL_MODULE := ext4fixup
+LOCAL_MODULE_TAGS := optional
+LOCAL_STATIC_LIBRARIES += libext4_utils libz
+
+include $(BUILD_HOST_EXECUTABLE)
 
 include $(CLEAR_VARS)
 
