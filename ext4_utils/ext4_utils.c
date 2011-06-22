@@ -304,7 +304,7 @@ void ext4_parse_sb(struct ext4_super_block *sb)
 	if (sb->s_magic != EXT4_SUPER_MAGIC)
 		error("superblock magic incorrect");
 
-	if (sb->s_state != EXT4_VALID_FS)
+	if ((sb->s_state & EXT4_VALID_FS) != EXT4_VALID_FS)
 		error("filesystem state not valid");
 
 	info.block_size = 1024 << sb->s_log_block_size;

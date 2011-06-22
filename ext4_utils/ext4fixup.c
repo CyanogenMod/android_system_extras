@@ -56,19 +56,22 @@
 #define STATE_UPDATING_INUMS 2
 #define STATE_UPDATING_SB    3
 
+/* global flags */
 static int verbose = 0;
 static int no_write = 0;
+
 static int new_inodes_per_group = 0;
+
 static int no_write_fixup_state = 0;
 
 static int compute_new_inum(unsigned int old_inum)
 {
     unsigned int group, offset;
 
-    group = old_inum / info.inodes_per_group;
-    offset = old_inum % info.inodes_per_group;
+    group = (old_inum - 1) / info.inodes_per_group;
+    offset = (old_inum -1) % info.inodes_per_group;
 
-    return (group * new_inodes_per_group) + offset;
+    return (group * new_inodes_per_group) + offset + 1;
 }
 
 /* Function to read the primary superblock */
@@ -193,6 +196,10 @@ static int read_ext(int fd)
     read_sb(fd, &sb);
 
     ext4_parse_sb(&sb);
+
+    if (info.feat_incompat & EXT4_FEATURE_INCOMPAT_RECOVER) {
+        critical_error("Filesystem needs recovery first, mount and unmount to do that\n");
+    }
 
     /* Clear the low bit which is set while this tool is in progress.
      * If the tool crashes, it will still be set when we restart.
@@ -679,7 +686,7 @@ static int recurse_dir(int fd, struct ext4_inode *inode, char *dirbuf, int dirsi
         strncpy(name, dirp->name, dirp->name_len);
         name[dirp->name_len]='\0';
 
-        /* Only recurse on pass 2 if the high bit is set.
+        /* Only recurse on pass UPDATE_INODE_NUMS if the high bit is set.
          * Otherwise, this inode entry has already been updated
          * and we'll do the wrong thing.  Also don't recurse on . or ..,
          * and certainly not on non-directories!
@@ -691,7 +698,7 @@ static int recurse_dir(int fd, struct ext4_inode *inode, char *dirbuf, int dirsi
         is_dir = is_entry_dir(fd, dirp, mode);
         if ( is_dir && (strcmp(name, ".") && strcmp(name, "..")) &&
             ((mode == SANITY_CHECK_PASS) || (mode == MARK_INODE_NUMS) ||
-              ((mode == UPDATE_INODE_NUMS) && (dirp->inode | 0x80000000))) ) {
+              ((mode == UPDATE_INODE_NUMS) && (dirp->inode & 0x80000000))) ) {
             /* A directory!  Recurse! */
             read_inode(fd, dirp->inode & 0x7fffffff, &tmp_inode);
 
@@ -731,7 +738,7 @@ static int recurse_dir(int fd, struct ext4_inode *inode, char *dirbuf, int dirsi
         if (mode == MARK_INODE_NUMS) {
             dirp->inode |= 0x80000000;
         } else if (mode == UPDATE_INODE_NUMS) {
-            if (dirp->inode | 0x80000000) {
+            if (dirp->inode & 0x80000000) {
                 dirp->inode = compute_new_inum(dirp->inode & 0x7fffffff);
             }
         }
@@ -820,15 +827,20 @@ int ext4fixup_internal(char *fsdev, int v_flag, int n_flag)
      * before we actually change anything, so we don't leave a filesystem in a
      * corrupted, unrecoverable state.  Set no_write, make it quiet, and do a recurse
      * pass and a update_superblock pass.  Set flags back to requested state when done.
+     * Only perform sanity check if the state is unset.  If the state is _NOT_ unset,
+     * then the tool has already been run and interrupted, and it presumably ran and
+     * passed sanity checked before it got interrupted.  It is _NOT_ safe to run sanity
+     * check if state is unset because it assumes inodes are to be computed using the
+     * old inodes/group, but some inode numbers may be updated to the new number.
      */
-    verbose = 0;
-    no_write = 1;
-    recurse_dir(fd, &root_inode, dirbuf, dirsize, SANITY_CHECK_PASS);
-    update_superblocks_and_bg_desc(fd, STATE_UNSET);
-    verbose = v_flag;
-    no_write = n_flag;
-
     if (get_fs_fixup_state(fd) == STATE_UNSET) {
+        verbose = 0;
+        no_write = 1;
+        recurse_dir(fd, &root_inode, dirbuf, dirsize, SANITY_CHECK_PASS);
+        update_superblocks_and_bg_desc(fd, STATE_UNSET);
+        verbose = v_flag;
+        no_write = n_flag;
+
         set_fs_fixup_state(fd, STATE_MARKING_INUMS);
     }
 
@@ -845,7 +857,7 @@ int ext4fixup_internal(char *fsdev, int v_flag, int n_flag)
     }
 
     if (get_fs_fixup_state(fd) == STATE_UPDATING_SB) {
-        /* set the new inodes/blockgruop number,
+        /* set the new inodes/blockgroup number,
          * and sets the state back to 0.
          */
         if (!update_superblocks_and_bg_desc(fd, STATE_UPDATING_SB)) {
