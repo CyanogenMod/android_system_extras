@@ -32,16 +32,20 @@ int main(int argc, char **argv)
     int no_write = 0;
     char *fsdev;
     char *me;
+    int stop_phase = 0, stop_loc = 0, stop_count = 0;
 
     me = basename(argv[0]);
 
-    while ((opt = getopt(argc, argv, "vn")) != -1) {
+    while ((opt = getopt(argc, argv, "vnd:")) != -1) {
         switch (opt) {
         case 'v':
             verbose = 1;
             break;
         case 'n':
             no_write = 1;
+            break;
+        case 'd':
+            sscanf(optarg, "%d,%d,%d", &stop_phase, &stop_loc, &stop_count);
             break;
         }
     }
@@ -60,5 +64,5 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-    return ext4fixup_internal(fsdev, verbose, no_write);
+    return ext4fixup_internal(fsdev, verbose, no_write, stop_phase, stop_loc, stop_count);
 }

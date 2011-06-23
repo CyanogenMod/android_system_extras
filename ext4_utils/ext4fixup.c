@@ -56,6 +56,12 @@
 #define STATE_UPDATING_INUMS 2
 #define STATE_UPDATING_SB    3
 
+/* Used for automated testing of this programs ability to stop and be restarted wthout error */
+static int bail_phase = 0;
+static int bail_loc = 0;
+static int bail_count = 0;
+static int count = 0;
+
 /* global flags */
 static int verbose = 0;
 static int no_write = 0;
@@ -432,6 +438,9 @@ static int update_superblocks_and_bg_desc(int fd, int state)
                     critical_error("failed to write all of block group descriptors");
             }
         }
+        if ((bail_phase == 4) && ((unsigned int)bail_count == i)) {
+            critical_error("bailing at phase 4\n");
+        }
     }
 
     return 0;
@@ -663,6 +672,7 @@ static int recurse_dir(int fd, struct ext4_inode *inode, char *dirbuf, int dirsi
 
     dirp = (struct ext4_dir_entry_2 *)dirbuf;
     while (dirp < (struct ext4_dir_entry_2 *)(dirbuf + dirsize)) {
+        count++;
         leftover_space = (char *)(dirbuf + dirsize) - (char *)dirp;
         if (((mode == SANITY_CHECK_PASS) || (mode == UPDATE_INODE_NUMS)) &&
             (leftover_space <= 8) && prev_dirp) {
@@ -743,6 +753,10 @@ static int recurse_dir(int fd, struct ext4_inode *inode, char *dirbuf, int dirsi
             }
         }
 
+        if ((bail_phase == mode) && (bail_loc == 1) && (bail_count == count)) {
+            critical_error("Bailing at phase %d, loc 1 and count %d\n", mode, count);
+        }
+
         /* Point dirp at the next entry */
         prev_dirp = dirp;
         dirp = (struct ext4_dir_entry_2*)((char *)dirp + dirp->rec_len);
@@ -751,6 +765,9 @@ static int recurse_dir(int fd, struct ext4_inode *inode, char *dirbuf, int dirsi
     /* Write out all the blocks for this directory */
     for (i = 0; i < num_blocks; i++) {
         write_block(fd, block_list[i], dirbuf + (i * info.block_size));
+        if ((bail_phase == mode) && (bail_loc == 2) && (bail_count <= count)) {
+            critical_error("Bailing at phase %d, loc 2 and count %d\n", mode, count);
+        }
     }
 
     free(block_list);
@@ -760,10 +777,11 @@ static int recurse_dir(int fd, struct ext4_inode *inode, char *dirbuf, int dirsi
 
 int ext4fixup(char *fsdev)
 {
-    return ext4fixup_internal(fsdev, 0, 0);
+    return ext4fixup_internal(fsdev, 0, 0, 0, 0, 0);
 }
 
-int ext4fixup_internal(char *fsdev, int v_flag, int n_flag)
+int ext4fixup_internal(char *fsdev, int v_flag, int n_flag,
+                       int stop_phase, int stop_loc, int stop_count)
 {
     int fd;
     struct ext4_inode root_inode;
@@ -775,6 +793,10 @@ int ext4fixup_internal(char *fsdev, int v_flag, int n_flag)
 
     verbose = v_flag;
     no_write = n_flag;
+
+    bail_phase = stop_phase;
+    bail_loc = stop_loc;
+    bail_count = stop_count;
 
     fd = open(fsdev, O_RDWR);
 
@@ -845,12 +867,14 @@ int ext4fixup_internal(char *fsdev, int v_flag, int n_flag)
     }
 
     if (get_fs_fixup_state(fd) == STATE_MARKING_INUMS) {
+        count = 0; /* Reset debugging counter */
         if (!recurse_dir(fd, &root_inode, dirbuf, dirsize, MARK_INODE_NUMS)) {
             set_fs_fixup_state(fd, STATE_UPDATING_INUMS);
         }
     }
 
     if (get_fs_fixup_state(fd) == STATE_UPDATING_INUMS) {
+        count = 0; /* Reset debugging counter */
         if (!recurse_dir(fd, &root_inode, dirbuf, dirsize, UPDATE_INODE_NUMS)) {
             set_fs_fixup_state(fd, STATE_UPDATING_SB);
         }
