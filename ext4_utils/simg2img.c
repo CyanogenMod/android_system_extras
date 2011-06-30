@@ -112,6 +112,36 @@ int process_raw_chunk(int in, int out, u32 blocks, u32 blk_sz, u32 *crc32)
 }
 
 
+int process_fill_chunk(int in, int out, u32 blocks, u32 blk_sz, u32 *crc32)
+{
+	u64 len = (u64)blocks * blk_sz;
+	int ret;
+	int chunk;
+	u32 fill_val;
+	u32 *fillbuf;
+	unsigned int i;
+
+	/* Fill copy_buf with the fill value */
+	ret = read_all(in, &fill_val, sizeof(fill_val));
+	fillbuf = (u32 *)copybuf;
+	for (i = 0; i < (COPY_BUF_SIZE / sizeof(fill_val)); i++) {
+		fillbuf[i] = fill_val;
+	}
+
+	while (len) {
+		chunk = (len > COPY_BUF_SIZE) ? COPY_BUF_SIZE : len;
+		*crc32 = sparse_crc32(*crc32, copybuf, chunk);
+		ret = write_all(out, copybuf, chunk);
+		if (ret != chunk) {
+			fprintf(stderr, "write returned an error copying a raw chunk\n");
+			exit(-1);
+		}
+		len -= chunk;
+	}
+
+	return blocks;
+}
+
 int process_skip_chunk(int out, u32 blocks, u32 blk_sz, u32 *crc32)
 {
 	/* len needs to be 64 bits, as the sparse file specifies the skip amount
@@ -233,6 +263,14 @@ int main(int argc, char *argv[])
 				exit(-1);
 			}
 			total_blocks += process_raw_chunk(in, out,
+					 chunk_header.chunk_sz, sparse_header.blk_sz, &crc32);
+			break;
+		    case CHUNK_TYPE_FILL:
+			if (chunk_header.total_sz != (sparse_header.chunk_hdr_sz + sizeof(u32)) ) {
+				fprintf(stderr, "Bogus chunk size for chunk %d, type Fill\n", i);
+				exit(-1);
+			}
+			total_blocks += process_fill_chunk(in, out,
 					 chunk_header.chunk_sz, sparse_header.blk_sz, &crc32);
 			break;
 		    case CHUNK_TYPE_DONT_CARE:
