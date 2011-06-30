@@ -89,6 +89,15 @@ void count_data_block(void *priv, u64 off, u8 *data, int len)
 	count_chunks->chunks++;
 }
 
+void count_fill_block(void *priv, u64 off, u32 fill_val, int len)
+{
+	struct count_chunks *count_chunks = priv;
+	if (off > count_chunks->cur_ptr)
+		count_chunks->chunks++;
+	count_chunks->cur_ptr = off + ALIGN(len, info.block_size);
+	count_chunks->chunks++;
+}
+
 void count_file_block(void *priv, u64 off, const char *file,
 		off64_t offset, int len)
 {
@@ -103,7 +112,7 @@ int count_sparse_chunks()
 {
 	struct count_chunks count_chunks = {0, 0};
 
-	for_each_data_block(count_data_block, count_file_block, &count_chunks);
+	for_each_data_block(count_data_block, count_file_block, count_fill_block, &count_chunks);
 
 	if (count_chunks.cur_ptr != (u64) info.len)
 		count_chunks.chunks++;
@@ -115,6 +124,12 @@ static void ext4_write_data_block(void *priv, u64 off, u8 *data, int len)
 {
 	write_data_block(priv, off, data, len);
 }
+
+static void ext4_write_fill_block(void *priv, u64 off, u32 fill_val, int len)
+{
+	write_fill_block(priv, off, fill_val, len);
+}
+
 static void ext4_write_data_file(void *priv, u64 off, const char *file,
 		off64_t offset, int len)
 {
@@ -132,7 +147,7 @@ void write_ext4_image(const char *filename, int gz, int sparse, int crc,
 	if (!out)
 		return;
 
-	for_each_data_block(ext4_write_data_block, ext4_write_data_file, out);
+	for_each_data_block(ext4_write_data_block, ext4_write_data_file, ext4_write_fill_block, out);
 
 	pad_output_file(out, info.len);
 
@@ -169,6 +184,9 @@ void ext4_create_fs_aux_info()
 	}
 
 	aux_info.sb = calloc(info.block_size, 1);
+	/* Alloc an array to hold the pointers to the backup superblocks */
+	aux_info.backup_sb = calloc(aux_info.groups, sizeof(char *));
+
 	if (!aux_info.sb)
 		critical_error_errno("calloc");
 
@@ -179,6 +197,12 @@ void ext4_create_fs_aux_info()
 
 void ext4_free_fs_aux_info()
 {
+	unsigned int i;
+
+	for (i=0; i<aux_info.groups; i++) {
+		if (aux_info.backup_sb[i])
+			free(aux_info.backup_sb[i]);
+	}
 	free(aux_info.sb);
 	free(aux_info.bg_desc);
 }
@@ -265,8 +289,14 @@ void ext4_fill_in_sb()
 			info.blocks_per_group;
 		u32 header_size = 0;
 		if (ext4_bg_has_super_block(i)) {
-			if (i != 0)
-				queue_data_block((u8 *)sb, info.block_size, group_start_block);
+			if (i != 0) {
+				aux_info.backup_sb[i] = calloc(info.block_size, 1);
+				memcpy(aux_info.backup_sb[i], sb, info.block_size);
+				/* Update the block group nr of this backup superblock */
+				aux_info.backup_sb[i]->s_block_group_nr = i;
+				queue_data_block((u8 *)aux_info.backup_sb[i],
+                                                  info.block_size, group_start_block);
+			}
 			queue_data_block((u8 *)aux_info.bg_desc,
 				aux_info.bg_desc_blocks * info.block_size,
 				group_start_block + 1);

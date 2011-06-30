@@ -115,6 +115,7 @@ struct fs_info {
 
 struct fs_aux_info {
 	struct ext4_super_block *sb;
+	struct ext4_super_block **backup_sb;
 	struct ext2_group_desc *bg_desc;
 	struct block_group_info *bgs;
 	u32 first_data_block;

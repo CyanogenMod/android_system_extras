@@ -33,7 +33,7 @@ static void usage(char *path)
         fprintf(stderr, "%s [ -l <len> ] [ -j <journal size> ] [ -b <block_size> ]\n", basename(path));
         fprintf(stderr, "    [ -g <blocks per group> ] [ -i <inodes> ] [ -I <inode size> ]\n");
         fprintf(stderr, "    [ -L <label> ] [ -f ] [ -a <android mountpoint> ]\n");
-        fprintf(stderr, "    [ -z | -s ] [ -J ]\n");
+        fprintf(stderr, "    [ -z | -s ] [ -t ] [ -w ] [ -c ] [ -J ]\n");
         fprintf(stderr, "    <filename> [<directory>]\n");
 }
 
@@ -48,8 +48,9 @@ int main(int argc, char **argv)
         int sparse = 0;
         int crc = 0;
         int wipe = 0;
+        int init_itabs = 0;
 
-        while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:fwzJsc")) != -1) {
+        while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:fwzJsct")) != -1) {
                 switch (opt) {
                 case 'l':
                         info.len = parse_num(optarg);
@@ -94,6 +95,9 @@ int main(int argc, char **argv)
                 case 's':
                         sparse = 1;
                         break;
+                case 't':
+                        init_itabs = 1;
+                        break;
                 default: /* '?' */
                         usage(argv[0]);
                         exit(EXIT_FAILURE);
@@ -136,5 +140,5 @@ int main(int argc, char **argv)
         }
 
         return make_ext4fs_internal(filename, directory, mountpoint, android, gzip,
-        		sparse, crc, wipe);
+                       sparse, crc, wipe, init_itabs);
 }

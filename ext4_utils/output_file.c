@@ -175,6 +175,79 @@ static int emit_skip_chunk(struct output_file *out, u64 skip_len)
 	return 0;
 }
 
+static int write_chunk_fill(struct output_file *out, u64 off, u32 fill_val, int len)
+{
+	chunk_header_t chunk_header;
+	int rnd_up_len, zero_len, count;
+	int ret;
+	unsigned int i;
+	u32 fill_buf[4096/sizeof(u32)]; /* Maximum size of a block */
+
+	/* We can assume that all the chunks to be written are in
+	 * ascending order, block-size aligned, and non-overlapping.
+	 * So, if the offset is less than the current output pointer,
+	 * throw an error, and if there is a gap, emit a "don't care"
+	 * chunk.  The first write (of the super block) may not be
+	 * blocksize aligned, so we need to deal with that too.
+	 */
+	//DBG printf("write chunk: offset 0x%llx, length 0x%x bytes\n", off, len);
+
+	if (off < out->cur_out_ptr) {
+		error("offset %llu is less than the current output offset %llu",
+				off, out->cur_out_ptr);
+		return -1;
+	}
+
+	if (off > out->cur_out_ptr) {
+		emit_skip_chunk(out, off - out->cur_out_ptr);
+	}
+
+	if (off % info.block_size) {
+		error("write chunk offset %llu is not a multiple of the block size %u",
+				off, info.block_size);
+		return -1;
+	}
+
+	if (off != out->cur_out_ptr) {
+		error("internal error, offset accounting screwy in write_chunk_raw()");
+		return -1;
+	}
+
+	/* Round up the file length to a multiple of the block size */
+	rnd_up_len = (len + (info.block_size - 1)) & (~(info.block_size -1));
+
+	/* Finally we can safely emit a chunk of data */
+	chunk_header.chunk_type = CHUNK_TYPE_FILL;
+	chunk_header.reserved1 = 0;
+	chunk_header.chunk_sz = rnd_up_len / info.block_size;
+	chunk_header.total_sz = CHUNK_HEADER_LEN + sizeof(fill_val);
+	ret = out->ops->write(out, (u8 *)&chunk_header, sizeof(chunk_header));
+
+	if (ret < 0)
+		return -1;
+	ret = out->ops->write(out, (u8 *)&fill_val, sizeof(fill_val));
+	if (ret < 0)
+		return -1;
+
+	if (out->use_crc) {
+                /* Initialize fill_buf with the fill_val */
+		for (i = 0; i < (info.block_size / sizeof(u32)); i++) {
+			fill_buf[i] = fill_val;
+		}
+
+		count = chunk_header.chunk_sz;
+		while (count) {
+			out->crc32 = sparse_crc32(out->crc32, fill_buf, info.block_size);
+			count--;
+		}
+	}
+
+	out->cur_out_ptr += rnd_up_len;
+	out->chunk_cnt++;
+
+	return 0;
+}
+
 static int write_chunk_raw(struct output_file *out, u64 off, u8 *data, int len)
 {
 	chunk_header_t chunk_header;
@@ -390,6 +463,44 @@ void write_data_block(struct output_file *out, u64 off, u8 *data, int len)
 		ret = out->ops->write(out, data, len);
 		if (ret < 0)
 			return;
+	}
+}
+
+/* Write a contiguous region of data blocks with a fill value */
+void write_fill_block(struct output_file *out, u64 off, u32 fill_val, int len)
+{
+	int ret;
+	unsigned int i;
+	int write_len;
+	u32 fill_buf[4096/sizeof(u32)]; /* Maximum size of a block */
+
+	if (off + len > (u64) info.len) {
+		error("attempted to write block %llu past end of filesystem",
+				off + len - info.len);
+		return;
+	}
+
+	if (out->sparse) {
+		write_chunk_fill(out, off, fill_val, len);
+	} else {
+		/* Initialize fill_buf with the fill_val */
+		for (i = 0; i < sizeof(fill_buf)/sizeof(u32); i++) {
+			fill_buf[i] = fill_val;
+		}
+
+		ret = out->ops->seek(out, off);
+		if (ret < 0)
+			return;
+
+		while (len) {
+			write_len = (len > (int)sizeof(fill_buf) ? (int)sizeof(fill_buf) : len);
+			ret = out->ops->write(out, (u8 *)fill_buf, write_len);
+			if (ret < 0) {
+				return;
+			} else {
+				len -= write_len;
+			}
+		}
 	}
 }
 

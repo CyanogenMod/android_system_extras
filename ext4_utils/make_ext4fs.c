@@ -215,7 +215,14 @@ static u32 compute_inodes_per_group()
 	u32 blocks = DIV_ROUND_UP(info.len, info.block_size);
 	u32 block_groups = DIV_ROUND_UP(blocks, info.blocks_per_group);
 	u32 inodes = DIV_ROUND_UP(info.inodes, block_groups);
-	return ALIGN(inodes, (info.block_size / info.inode_size));
+	inodes = ALIGN(inodes, (info.block_size / info.inode_size));
+
+	/* After properly rounding up the number of inodes/group,
+	 * make sure to update the total inodes field in the info struct.
+	 */
+	info.inodes = inodes * block_groups;
+
+	return inodes;
 }
 
 static u32 compute_bg_desc_reserve_blocks()
@@ -247,12 +254,12 @@ int make_ext4fs(const char *filename, s64 len)
 {
     reset_ext4fs_info();
     info.len = len;
-    return make_ext4fs_internal(filename, NULL, NULL, 0, 0, 0, 0, 1);
+    return make_ext4fs_internal(filename, NULL, NULL, 0, 0, 0, 0, 1, 0);
 }
 
 int make_ext4fs_internal(const char *filename, const char *directory,
                          char *mountpoint, int android, int gzip, int sparse,
-                         int crc, int wipe)
+                         int crc, int wipe, int init_itabs)
 {
         u32 root_inode_num;
         u16 root_mode;
@@ -344,6 +351,9 @@ int make_ext4fs_internal(const char *filename, const char *directory,
 	inode_set_permissions(root_inode_num, root_mode, 0, 0, 0);
 
 	ext4_update_free();
+
+	if (init_itabs)
+		init_unused_inode_tables();
 
 	ext4_queue_sb();
 

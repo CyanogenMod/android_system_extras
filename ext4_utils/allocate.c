@@ -158,6 +158,23 @@ static void allocate_bg_inode_table(struct block_group_info *bg)
 			* info.block_size, block);
 }
 
+void init_unused_inode_tables(void)
+{
+	unsigned int i;
+	u32 block;
+	struct block_group_info *bg;
+
+	for (i = 0; i < aux_info.groups; i++) {
+		if (!aux_info.bgs[i].inode_table) {
+			bg = &aux_info.bgs[i];
+			block = bg->first_block + 2;
+			if (bg->has_superblock)
+				block += aux_info.bg_desc_blocks + info.bg_desc_reserve_blocks + 1;
+			queue_fill_block(0, aux_info.inode_table_blocks * info.block_size, block);
+                }
+       }
+}
+
 static int bitmap_set_bit(u8 *bitmap, u32 bit)
 {
 	if (bitmap[bit / 8] & 1 << (bit % 8))
