@@ -22,30 +22,47 @@ struct mapinfo {
     unsigned shared_dirty;
     unsigned private_clean;
     unsigned private_dirty;
+    int is_bss;
     char name[1];
 };
+
+static int is_library(const char *name) {
+    int len = strlen(name);
+    return len >= 4 && name[0] == '/'
+            && name[len - 3] == '.' && name[len - 2] == 's' && name[len - 1] == 'o';
+}
 
 // 6f000000-6f01e000 rwxp 00000000 00:0c 16389419   /android/lib/libcomposer.so
 // 012345678901234567890123456789012345678901234567890123456789
 // 0         1         2         3         4         5
 
-int parse_header(char* line, int len, mapinfo** mi) {
+static int parse_header(const char* line, const mapinfo* prev, mapinfo** mi) {
     unsigned long start;
     unsigned long end;
     char name[128];
+    int name_pos;
+    int is_bss = 0;
 
-    name[0] = '\0';
-
-    // Sometimes the name is missing.
-    if (sscanf(line, "%lx-%lx %*s %*lx %*x:%*x %*ld %127s", &start, &end, name) < 2) {
-        return 0;
+    if (sscanf(line, "%lx-%lx %*s %*x %*x:%*x %*d%n", &start, &end, &name_pos) != 2) {
+        *mi = NULL;
+        return -1;
     }
 
-    if (name[0] == '\0') {
+    while (isspace(line[name_pos])) {
+        name_pos += 1;
+    }
+
+    if (line[name_pos]) {
+        strlcpy(name, line + name_pos, sizeof(name));
+    } else {
         if ((start >= 0x10000000) && (start < 0x40000000)) {
             strlcpy(name, "[stack]", sizeof(name));
-        } else if (start > 0x50000000) {
-            strlcpy(name, "[lib_bss]", sizeof(name));
+        } else if (prev && start == prev->end && is_library(prev->name)) {
+            // anonymous mappings immediately adjacent to shared libraries
+            // usually correspond to the library BSS segment, so we use the
+            // library's own name
+            strlcpy(name, prev->name, sizeof(name));
+            is_bss = 1;
         } else {
             strlcpy(name, "[anon]", sizeof(name));
         }
@@ -54,19 +71,20 @@ int parse_header(char* line, int len, mapinfo** mi) {
     const int name_size = strlen(name) + 1;
     struct mapinfo* info = calloc(1, sizeof(mapinfo) + name_size);
     if (info == NULL) {
-        return -1;
+        fprintf(stderr, "out of memory\n");
+        exit(1);
     }
 
     info->start = start;
     info->end = end;
+    info->is_bss = is_bss;
     strlcpy(info->name, name, name_size);
 
     *mi = info;
-
     return 0;
 }
 
-int parse_field(mapinfo* mi, char* line) {
+static int parse_field(mapinfo* mi, const char* line) {
     char field[64];
     int size;
 
@@ -93,107 +111,105 @@ int parse_field(mapinfo* mi, char* line) {
     return 0;
 }
 
-mapinfo *read_mapinfo(FILE *fp)
-{
-    char line[1024];
-    mapinfo *current = NULL;
-    int len;
-    int skip;
-
-    while (fgets(line, sizeof(line), fp) != 0) {
-        if (current != NULL) {
-            parse_field(current, line);
-        }
-
-        len = strlen(line);
-        if (len < 1) {
-            return NULL;
-        }
-        line[--len] = 0;
-
-        mapinfo *next = NULL;
-        if (parse_header(line, len, &next) < 0) {
-            goto err;
-        } else if (next != NULL) {
-            next->next = current;
-            current = next;
-            continue;
-        }
+static int order_before(const mapinfo *a, const mapinfo *b, int sort_by_address) {
+    if (sort_by_address) {
+        return a->start < b->start
+                || (a->start == b->start && a->end < b->end);
+    } else {
+        return strcmp(a->name, b->name) < 0;
     }
-
-    return current;
-
-err:
-    while (current != NULL) {
-        mapinfo* next = current->next;
-        free(current);
-        current = next;
-    }
-
-    return NULL;
 }
 
+static void enqueue_map(mapinfo **head, mapinfo *map, int sort_by_address, int coalesce_by_name) {
+    mapinfo *prev = NULL;
+    mapinfo *current = *head;
 
-mapinfo *load_maps(int pid, int verbose)
+    if (!map) {
+        return;
+    }
+
+    for (;;) {
+        if (current && coalesce_by_name && !strcmp(map->name, current->name)) {
+            current->size += map->size;
+            current->rss += map->rss;
+            current->pss += map->pss;
+            current->shared_clean += map->shared_clean;
+            current->shared_dirty += map->shared_dirty;
+            current->private_clean += map->private_clean;
+            current->private_dirty += map->private_dirty;
+            current->is_bss &= map->is_bss;
+            free(map);
+            break;
+        }
+
+        if (!current || order_before(map, current, sort_by_address)) {
+            if (prev) {
+                prev->next = map;
+            } else {
+                *head = map;
+            }
+            map->next = current;
+            break;
+        }
+
+        prev = current;
+        current = current->next;
+    }
+}
+
+static mapinfo *load_maps(int pid, int sort_by_address, int coalesce_by_name)
 {
-    char tmp[128];
+    char fn[128];
     FILE *fp;
-    mapinfo *milist = 0;
-    mapinfo *mi;
-    
-    snprintf(tmp, sizeof(tmp), "/proc/%d/smaps", pid);
-    fp = fopen(tmp, "r");
+    char line[1024];
+    mapinfo *head = NULL;
+    mapinfo *current = NULL;
+    int len;
+
+    snprintf(fn, sizeof(fn), "/proc/%d/smaps", pid);
+    fp = fopen(fn, "r");
     if (fp == 0) {
         fprintf(stderr, "cannot open /proc/%d/smaps: %s\n", pid, strerror(errno));
         return NULL;
     }
 
-    milist = read_mapinfo(fp);
+    while (fgets(line, sizeof(line), fp) != 0) {
+        len = strlen(line);
+        if (line[len - 1] == '\n') {
+            line[--len] = 0;
+        }
+
+        if (current != NULL && !parse_field(current, line)) {
+            continue;
+        }
+
+        mapinfo *next;
+        if (!parse_header(line, current, &next)) {
+            enqueue_map(&head, current, sort_by_address, coalesce_by_name);
+            current = next;
+            continue;
+        }
+
+        fprintf(stderr, "warning: could not parse map info line: %s\n", line);
+    }
+
+    enqueue_map(&head, current, sort_by_address, coalesce_by_name);
+
     fclose(fp);
 
-    if (!milist) {
+    if (!head) {
         fprintf(stderr, "could not read /proc/%d/smaps\n", pid);
         return NULL;
     }
-    
-    /* if not verbose, coalesce mappings from the same entity */
-    if (!verbose) {
-        mapinfo* current = milist;
-        mapinfo* last = NULL;
 
-        while (current != NULL) {
-            mapinfo* next = current->next;
-
-            if (last != NULL
-                    && ((current->name[0] != '[' && !strcmp(last->name, current->name))
-                        || !strcmp(current->name, "[lib_bss]"))) {
-                last->size += current->size;
-                last->rss += current->rss;
-                last->pss += current->pss;
-                last->shared_clean += current->shared_clean;
-                last->shared_dirty += current->shared_dirty;
-                last->private_clean += current->private_clean;
-                last->private_dirty += current->private_dirty;
-                last->end = current->end;
-
-                last->next = next;
-                free(current);
-            } else {
-                last = current;
-            }
-
-            current = next;
-        }
-    }
-
-    return milist;
+    return head;
 }
 
 static int verbose = 0;
 static int terse = 0;
 static int addresses = 0;
 
-int show_map(int pid)
+static int show_map(int pid)
 {
     mapinfo *milist;
     mapinfo *mi;
@@ -204,20 +220,26 @@ int show_map(int pid)
     unsigned rss = 0;
     unsigned pss = 0;
     unsigned size = 0;
-    
-    milist = load_maps(pid, verbose);
+
+    milist = load_maps(pid, addresses, !verbose && !addresses);
     if (milist == NULL) {
         return 1;
     }
 
     if (addresses) {
-        printf("start    end      shared   private  object\n");
-        printf("-------- -------- -------- -------- ------------------------------\n");
-    } else {
-        printf("virtual                    shared   shared   private  private\n");
-        printf("size     RSS      PSS      clean    dirty    clean    dirty    object\n");
-        printf("-------- -------- -------- -------- -------- -------- -------- ------------------------------\n");
+        printf("start    end      ");
     }
+    printf("virtual                    shared   shared   private  private\n");
+
+    if (addresses) {
+        printf("addr     addr     ");
+    }
+    printf("size     RSS      PSS      clean    dirty    clean    dirty    object\n");
+
+    if (addresses) {
+        printf("-------- -------- ");
+    }
+    printf("-------- -------- -------- -------- -------- -------- -------- ------------------------------\n");
 
     for (mi = milist; mi;) {
         mapinfo* last = mi;
@@ -235,18 +257,14 @@ int show_map(int pid)
         }
 
         if (addresses) {
-            printf("%08x %08x %8d %8d %s\n", mi->start, mi->end,
-                   mi->shared_clean + mi->shared_dirty,
-                   mi->private_clean + mi->private_dirty,
-                   mi->name);
-        } else {
-            printf("%8d %8d %8d %8d %8d %8d %8d %s\n", mi->size,
-                   mi->rss,
-                   mi->pss,
-                   mi->shared_clean, mi->shared_dirty,
-                   mi->private_clean, mi->private_dirty,
-                   mi->name);
+            printf("%08x %08x ", mi->start, mi->end);
         }
+        printf("%8d %8d %8d %8d %8d %8d %8d %s%s\n", mi->size,
+               mi->rss,
+               mi->pss,
+               mi->shared_clean, mi->shared_dirty,
+               mi->private_clean, mi->private_dirty,
+               mi->name, mi->is_bss ? " [bss]" : "");
 
 out:
         mi = mi->next;
@@ -254,17 +272,17 @@ out:
     }
 
     if (addresses) {
-        printf("-------- -------- -------- -------- ------------------------------\n");
-        printf("                  %8d %8d TOTAL\n", 
-               shared_dirty + shared_clean, 
-               private_dirty + private_clean);
-    } else {
-        printf("-------- -------- -------- -------- -------- -------- -------- ------------------------------\n");
-        printf("%8d %8d %8d %8d %8d %8d %8d TOTAL\n", size,
-               rss, pss,
-               shared_clean, shared_dirty,
-               private_clean, private_dirty);
+        printf("-------- -------- ");
     }
+    printf("-------- -------- -------- -------- -------- -------- -------- ------------------------------\n");
+
+    if (addresses) {
+        printf("                  ");
+    }
+    printf("%8d %8d %8d %8d %8d %8d %8d TOTAL\n", size,
+            rss, pss,
+            shared_clean, shared_dirty,
+            private_clean, private_dirty);
 
     return 0;
 }
@@ -272,32 +290,50 @@ out:
 int main(int argc, char *argv[])
 {
     int usage = 1;
-    
+    int result = 0;
+    int pid;
+    char *arg;
+    char *argend;
+
     for (argc--, argv++; argc > 0; argc--, argv++) {
-        if (!strcmp(argv[0],"-v")) {
+        arg = argv[0];
+        if (!strcmp(arg,"-v")) {
             verbose = 1;
             continue;
         }
-        if (!strcmp(argv[0],"-t")) {
+        if (!strcmp(arg,"-t")) {
             terse = 1;
             continue;
         }
-        if (!strcmp(argv[0],"-a")) {
+        if (!strcmp(arg,"-a")) {
             addresses = 1;
             continue;
         }
-        show_map(atoi(argv[0]));
-        usage = 0;
+        if (argc != 1) {
+            fprintf(stderr, "too many arguments\n");
+            break;
+        }
+        pid = strtol(arg, &argend, 10);
+        if (*arg && !*argend) {
+            usage = 0;
+            if (show_map(pid)) {
+                result = 1;
+            }
+            break;
+        }
+        fprintf(stderr, "unrecognized argument: %s\n", arg);
+        break;
     }
 
     if (usage) {
         fprintf(stderr,
                 "showmap [-t] [-v] [-c] <pid>\n"
                 "        -t = terse (show only items with private pages)\n"
-                "        -v = verbose (don't coalesce adjacant maps)\n"
+                "        -v = verbose (don't coalesce maps with the same name)\n"
                 "        -a = addresses (show virtual memory map)\n"
                 );
+        result = 1;
     }
 
-    return 0;
+    return result;
 }
