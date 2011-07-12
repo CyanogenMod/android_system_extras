@@ -14,6 +14,4 @@
 # limitations under the License.
 #
 
-ifneq ($(TARGET_SIMULATOR),true)
-    include $(all-subdir-makefiles)
-endif
+include $(all-subdir-makefiles)

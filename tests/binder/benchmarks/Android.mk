@@ -14,9 +14,6 @@
 # limitations under the License.
 #
 
-ifneq ($(TARGET_SIMULATOR),true) # GTest needs STLport, which the simulator
-                                 # doesn't support
-
 LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
@@ -44,5 +41,3 @@ LOCAL_C_INCLUDES += \
 LOCAL_MODULE := binderAddInts
 LOCAL_SRC_FILES := binderAddInts.cpp
 include $(BUILD_EXECUTABLE)
-
-endif
