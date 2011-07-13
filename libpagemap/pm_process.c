@@ -258,6 +258,9 @@ static int read_maps(pm_process_t *proc) {
         sscanf(line, "%lx-%lx %s %lx %*s %*d %" S(MAX_LINE) "s",
                &map->start, &map->end, perms, &map->offset, name);
 
+        if (!strcmp(name, "[vectors]"))
+            continue;
+
         map->name = malloc(strlen(name) + 1);
         if (!map->name) {
             error = errno;
