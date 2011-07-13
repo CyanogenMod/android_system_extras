@@ -105,24 +105,30 @@ int main(int argc, char *argv[]) {
             exit(EXIT_FAILURE);
         }
         procs[i]->pid = pids[i];
+        pm_memusage_zero(&procs[i]->usage);
         error = pm_process_create(ker, pids[i], &proc);
-        if (!error) {
-            switch (ws) {
-            case WS_OFF:
-                pm_process_usage(proc, &procs[i]->usage);
-                break;
-            case WS_ONLY:
-                pm_process_workingset(proc, &procs[i]->usage, 0);
-                break;
-            case WS_RESET:
-                pm_process_workingset(proc, NULL, 1);
-                break;
-            }
-            pm_process_destroy(proc);
-        } else {
+        if (error) {
             fprintf(stderr, "warning: could not create process interface for %d\n", pids[i]);
-            pm_memusage_zero(&procs[i]->usage);
+            continue;
         }
+
+        switch (ws) {
+        case WS_OFF:
+            error = pm_process_usage(proc, &procs[i]->usage);
+            break;
+        case WS_ONLY:
+            error = pm_process_workingset(proc, &procs[i]->usage, 0);
+            break;
+        case WS_RESET:
+            error = pm_process_workingset(proc, NULL, 1);
+            break;
+        }
+
+        if (error) {
+            fprintf(stderr, "warning: could not read usage for %d\n", pids[i]);
+        }
+
+        pm_process_destroy(proc);
     }
 
     free(pids);
