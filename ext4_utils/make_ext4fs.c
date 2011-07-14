@@ -278,6 +278,9 @@ int make_ext4fs_internal(const char *filename, const char *directory,
 	if (info.block_size <= 0)
 		info.block_size = compute_block_size();
 
+	/* Round down the filesystem length to be a multiple of the block size */
+	info.len &= ~((u64)info.block_size - 1);
+
 	if (info.journal_blocks == 0)
 		info.journal_blocks = compute_journal_blocks();
 
