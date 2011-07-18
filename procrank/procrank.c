@@ -20,6 +20,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <string.h>
+#include <fcntl.h>
 
 #include <pagemap/pagemap.h>
 
@@ -44,12 +45,77 @@ declare_sort(uss);
 int (*compfn)(const void *a, const void *b);
 static int order;
 
+void print_mem_info() {
+    char buffer[256];
+    int numFound = 0;
+
+    int fd = open("/proc/meminfo", O_RDONLY);
+
+    if (fd < 0) {
+        printf("Unable to open /proc/meminfo: %s\n", strerror(errno));
+        return;
+    }
+
+    const int len = read(fd, buffer, sizeof(buffer)-1);
+    close(fd);
+
+    if (len < 0) {
+        printf("Empty /proc/meminfo");
+        return;
+    }
+    buffer[len] = 0;
+
+    static const char* const tags[] = {
+            "MemTotal:",
+            "MemFree:",
+            "Buffers:",
+            "Cached:",
+            NULL
+    };
+    static const int tagsLen[] = {
+            9,
+            8,
+            8,
+            7,
+            0
+    };
+    long mem[] = { 0, 0, 0, 0 };
+
+    char* p = buffer;
+    while (*p && numFound < 4) {
+        int i = 0;
+        while (tags[i]) {
+            if (strncmp(p, tags[i], tagsLen[i]) == 0) {
+                p += tagsLen[i];
+                while (*p == ' ') p++;
+                char* num = p;
+                while (*p >= '0' && *p <= '9') p++;
+                if (*p != 0) {
+                    *p = 0;
+                    p++;
+                    if (*p == 0) p--;
+                }
+                mem[i] = atoll(num);
+                numFound++;
+                break;
+            }
+            i++;
+        }
+        p++;
+    }
+
+    printf("RAM: %ldK total, %ldK free, %ldK buffers, %ldK cached\n",
+            mem[0], mem[1], mem[2], mem[3]);
+}
+
 int main(int argc, char *argv[]) {
     pm_kernel_t *ker;
     pm_process_t *proc;
     pid_t *pids;
     struct proc_info **procs;
     size_t num_procs;
+    unsigned long total_pss;
+    unsigned long total_uss;
     char cmdline[256]; // this must be within the range of int
     int error;
 
@@ -152,6 +218,9 @@ int main(int argc, char *argv[]) {
     else
         printf("%5s  %7s  %7s  %7s  %7s  %s\n", "PID", "Vss", "Rss", "Pss", "Uss", "cmdline");
 
+    total_pss = 0;
+    total_uss = 0;
+
     for (i = 0; i < num_procs; i++) {
         if (getprocname(procs[i]->pid, cmdline, (int)sizeof(cmdline)) < 0) {
             /*
@@ -161,6 +230,9 @@ int main(int argc, char *argv[]) {
             free(procs[i]);
             continue;
         }
+
+        total_pss += procs[i]->usage.pss;
+        total_uss += procs[i]->usage.uss;
 
         if (ws)
             printf("%5d  %6dK  %6dK  %6dK  %s\n",
@@ -184,6 +256,22 @@ int main(int argc, char *argv[]) {
     }
 
     free(procs);
+
+    if (ws) {
+        printf("%5s  %7s  %7s  %7s  %s\n",
+            "", "", "------", "------", "------");
+        printf("%5s  %7s  %6ldK  %6ldK  %s\n",
+            "", "", total_pss / 1024, total_uss / 1024, "TOTAL");
+    } else {
+        printf("%5s  %7s  %7s  %7s  %7s  %s\n",
+            "", "", "", "------", "------", "------");
+        printf("%5s  %7s  %7s  %6ldK  %6ldK  %s\n",
+            "", "", "", total_pss / 1024, total_uss / 1024, "TOTAL");
+    }
+
+    printf("\n");
+    print_mem_info();
+
     return 0;
 }
 
