@@ -58,7 +58,7 @@ public class SendBug {
             IActivityManager mAm = ActivityManagerNative.getDefault();
             try {
                 mAm.startActivity(null, intent, intent.getType(), null, 0, null, null, 0, false,
-                        false);
+                        false, null, null, false);
             } catch (RemoteException e) {
             }
         }
