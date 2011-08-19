@@ -21,17 +21,21 @@ import android.app.ActivityManagerNative;
 import android.app.IActivityManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.IPackageManager;
+import android.content.pm.ResolveInfo;
 import android.net.Uri;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemProperties;
 
 import java.io.File;
+import java.util.List;
 
 public class SendBug {
 
     private static final String GOOGLE_ACCOUNT_TYPE = "com.google";
     private static final String EMAIL_ACCOUNT_TYPE = "com.android.email";
+    private static final String SEND_BUG_INTENT_ACTION = "android.testing.SEND_BUG";
 
     public static void main(String[] args) {
         if (args.length >= 1) {
@@ -42,18 +46,10 @@ public class SendBug {
     private void run(String bugreportPath) {
         File bugreport = new File(bugreportPath);
         if (bugreport.exists()) {
-            Account sendToAccount = findSendToAccount();
-            Intent intent = new Intent(Intent.ACTION_SEND);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            intent.setType("application/octet-stream");
-            intent.putExtra("subject", bugreport.getName());
-            StringBuilder sb = new StringBuilder();
-            sb.append(SystemProperties.get("ro.build.description"));
-            sb.append("\n(Sent from BugMailer)");
-            intent.putExtra("body", sb.toString());
-            intent.putExtra(Intent.EXTRA_STREAM, Uri.fromFile(bugreport));
-            if (sendToAccount != null) {
-                intent.putExtra("to", sendToAccount.name);
+            Uri bugreportUri = Uri.fromFile(bugreport);
+            Intent intent = tryBugReporter(bugreportUri);
+            if (intent == null) {
+                intent = getSendMailIntent(bugreportUri);
             }
             IActivityManager mAm = ActivityManagerNative.getDefault();
             try {
@@ -62,6 +58,48 @@ public class SendBug {
             } catch (RemoteException e) {
             }
         }
+    }
+
+    private Intent tryBugReporter(Uri bugreportUri) {
+        Intent intent = new Intent(SEND_BUG_INTENT_ACTION);
+        intent.setData(bugreportUri);
+        IPackageManager mPm = IPackageManager.Stub.asInterface(
+                ServiceManager.getService("package"));
+        if (mPm != null) {
+            List<ResolveInfo> results = null;
+            try {
+                results = mPm.queryIntentActivities(intent, null, 0);
+            } catch (RemoteException e) {
+                return null;
+            }
+            if (results != null && results.size() > 0) {
+                ResolveInfo info = results.get(0);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                intent.setClassName(info.activityInfo.applicationInfo.packageName,
+                        info.activityInfo.name);
+                return intent;
+            } else {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private Intent getSendMailIntent(Uri bugreportUri) {
+        Account sendToAccount = findSendToAccount();
+        Intent intent = new Intent(Intent.ACTION_SEND);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        intent.setType("application/octet-stream");
+        intent.putExtra("subject", bugreportUri.getLastPathSegment());
+        StringBuilder sb = new StringBuilder();
+        sb.append(SystemProperties.get("ro.build.description"));
+        sb.append("\n(Sent from BugMailer)");
+        intent.putExtra("body", sb.toString());
+        intent.putExtra(Intent.EXTRA_STREAM, bugreportUri);
+        if (sendToAccount != null) {
+            intent.putExtra("to", sendToAccount.name);
+        }
+        return intent;
     }
 
     private Account findSendToAccount() {
