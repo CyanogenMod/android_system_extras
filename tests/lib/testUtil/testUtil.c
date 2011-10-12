@@ -150,9 +150,9 @@ void testPrint(FILE *stream, const char *fmt, ...)
     va_start(args, fmt);
     vsnprintf(line, sizeof(line), fmt, args);
     if (stream == stderr) {
-        LOG(LOG_ERROR, logCatTag, "%s", line);
+        ALOG(LOG_ERROR, logCatTag, "%s", line);
     } else {
-        LOG(LOG_INFO, logCatTag, "%s", line);
+        ALOG(LOG_INFO, logCatTag, "%s", line);
     }
     vfprintf(stream, fmt, args);
     fputc('\n', stream);
