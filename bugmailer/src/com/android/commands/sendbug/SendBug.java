@@ -24,20 +24,13 @@ import android.content.Intent;
 import android.content.pm.IPackageManager;
 import android.content.pm.ResolveInfo;
 import android.net.Uri;
-import android.os.Environment;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemProperties;
 
 import java.io.File;
-import java.io.FilenameFilter;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class SendBug {
 
@@ -45,28 +38,35 @@ public class SendBug {
     private static final String EMAIL_ACCOUNT_TYPE = "com.android.email";
     private static final String SEND_BUG_INTENT_ACTION = "android.testing.SEND_BUG";
 
-    private static final Pattern datePattern = Pattern.compile(
-            ".*(\\d\\d\\d\\d[-_.]\\d\\d[-_.]\\d\\d[-_.]\\d\\d[-_.]\\d\\d[-_.]\\d\\d).*");
-    private static final File screenshotDir = new File(
-            Environment.getExternalStorageDirectory() + "/Pictures/Screenshots");
-    private static final long MAX_SCREENSHOT_AGE_MS = 5 * 50 * 1000;
-
     public static void main(String[] args) {
-        if (args.length >= 1) {
+        if (args.length == 1) {
             new SendBug().run(args[0]);
+        } else if (args.length == 2) {
+            new SendBug().run(args[0], args[1]);
         }
     }
 
     private void run(String bugreportPath) {
+        run(bugreportPath, null);
+    }
+
+    private void run(String bugreportPath, String screenShotPath) {
         final File bugreport = new File(bugreportPath);
+        File screenShot = null;
+        if (screenShotPath != null) {
+            screenShot = new File(screenShotPath);
+            if (!screenShot.exists()) {
+              // screen shot probably failed
+              screenShot = null;
+            }
+        }
         if (bugreport.exists()) {
             final Uri bugreportUri = Uri.fromFile(bugreport);
             // todo (aalbert): investigate adding a screenshot to BugReporter
             Intent intent = tryBugReporter(bugreportUri);
             if (intent == null) {
-                final File screenshotFile = findScreenshotFile(bugreportPath);
-                final Uri screenshotUri = screenshotFile != null
-                        ? Uri.fromFile(screenshotFile) : null;
+                final Uri screenshotUri = screenShot != null
+                        ? Uri.fromFile(screenShot) : null;
                 intent = getSendMailIntent(bugreportUri, screenshotUri);
             }
             final IActivityManager mAm = ActivityManagerNative.getDefault();
@@ -154,59 +154,4 @@ public class SendBug {
         return foundAccount;
     }
 
-    // Try to find a screenshot that was taken shortly before this bugreport was.
-    private File findScreenshotFile(String bugreportPath) {
-        final Date bugreportDate = getDate(bugreportPath);
-        if (bugreportDate == null) {
-            return null;
-        }
-
-        final String[] screenshotFiles = screenshotDir.list(
-                new FilenameFilter() {
-                    private final Pattern pattern = Pattern.compile("[Ss]creenshot.*\\.png");
-
-                    public boolean accept(File dir, String filename) {
-                        return pattern.matcher(filename).matches();
-                    }
-                });
-        long minDiff = Long.MAX_VALUE;
-        String bestMatch = null;
-        for (String screenshotFile : screenshotFiles) {
-            final Date date = getDate(screenshotFile);
-            if (date == null) {
-                continue;
-            }
-            final long diff = bugreportDate.getTime() - date.getTime();
-            if (diff < minDiff) {
-                minDiff = diff;
-                bestMatch = screenshotFile;
-            }
-        }
-
-        if (minDiff < MAX_SCREENSHOT_AGE_MS) {
-            return new File(screenshotDir, bestMatch);
-        }
-
-        return null;
-    }
-
-    private static Date getDate(final String string) {
-        final Matcher matcher = datePattern.matcher(string);
-        if (!matcher.matches()) {
-            return null;
-        }
-        final String dateString = matcher.group(1);
-        final char sep1 = dateString.charAt(4);
-        final char sep2 = dateString.charAt(7);
-        final char sep3 = dateString.charAt(10);
-        final char sep4 = dateString.charAt(13);
-        final char sep5 = dateString.charAt(16);
-        final SimpleDateFormat format = new SimpleDateFormat(
-                "yyyy" + sep1 + "MM" + sep2 + "dd" + sep3 + "HH" + sep4 + "mm" + sep5 + "ss");
-        try {
-            return format.parse(dateString);
-        } catch (ParseException e) {
-            return null;
-        }
-    }
 }
