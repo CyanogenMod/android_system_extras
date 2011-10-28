@@ -14,6 +14,7 @@
  * limitations under the License.
  *
  */
+
 /*
  * This socket tagging test is to ensure that the
  * netfilter/xt_qtaguid kernel module somewhat behaves as expected
@@ -24,6 +25,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <gtest/gtest.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <string>
@@ -32,15 +34,15 @@
 #include <utils/Log.h>
 #include <testUtil.h>
 
+namespace android {
 
 class SockInfo {
 public:
-        SockInfo()
-                : fd(-1), addr(NULL) {};
-        int setup(uint64_t tag);
-        bool checkTag(uint64_t tag, uid_t uid);
-        int fd;
-        void *addr;
+    SockInfo() : fd(-1), addr(NULL) {};
+    int setup(uint64_t tag);
+    bool checkTag(uint64_t tag, uid_t uid);
+    int fd;
+    void *addr;
 };
 
 
@@ -90,6 +92,7 @@ int writeModuleParam(const char *param, const char *data) {
     close(param_fd);
     return res;
 }
+
 /*----------------------------------------------------------------*/
 int SockInfo::setup(uint64_t tag) {
     fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -180,528 +183,217 @@ bool SockInfo::checkTag(uint64_t acct_tag, uid_t uid) {
     return pos != NULL;
 }
 
-/*----------------------------------------------------------------*/
-int testSocketTagging(void) {
-    SockInfo sock0;
-    SockInfo sock1;
-    int res;
-    int total_errors = 0;
-    int ctrl_fd = -1;
-    int dev_fd = -1;
-    const uint64_t invalid_tag1 = 0x0000000100000001llu;
-    uint64_t valid_tag1;
-    uint64_t valid_tag2;
-    uint64_t max_uint_tag = 0xffffffff00000000llu;
-    uid_t fake_uid;
-    uid_t fake_uid2;
-    const char *test_name;
-    uid_t my_uid = getuid();
-    pid_t my_pid = getpid();
 
-    srand48(my_pid * my_uid);
-    /* Adjust fake UIDs and tags so that multiple instances can run in parallel. */
-    fake_uid = testRand();
-    fake_uid2 = testRand();
-    valid_tag1 = ((uint64_t)my_pid << 48) | ((uint64_t)testRand() << 32);
-    valid_tag2 = ((uint64_t)my_pid << 48) | ((uint64_t)testRand() << 32);
-    max_uint_tag = 1llu << 63 | (((uint64_t)my_pid << 48) ^ max_uint_tag);
-    testSetLogCatTag(LOG_TAG);
+class SocketTaggingTest : public ::testing::Test {
+protected:
+    virtual void SetUp() {
+        ctrl_fd = -1;
+        dev_fd = -1;
+        my_uid = getuid();
+        my_pid = getpid();
+        srand48(my_pid * my_uid);
+        // Adjust fake UIDs and tags so that multiple instances can run in parallel.
+        fake_uid = testRand();
+        fake_uid2 = testRand();
+        valid_tag1 = ((uint64_t)my_pid << 48) | ((uint64_t)testRand() << 32);
+        valid_tag2 = ((uint64_t)my_pid << 48) | ((uint64_t)testRand() << 32);
+        valid_tag2 &= 0xffffff00ffffffffllu;  // Leave some room to make counts visible.
+        testPrintI("* start: pid=%lu uid=%lu uid1=0x%lx/%lu uid2=0x%lx/%lu"
+                   " tag1=0x%llx/%llu tag2=0x%llx/%llu",
+                   my_pid, my_uid, fake_uid, fake_uid, fake_uid2, fake_uid2,
+                   valid_tag1, valid_tag1, valid_tag2, valid_tag2);
+        max_uint_tag = 0xffffffff00000000llu;
+        max_uint_tag = 1llu << 63 | (((uint64_t)my_pid << 48) ^ max_uint_tag);
 
-    testPrintI("** %s ** ============================", __FUNCTION__);
-    testPrintI("* start: pid=%lu uid=%lu uid1=0x%lx/%lu uid2=0x%lx/%lu"
-               " tag1=0x%llx/%llu tag2=0x%llx/%llu",
-               my_pid, my_uid, fake_uid, fake_uid, fake_uid2, fake_uid2,
-               valid_tag1, valid_tag1, valid_tag2, valid_tag2);
-
-    // ---------------
-    test_name = "kernel has qtaguid";
-    testPrintI("* test: %s ", test_name);
-    ctrl_fd = openCtrl();
-    if (ctrl_fd < 0) {
-        testPrintE("qtaguid ctrl open failed: %s", strerror(errno));
-        total_errors++;
-        goto done;
-    }
-    close(ctrl_fd);
-    dev_fd = open("/dev/xt_qtaguid", O_RDONLY);
-    if (dev_fd < 0) {
-        testPrintE("qtaguid dev open failed: %s", strerror(errno));
-        total_errors++;
-    }
-    // ---------------
-    test_name = "delete command doesn't fail";
-    testPrintI("* test: %s", test_name);
-    res = doCtrlCommand("d 0 %u", fake_uid);
-    if (res < 0) {
-            testPrintE("! %s: Unexpected results", test_name);
-            total_errors++;
-    }
-
-    res = doCtrlCommand("d 0 %u", fake_uid2);
-    if (res < 0) {
-            testPrintE("! %s: Unexpected results", test_name);
-            total_errors++;
-    }
-
-    res = doCtrlCommand("d 0 %u", my_uid);
-    if (res < 0) {
-            testPrintE("! %s: Unexpected results", test_name);
-            total_errors++;
-    }
-    // ---------------
-    test_name = "setup sock0 and addr via tag";
-    testPrintI("* test: %s", test_name);
-    if (sock0.setup(valid_tag1) < 0) {
-        testPrintE("socket setup failed: %s", strerror(errno));
-        total_errors++;
-        goto done;
-
-    }
-    // ---------------
-    test_name = "setup sock1 and addr via tag";
-    testPrintI("* test: %s", test_name);
-    if (sock1.setup(valid_tag1) < 0) {
-        testPrintE("socket setup failed: %s", strerror(errno));
-        total_errors++;
-        goto done;
-    }
-    // ---------------
-    test_name = "insufficient args. Expected failure";
-    testPrintI("* test: %s", test_name);
-    res = doCtrlCommand("t");
-    if (res > 0) {
-        testPrintE("! %s: Unexpected results", test_name);
-        total_errors++;
-    }
-
-    // ---------------
-    test_name = "bad command. Expected failure";
-    testPrintI("* test: %s", test_name);
-    res = doCtrlCommand("?");
-    if (res > 0) {
-            testPrintE("! %s: Unexpected results", test_name);
-        total_errors++;
-    }
-
-    // ---------------
-    test_name = "no tag, no uid";
-    testPrintI("* test: %s", test_name);
-    res = doCtrlCommand("t %d", sock0.fd);
-    if (res < 0) {
-        testPrintE("! %s: Unexpected results", test_name);
-        total_errors++;
-    }
-    if (!sock0.checkTag(0, my_uid)) {
-        testPrintE("! %s: Unexpected results: tag not found", test_name);
-        total_errors++;
-    }
-
-    // ---------------
-    test_name = "invalid tag. Expected failure";
-    testPrintI("* test: %s", test_name);
-    res = doCtrlCommand("t %d %llu", sock0.fd, invalid_tag1);
-    if (res > 0) {
-        testPrintE("! %s: Unexpected results", test_name);
-        total_errors++;
-    }
-    if (sock0.checkTag(invalid_tag1, my_uid)) {
-        testPrintE("! %s: Unexpected results: tag should not be there", test_name);
-        total_errors++;
-    }
-
-    // ---------------
-    test_name = "valid tag with no uid";
-    testPrintI("* test: %s", test_name);
-    res = doCtrlCommand("t %d %llu", sock0.fd, valid_tag1);
-    if (res < 0) {
-        testPrintE("! %s: Unexpected results", test_name);
-        total_errors++;
-    }
-    if (!sock0.checkTag(valid_tag1, my_uid)) {
-        testPrintE("! %s: Unexpected results: tag not found", test_name);
-        total_errors++;
-    }
-    // ---------------
-    test_name = "valid untag";
-    testPrintI("* test: %s", test_name);
-    res = doCtrlCommand("u %d", sock0.fd);
-    if (res < 0) {
-        testPrintE("! %s: Unexpected results", test_name);
-        total_errors++;
-    }
-    if (sock0.checkTag(valid_tag1, my_uid)) {
-        testPrintE("! %s: Unexpected results: tag not removed", test_name);
-        total_errors++;
-    }
-
-    // ---------------
-    test_name = "valid 1st tag";
-    testPrintI("* test: %s", test_name);
-    res = doCtrlCommand("t %d %llu %u", sock0.fd, valid_tag2, fake_uid);
-    if (res < 0) {
-        testPrintE("! %s: Unexpected results", test_name);
-        total_errors++;
-    }
-    if (!sock0.checkTag(valid_tag2, fake_uid)) {
-        testPrintE("! %s: Unexpected results: tag not found", test_name);
-        total_errors++;
-    }
-
-    // ---------------
-    test_name = "valid re-tag";
-    testPrintI("* test: %s", test_name);
-    res = doCtrlCommand("t %d %llu %u", sock0.fd, valid_tag2, fake_uid);
-    if (res < 0) {
-        testPrintE("! %s: Unexpected results", test_name);
-        total_errors++;
-    }
-    if (!sock0.checkTag(valid_tag2, fake_uid)) {
-        testPrintE("! %s: Unexpected results: tag not found", test_name);
-        total_errors++;
-    }
-
-    // ---------------
-    test_name = "valid re-tag with acct_tag change";
-    testPrintI("* test: %s", test_name);
-    res = doCtrlCommand("t %d %llu %u", sock0.fd, valid_tag1, fake_uid);
-    if (res < 0) {
-        testPrintE("! %s: Unexpected results", test_name);
-        total_errors++;
-    }
-    if (!sock0.checkTag(valid_tag1, fake_uid)) {
-        testPrintE("! %s: Unexpected results: tag not found", test_name);
-        total_errors++;
-    }
-
-    // ---------------
-    test_name = "re-tag with uid change";
-    testPrintI("* test: %s", test_name);
-    res = doCtrlCommand("t %d %llu %u", sock0.fd, valid_tag2, fake_uid2);
-    if (res < 0) {
-        testPrintE("! %s: Unexpected results", test_name);
-        total_errors++;
-    }
-    if (!sock0.checkTag(valid_tag2, fake_uid2)) {
-        testPrintE("! %s: Unexpected results: tag not found", test_name);
-        total_errors++;
-    }
-
-    // ---------------
-    test_name = "valid 64bit acct tag";
-    testPrintI("* test: %s", test_name);
-    res = doCtrlCommand("t %d %llu", sock0.fd, max_uint_tag);
-    if (res < 0) {
-        testPrintE("! %s: Unexpected results", test_name);
-        total_errors++;
-    }
-    if (!sock0.checkTag(max_uint_tag, my_uid)) {
-        testPrintE("! %s: Unexpected results: tag not found", test_name);
-        total_errors++;
-    }
-
-    // ---------------
-    test_name = "tag another socket";
-    testPrintI("* test: %s", test_name);
-    res = doCtrlCommand("t %d %llu %u", sock1.fd, valid_tag1, fake_uid2);
-    if (res < 0) {
-        testPrintE("! %s: Unexpected results", test_name);
-        total_errors++;
-    }
-    if (!sock1.checkTag(valid_tag1, fake_uid2)) {
-        testPrintE("! %s: Unexpected results: tag not found", test_name);
-        total_errors++;
-    }
-
-    // ---------------
-    test_name = "valid untag";
-    testPrintI("* test: %s", test_name);
-    res = doCtrlCommand("u %d", sock0.fd);
-    if (res < 0) {
-        testPrintE("! %s: Unexpected results", test_name);
-        total_errors++;
-    }
-    if (sock0.checkTag(max_uint_tag, fake_uid)) {
-        testPrintE("! %s: Unexpected results: tag should not be there", test_name);
-        total_errors++;
-    }
-    if (!sock1.checkTag(valid_tag1, fake_uid2)) {
-        testPrintE("! %s: Unexpected results: tag not found", test_name);
-        total_errors++;
-    }
-    res = doCtrlCommand("u %d", sock1.fd);
-    if (res < 0) {
-        testPrintE("! %s: Unexpected results", test_name);
-        total_errors++;
-    }
-    if (sock1.checkTag(valid_tag1, fake_uid2)) {
-        testPrintE("! %s: Unexpected results: tag should not be there", test_name);
-        total_errors++;
-    }
-
-    // ---------------
-    test_name = "invalid sock0.fd. Expected failure";
-    testPrintI("* test: %s", test_name);
-    close(sock0.fd);
-    res = doCtrlCommand("t %d %llu %u", sock0.fd, valid_tag1, my_uid);
-    if (res > 0) {
-            testPrintE("! %s: Unexpected results", test_name);
-        total_errors++;
-    }
-    if (sock0.checkTag(valid_tag1, my_uid)) {
-        testPrintE("! %s: Unexpected results: tag should not be there", test_name);
-        total_errors++;
-    }
-
-    // ---------------
-    test_name = "invalid untag. Expected failure";
-    testPrintI("* test: %s", test_name);
-    close(sock1.fd);
-    res = doCtrlCommand("u %d", sock1.fd);
-    if (res > 0) {
-        testPrintE("! %s: Unexpected results", test_name);
-        total_errors++;
-    }
-
-    if (total_errors) {
-        testPrintE("! Errors found");
-    } else {
-        testPrintI("No Errors found");
-    }
-
-done:
-    if (dev_fd >= 0) {
-        close(dev_fd);
-    }
-    if (ctrl_fd >= 0) {
+        testPrintI("kernel has qtaguid");
+        ctrl_fd = openCtrl();
+        ASSERT_GE(ctrl_fd, 0) << "qtaguid ctrl open failed";
         close(ctrl_fd);
-    }
-    return total_errors;
-}
+        dev_fd = open("/dev/xt_qtaguid", O_RDONLY);
+        EXPECT_GE(dev_fd, 0) << "qtaguid dev open failed";
 
-int testTagData(void) {
-    SockInfo sock0;
-    SockInfo sock1;
-    int res;
-    int total_errors = 0;
-    int ctrl_fd = -1;
-    int dev_fd = -1;
-    const uint64_t invalid_tag1 = 0x0000000100000001llu;
-    uint64_t valid_tag1;
-    uint64_t valid_tag2;
-    uint64_t max_uint_tag = 0xffffffff00000000llu;
-    uid_t fake_uid;
-    uid_t fake_uid2;
-    const char *test_name;
-    uid_t my_uid = getuid();
-    pid_t my_pid = getpid();
-    const int max_tags = 5;
+        // We want to clean up any previous faulty test runs.
+        testPrintI("delete command does not fail");
+        EXPECT_GE(doCtrlCommand("d 0 %u", fake_uid), 0) << "Failed to delete fake_uid";
+        EXPECT_GE(doCtrlCommand("d 0 %u", fake_uid2), 0) << "Failed to delete fake_uid2";
+        EXPECT_GE(doCtrlCommand("d 0 %u", my_uid), 0) << "Failed to delete my_uid";
 
-    srand48(my_pid * my_uid);
-    /* Adjust fake UIDs and tags so that multiple instances can run in parallel. */
-    fake_uid = testRand();
-    fake_uid2 = testRand();
-    valid_tag1 = ((uint64_t)my_pid << 48) | ((uint64_t)testRand() << 32);
-    valid_tag2 = ((uint64_t)my_pid << 48) | ((uint64_t)testRand() << 32);
-    valid_tag2 &= 0xffffff00ffffffffllu;  // Leave some room to make counts visible.
-    testSetLogCatTag(LOG_TAG);
-
-    testPrintI("** %s ** ============================", __FUNCTION__);
-    testPrintI("* start: pid=%lu uid=%lu uid1=0x%lx/%lu uid2=0x%lx/%lu"
-               " tag1=0x%llx/%llu tag2=0x%llx/%llu",
-               my_pid, my_uid, fake_uid, fake_uid, fake_uid2, fake_uid2,
-               valid_tag1, valid_tag1, valid_tag2, valid_tag2);
-
-    // ---------------
-    test_name = "kernel has qtaguid";
-    testPrintI("* test: %s ", test_name);
-    ctrl_fd = openCtrl();
-    if (ctrl_fd < 0) {
-        testPrintE("qtaguid ctrl open failed: %s", strerror(errno));
-        return 1;
-    }
-    close(ctrl_fd);
-    dev_fd = open("/dev/xt_qtaguid", O_RDONLY);
-    if (dev_fd < 0) {
-        testPrintE("! %s: qtaguid dev open failed: %s", test_name, strerror(errno));
-        total_errors++;
-    }
-    // ---------------
-    test_name = "delete command doesn't fail";
-    testPrintI("* test: %s", test_name);
-    res = doCtrlCommand("d 0 %u", fake_uid);
-    if (res < 0) {
-            testPrintE("! %s: Unexpected results", test_name);
-            total_errors++;
+        testPrintI("setup sock0 and addr via tag");
+        ASSERT_FALSE(sock0.setup(valid_tag1))  << "socket0 setup failed";
+        testPrintI("setup sock1 and addr via tag");
+        ASSERT_FALSE(sock1.setup(valid_tag1))  << "socket1 setup failed";
     }
 
-    res = doCtrlCommand("d 0 %u", fake_uid2);
-    if (res < 0) {
-            testPrintE("! %s: Unexpected results", test_name);
-            total_errors++;
-    }
+   virtual void TearDown() {
+       if (dev_fd >= 0) {
+           close(dev_fd);
+       }
+       if (ctrl_fd >= 0) {
+           close(ctrl_fd);
+       }
+   }
 
-    res = doCtrlCommand("d 0 %u", my_uid);
-    if (res < 0) {
-            testPrintE("! %s: Unexpected results", test_name);
-            total_errors++;
-    }
+   SockInfo sock0;
+   SockInfo sock1;
+   int ctrl_fd;
+   int dev_fd;
+   uid_t fake_uid;
+   uid_t fake_uid2;
+   uid_t my_uid;
+   pid_t my_pid;
+   uint64_t valid_tag1;
+   uint64_t valid_tag2;
+   uint64_t max_uint_tag;
+   static const uint64_t invalid_tag1 = 0x0000000100000001llu;
+   static const int max_tags = 5;
+};
 
-    // ---------------
-    test_name = "setup sock0 and addr via tag";
-    testPrintI("* test: %s", test_name);
-    if (sock0.setup(valid_tag1)) {
-        testPrintE("socket setup failed: %s", strerror(errno));
-        return 1;
-    }
-    // ---------------
-    test_name = "setup sock1 and addr via tag";
-    testPrintI("* test: %s", test_name);
-    if (sock1.setup(valid_tag1)) {
-        testPrintE("socket setup failed: %s", strerror(errno));
-        return 1;
-    }
-    // ---------------
-    test_name = "setup tag limit";
-    testPrintI("* test: %s ", test_name);
+TEST_F(SocketTaggingTest, TagData) {
+    max_uint_tag = 0xffffffff00000000llu;
     char *max_tags_str;
+
+    testPrintI("setup tag limit");
     asprintf(&max_tags_str, "%d", max_tags);
-    res = writeModuleParam("max_sock_tags", max_tags_str);
-    if (res < 0) {
-        testPrintE("! %s: Unexpected results", test_name);
-        free(max_tags_str);
-        return 1;
-    }
+    ASSERT_GE(writeModuleParam("max_sock_tags", max_tags_str), 0) << "Failed to setup tag limit";
 
-    // ---------------
-    test_name = "tag quota reach limit";
-    testPrintI("* test: %s", test_name);
+    testPrintI("tag quota reach limit");
     for (int cnt = 0; cnt < max_tags; cnt++ ) {
-        uint64_t new_tag = valid_tag2 + ((uint64_t)cnt << 32);
-        res = doCtrlCommand("t %d %llu %u", sock0.fd, new_tag , fake_uid2);
-        if (res < 0) {
-                testPrintE("! %s: Unexpected results", test_name);
-                total_errors++;
-        }
-        if (!sock0.checkTag(new_tag, fake_uid2)) {
-                testPrintE("! %s: Unexpected results: tag not found", test_name);
-                total_errors++;
-        }
-    }
-    test_name = "tag quota go over limit";
-    testPrintI("* test: %s", test_name);
-    {
-        uint64_t new_tag = valid_tag2 + ((uint64_t)max_tags << 32);
-        res = doCtrlCommand("t %d %llu %u", sock0.fd, new_tag , fake_uid2);
-        if (res > 0) {
-                testPrintE("! %s: Unexpected results", test_name);
-                total_errors++;
-        }
-        if (!sock0.checkTag(valid_tag2 + (((uint64_t)max_tags - 1) << 32), fake_uid2)) {
-                testPrintE("! %s: Unexpected results: tag not found", test_name);
-                total_errors++;
-        }
+        uint64_t tag = valid_tag2 + ((uint64_t)cnt << 32);
+        EXPECT_GE(doCtrlCommand("t %d %llu %u", sock0.fd, tag , fake_uid2), 0)
+            << "Tagging within limit failed";
+        EXPECT_TRUE(sock0.checkTag(tag, fake_uid2))<<  "Unexpected results: tag not found";
     }
 
-    // ---------------
-    test_name = "valid untag";
-    testPrintI("* test: %s", test_name);
-    res = doCtrlCommand("u %d", sock0.fd);
-    if (res < 0) {
-        testPrintE("! %s: Unexpected results", test_name);
-        total_errors++;
-    }
-    if (sock0.checkTag(valid_tag2 + (((uint64_t)max_tags - 1) << 32), fake_uid2)) {
-        testPrintE("! %s: Unexpected results: tag should not be there", test_name);
-        total_errors++;
-    }
+    testPrintI("tag quota go over limit");
+    uint64_t new_tag = valid_tag2 + ((uint64_t)max_tags << 32);
+    EXPECT_LT(doCtrlCommand("t %d %llu %u", sock0.fd, new_tag , fake_uid2), 0);
+    EXPECT_TRUE(sock0.checkTag(valid_tag2 + (((uint64_t)max_tags - 1) << 32),
+                               fake_uid2)) << "Unexpected results: tag not found";
 
-    // ---------------
-    test_name = "tag after untag shouldn't free up max tags";
-    testPrintI("* test: %s", test_name);
-    {
-        uint64_t new_tag = valid_tag2 + ((uint64_t)max_tags << 32);
-        res = doCtrlCommand("t %d %llu %u", sock0.fd, new_tag , fake_uid2);
-        if (res > 0) {
-                testPrintE("! %s: Unexpected results", test_name);
-                total_errors++;
-        }
-        if (sock0.checkTag(valid_tag2 + ((uint64_t)max_tags << 32), fake_uid2)) {
-            testPrintE("! %s: Unexpected results: tag should not be there", test_name);
-            total_errors++;
-        }
-    }
+    testPrintI("valid untag");
+    EXPECT_GE(doCtrlCommand("u %d", sock0.fd), 0);
+    EXPECT_FALSE(sock0.checkTag(valid_tag2 + (((uint64_t)max_tags - 1) << 32), fake_uid2))
+        << "Untagged tag should not be there";
 
-    // ---------------
-    test_name = "delete one tag";
-    testPrintI("* test: %s", test_name);
-    {
-            uint64_t new_tag = valid_tag2 + (((uint64_t)max_tags / 2) << 32);
-            res = doCtrlCommand("d %llu %u", new_tag, fake_uid2);
-            if (res < 0) {
-                    testPrintE("! %s: Unexpected results", test_name);
-                    total_errors++;
-            }
-    }
+    testPrintI("tag after untag should not free up max tags");
+    uint64_t new_tag2 = valid_tag2 + ((uint64_t)max_tags << 32);
+    EXPECT_LT(doCtrlCommand("t %d %llu %u", sock0.fd, new_tag2 , fake_uid2), 0);
+    EXPECT_FALSE(sock0.checkTag(valid_tag2 + ((uint64_t)max_tags << 32), fake_uid2))
+        << "Tag should not be there";
 
-    // ---------------
-    test_name = "2 tags after 1 delete pass/fail";
-    testPrintI("* test: %s", test_name);
-    {
-        uint64_t new_tag;
-        new_tag = valid_tag2 + (((uint64_t)max_tags + 1 ) << 32);
-        res = doCtrlCommand("t %d %llu %u", sock0.fd, new_tag , fake_uid2);
-        if (res < 0) {
-                testPrintE("! %s: Unexpected results", test_name);
-                total_errors++;
-        }
-        if (!sock0.checkTag(valid_tag2 + (((uint64_t)max_tags + 1) << 32), fake_uid2)) {
-            testPrintE("! %s: Unexpected results: tag not found", test_name);
-            total_errors++;
-        }
+    testPrintI("delete one tag");
+    uint64_t new_tag3 = valid_tag2 + (((uint64_t)max_tags / 2) << 32);
+    EXPECT_GE(doCtrlCommand("d %llu %u", new_tag3, fake_uid2), 0);
 
-        new_tag = valid_tag2 + (((uint64_t)max_tags + 2 ) << 32);
-        res = doCtrlCommand("t %d %llu %u", sock0.fd, new_tag , fake_uid2);
-        if (res > 0) {
-                testPrintE("! %s: Unexpected results", test_name);
-                total_errors++;
-        }
-        if (sock0.checkTag(valid_tag2 + (((uint64_t)max_tags + 2) << 32), fake_uid2)) {
-            testPrintE("! %s: Unexpected results: tag should not be there", test_name);
-            total_errors++;
-        }
-    }
+    testPrintI("2 tags after 1 delete pass/fail");
+    uint64_t new_tag4;
+    new_tag4 = valid_tag2 + (((uint64_t)max_tags + 1 ) << 32);
+    EXPECT_GE(doCtrlCommand("t %d %llu %u", sock0.fd, new_tag4 , fake_uid2), 0);
+    EXPECT_TRUE(sock0.checkTag(valid_tag2 + (((uint64_t)max_tags + 1) << 32), fake_uid2))
+        << "Tag not found";
+    new_tag4 = valid_tag2 + (((uint64_t)max_tags + 2 ) << 32);
+    EXPECT_LT(doCtrlCommand("t %d %llu %u", sock0.fd, new_tag4 , fake_uid2), 0);
+    EXPECT_FALSE(sock0.checkTag(valid_tag2 + (((uint64_t)max_tags + 2) << 32), fake_uid2))
+        << "Tag should not be there";
 
     /* TODO(jpa): test tagging two different sockets with same tags and
      * check refcounts  the tag_node should be +2
      */
-
-    // ---------------
-    if (total_errors) {
-        testPrintE("! Errors found");
-    } else {
-        testPrintI("No Errors found");
-    }
-
-done:
-    if (dev_fd >= 0) {
-        close(dev_fd);
-    }
-    if (ctrl_fd >= 0) {
-        close(ctrl_fd);
-    }
-    return total_errors;
 }
 
-/*----------------------------------------------------------------*/
-
-int main(int argc, char *argv[]) {
-    int res = 0;
-    res += testTagData();
-    res += testSocketTagging();
-    if (res) {
-        testPrintE("!! %d Errors found", res);
-    } else {
-        testPrintE("No Errors found");
-    }
-    return res;
+TEST_F(SocketTaggingTest, InsufficientArgsFails) {
+    // Insufficient args. Expected failure
+    EXPECT_LE(doCtrlCommand("t"), 0) << "Insufficient args, should fail.";
 }
+
+TEST_F(SocketTaggingTest, BadCommandFails) {
+    // Bad command. Expected failure";
+    EXPECT_LE(doCtrlCommand("?"), 0) << "Bad command, should fail";
+}
+
+TEST_F(SocketTaggingTest, NoTagNoUid) {
+    // no tag, no uid
+    EXPECT_GE(doCtrlCommand("t %d", sock0.fd), 0);
+    ASSERT_TRUE(sock0.checkTag(0, my_uid))  << "Tag not found";
+}
+
+TEST_F(SocketTaggingTest, InvalidTagFail) {
+    // Invalid tag. Expected failure
+    EXPECT_LE(doCtrlCommand("t %d %llu", sock0.fd, invalid_tag1), 0);
+    ASSERT_FALSE(sock0.checkTag(invalid_tag1, my_uid)) << "Tag should not be there";
+}
+
+TEST_F(SocketTaggingTest, ValidTagWithNoUid) {
+    // Valid tag with no uid
+    EXPECT_GE(doCtrlCommand("t %d %llu", sock0.fd, valid_tag1), 0);
+    EXPECT_TRUE(sock0.checkTag(valid_tag1, my_uid)) << "Tag not found";
+}
+
+TEST_F(SocketTaggingTest, ValidUntag) {
+    // Valid untag
+    EXPECT_GE(doCtrlCommand("t %d %llu", sock0.fd, valid_tag1), 0);
+    EXPECT_TRUE(sock0.checkTag(valid_tag1, my_uid)) << "Tag not found";
+    EXPECT_GE(doCtrlCommand("u %d", sock0.fd), 0);
+    EXPECT_FALSE(sock0.checkTag(valid_tag1, my_uid)) << "Tag should be removed";
+}
+
+TEST_F(SocketTaggingTest, ValidFirsttag) {
+    // Valid 1st tag
+    EXPECT_GE(doCtrlCommand("t %d %llu %u", sock0.fd, valid_tag2, fake_uid), 0);
+    EXPECT_TRUE(sock0.checkTag(valid_tag2, fake_uid)) << "Tag not found.";
+}
+
+TEST_F(SocketTaggingTest, ValidReTag) {
+    // Valid re-tag
+    EXPECT_GE(doCtrlCommand("t %d %llu %u", sock0.fd, valid_tag2, fake_uid), 0);
+    EXPECT_GE(doCtrlCommand("t %d %llu %u", sock0.fd, valid_tag2, fake_uid), 0);
+    EXPECT_TRUE(sock0.checkTag(valid_tag2, fake_uid)) << "Tag not found.";
+}
+
+TEST_F(SocketTaggingTest, ValidReTagWithAcctTagChange) {
+    // Valid re-tag with acct_tag change
+    EXPECT_GE(doCtrlCommand("t %d %llu %u", sock0.fd, valid_tag2, fake_uid), 0);
+    EXPECT_GE(doCtrlCommand("t %d %llu %u", sock0.fd, valid_tag1, fake_uid), 0);
+    EXPECT_TRUE(sock0.checkTag(valid_tag1, fake_uid)) << "Tag not found.";
+}
+
+TEST_F(SocketTaggingTest, ReTagWithUidChange) {
+    // Re-tag with uid change
+    EXPECT_GE(doCtrlCommand("t %d %llu %u", sock0.fd, valid_tag1, fake_uid), 0);
+    EXPECT_GE(doCtrlCommand("t %d %llu %u", sock0.fd, valid_tag2, fake_uid2), 0);
+}
+
+TEST_F(SocketTaggingTest, Valid64BitAcctTag) {
+    // Valid 64bit acct tag
+    EXPECT_GE(doCtrlCommand("t %d %llu", sock0.fd, max_uint_tag), 0);
+    EXPECT_TRUE(sock0.checkTag(max_uint_tag, my_uid)) << "Tag not found.";
+}
+
+TEST_F(SocketTaggingTest, TagAnotherSocket) {
+    testPrintI("Tag two sockets");
+    EXPECT_GE(doCtrlCommand("t %d %llu", sock0.fd, max_uint_tag), 0);
+    EXPECT_GE(doCtrlCommand("t %d %llu %u", sock1.fd, valid_tag1, fake_uid2), 0);
+    EXPECT_TRUE(sock1.checkTag(valid_tag1, fake_uid2)) << "Tag not found.";
+    testPrintI("Untag socket0 of them only.");
+    EXPECT_GE(doCtrlCommand("u %d", sock0.fd), 0);
+    EXPECT_FALSE(sock0.checkTag(max_uint_tag, fake_uid)) << "Tag should not be there";
+    EXPECT_TRUE(sock1.checkTag(valid_tag1, fake_uid2)) << "Tag not found";
+    testPrintI("Now untag socket1 as well.");
+    EXPECT_GE(doCtrlCommand("u %d", sock1.fd), 0);
+    EXPECT_FALSE(sock1.checkTag(valid_tag1, fake_uid2)) << "Tag should not be there";
+}
+
+TEST_F(SocketTaggingTest, TagInvalidSocketFail) {
+    // Invalid tag. Expected failure
+    close(sock0.fd);
+    EXPECT_LE(doCtrlCommand("t %d %llu %u", sock0.fd, valid_tag1, my_uid), 0);
+    EXPECT_FALSE(sock0.checkTag(valid_tag1, my_uid)) << "Tag should not be there";
+}
+
+TEST_F(SocketTaggingTest, UntagInvalidSocketFail) {
+    // Invalid untag. Expected failure";
+    close(sock1.fd);
+    EXPECT_LE(doCtrlCommand("u %d", sock1.fd), 0);
+}
+
+}  // namespace android
