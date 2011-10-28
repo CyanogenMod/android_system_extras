@@ -17,7 +17,13 @@
 #ifndef _EXT4_UTILS_H_
 #define _EXT4_UTILS_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #define _FILE_OFFSET_BITS 64
 #define _LARGEFILE64_SOURCE
 #include <sys/types.h>
@@ -157,5 +163,9 @@ void ext4_queue_sb(void);
 u64 get_file_size(const char *filename);
 u64 parse_num(const char *arg);
 void ext4_parse_sb(struct ext4_super_block *sb);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
