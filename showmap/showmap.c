@@ -23,6 +23,7 @@ struct mapinfo {
     unsigned private_clean;
     unsigned private_dirty;
     int is_bss;
+    int count;
     char name[1];
 };
 
@@ -78,6 +79,7 @@ static int parse_header(const char* line, const mapinfo* prev, mapinfo** mi) {
     info->start = start;
     info->end = end;
     info->is_bss = is_bss;
+    info->count = 1;
     strlcpy(info->name, name, name_size);
 
     *mi = info;
@@ -138,6 +140,7 @@ static void enqueue_map(mapinfo **head, mapinfo *map, int sort_by_address, int c
             current->private_clean += map->private_clean;
             current->private_dirty += map->private_dirty;
             current->is_bss &= map->is_bss;
+            current->count++;
             free(map);
             break;
         }
@@ -209,6 +212,35 @@ static int verbose = 0;
 static int terse = 0;
 static int addresses = 0;
 
+static void print_header()
+{
+    if (addresses) {
+        printf("   start      end ");
+    }
+    printf(" virtual                     shared   shared  private  private\n");
+
+    if (addresses) {
+        printf("    addr     addr ");
+    }
+    printf("    size      RSS      PSS    clean    dirty    clean    dirty ");
+    if (!verbose && !addresses) {
+        printf("   # ");
+    }
+    printf("object\n");
+}
+
+static void print_divider()
+{
+    if (addresses) {
+        printf("-------- -------- ");
+    }
+    printf("-------- -------- -------- -------- -------- -------- -------- ");
+    if (!verbose && !addresses) {
+        printf("---- ");
+    }
+    printf("------------------------------\n");
+}
+
 static int show_map(int pid)
 {
     mapinfo *milist;
@@ -220,26 +252,15 @@ static int show_map(int pid)
     unsigned rss = 0;
     unsigned pss = 0;
     unsigned size = 0;
+    unsigned count = 0;
 
     milist = load_maps(pid, addresses, !verbose && !addresses);
     if (milist == NULL) {
         return 1;
     }
 
-    if (addresses) {
-        printf("start    end      ");
-    }
-    printf("virtual                    shared   shared   private  private\n");
-
-    if (addresses) {
-        printf("addr     addr     ");
-    }
-    printf("size     RSS      PSS      clean    dirty    clean    dirty    object\n");
-
-    if (addresses) {
-        printf("-------- -------- ");
-    }
-    printf("-------- -------- -------- -------- -------- -------- -------- ------------------------------\n");
+    print_header();
+    print_divider();
 
     for (mi = milist; mi;) {
         mapinfo* last = mi;
@@ -251,6 +272,7 @@ static int show_map(int pid)
         rss += mi->rss;
         pss += mi->pss;
         size += mi->size;
+        count += mi->count;
         
         if (terse && !mi->private_dirty) {
             goto out;
@@ -259,30 +281,36 @@ static int show_map(int pid)
         if (addresses) {
             printf("%08x %08x ", mi->start, mi->end);
         }
-        printf("%8d %8d %8d %8d %8d %8d %8d %s%s\n", mi->size,
+        printf("%8d %8d %8d %8d %8d %8d %8d ", mi->size,
                mi->rss,
                mi->pss,
                mi->shared_clean, mi->shared_dirty,
-               mi->private_clean, mi->private_dirty,
-               mi->name, mi->is_bss ? " [bss]" : "");
+               mi->private_clean, mi->private_dirty);
+        if (!verbose && !addresses) {
+            printf("%4d ", mi->count);
+        }
+        printf("%s%s\n", mi->name, mi->is_bss ? " [bss]" : "");
 
 out:
         mi = mi->next;
         free(last);
     }
 
-    if (addresses) {
-        printf("-------- -------- ");
-    }
-    printf("-------- -------- -------- -------- -------- -------- -------- ------------------------------\n");
+    print_divider();
+    print_header();
+    print_divider();
 
     if (addresses) {
         printf("                  ");
     }
-    printf("%8d %8d %8d %8d %8d %8d %8d TOTAL\n", size,
+    printf("%8d %8d %8d %8d %8d %8d %8d ", size,
             rss, pss,
             shared_clean, shared_dirty,
             private_clean, private_dirty);
+    if (!verbose && !addresses) {
+        printf("%4d ", count);
+    }
+    printf("TOTAL\n");
 
     return 0;
 }
