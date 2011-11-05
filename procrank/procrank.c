@@ -46,7 +46,7 @@ int (*compfn)(const void *a, const void *b);
 static int order;
 
 void print_mem_info() {
-    char buffer[256];
+    char buffer[1024];
     int numFound = 0;
 
     int fd = open("/proc/meminfo", O_RDONLY);
@@ -70,6 +70,8 @@ void print_mem_info() {
             "MemFree:",
             "Buffers:",
             "Cached:",
+            "Shmem:",
+            "Slab:",
             NULL
     };
     static const int tagsLen[] = {
@@ -77,12 +79,14 @@ void print_mem_info() {
             8,
             8,
             7,
+            6,
+            5,
             0
     };
-    long mem[] = { 0, 0, 0, 0 };
+    long mem[] = { 0, 0, 0, 0, 0, 0 };
 
     char* p = buffer;
-    while (*p && numFound < 4) {
+    while (*p && numFound < 6) {
         int i = 0;
         while (tags[i]) {
             if (strncmp(p, tags[i], tagsLen[i]) == 0) {
@@ -93,7 +97,6 @@ void print_mem_info() {
                 if (*p != 0) {
                     *p = 0;
                     p++;
-                    if (*p == 0) p--;
                 }
                 mem[i] = atoll(num);
                 numFound++;
@@ -101,11 +104,14 @@ void print_mem_info() {
             }
             i++;
         }
-        p++;
+        while (*p && *p != '\n') {
+            p++;
+        }
+        if (*p) p++;
     }
 
-    printf("RAM: %ldK total, %ldK free, %ldK buffers, %ldK cached\n",
-            mem[0], mem[1], mem[2], mem[3]);
+    printf("RAM: %ldK total, %ldK free, %ldK buffers, %ldK cached, %ldK shmem, %ldK slab\n",
+            mem[0], mem[1], mem[2], mem[3], mem[4], mem[5]);
 }
 
 int main(int argc, char *argv[]) {
