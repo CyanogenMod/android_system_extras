@@ -67,12 +67,10 @@ int main(int argc, char** argv)
     if (ioctl(fd, FBIOGET_VSCREENINFO, &info) == -1)
         return -errno;    
     
-    int refreshRate = 1000000000000000LLU / 
-            (
-          (uint64_t)( info.upper_margin + info.lower_margin + info.yres ) 
-                  * ( info.left_margin  + info.right_margin + info.xres )
-                  * info.pixclock
-            );
+    uint64_t denominator = (uint64_t)( info.upper_margin + info.lower_margin + info.yres )
+                         * ( info.left_margin  + info.right_margin + info.xres )
+                         * info.pixclock;
+    int refreshRate = denominator ? (1000000000000000LLU / denominator) : 0;
     
     float xdpi = (info.xres * 25.4f) / info.width; 
     float ydpi = (info.yres * 25.4f) / info.height;
