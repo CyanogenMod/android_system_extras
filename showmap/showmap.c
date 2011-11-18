@@ -56,9 +56,7 @@ static int parse_header(const char* line, const mapinfo* prev, mapinfo** mi) {
     if (line[name_pos]) {
         strlcpy(name, line + name_pos, sizeof(name));
     } else {
-        if ((start >= 0x10000000) && (start < 0x40000000)) {
-            strlcpy(name, "[stack]", sizeof(name));
-        } else if (prev && start == prev->end && is_library(prev->name)) {
+        if (prev && start == prev->end && is_library(prev->name)) {
             // anonymous mappings immediately adjacent to shared libraries
             // usually correspond to the library BSS segment, so we use the
             // library's own name
