@@ -19,7 +19,6 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 LOCAL_MODULE_TAGS := tests
 LOCAL_MODULE := socketTag
-LOCAL_MODULE_PATH := $(TARGET_OUT_DATA)/nativestresstest
 LOCAL_SRC_FILES := socketTag.cpp
 LOCAL_SHARED_LIBRARIES += libcutils libutils
 LOCAL_STATIC_LIBRARIES += libtestUtil
