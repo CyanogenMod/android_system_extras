@@ -61,6 +61,7 @@ endef
 # First, the tests in 'common'
 
 sources := \
+    common/bench_stdio.c \
     common/test_clock.c \
     common/test_cpu_set.c \
     common/test_drand48.c \
@@ -251,5 +252,32 @@ sources := \
 
 EXTRA_CFLAGS := -mandroid
 #$(call device-test, $(sources))
+
+# NOTE: We build both a shared and static version of bench_pthread.
+# the shared version will use the target device's C library, while
+# the static one will use the current build product implementation.
+# This is ideal to quantify pthread optimizations.
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := common/bench_pthread.c
+LOCAL_MODULE := bench_pthread_shared
+LOCAL_MODULE_TAGS := tests
+include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := common/bench_pthread.c
+LOCAL_MODULE := bench_pthread_static
+LOCAL_MODULE_TAGS := tests
+LOCAL_FORCE_STATIC_EXECUTABLE := true
+LOCAL_STATIC_LIBRARIES := libc
+include $(BUILD_EXECUTABLE)
+
+ifeq ($(HOST_OS),linux)
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := common/bench_pthread.c
+LOCAL_MODULE := bench_pthread
+LOCAL_LDLIBS += -lpthread -lrt
+LOCAL_MODULE_TAGS := tests
+include $(BUILD_HOST_EXECUTABLE)
+endif
 
 endif  # BIONIC_TESTS
