@@ -24,6 +24,7 @@
 
 #include <assert.h>
 #include <dirent.h>
+#include <fcntl.h>
 #include <libgen.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,6 +59,10 @@
 #define S_ISUID 0004000
 #define S_ISGID 0002000
 #define S_ISVTX 0001000
+
+#else
+
+#define O_BINARY 0
 
 #endif
 
@@ -280,27 +285,40 @@ void reset_ext4fs_info() {
 
 int make_ext4fs(const char *filename, s64 len)
 {
-    reset_ext4fs_info();
-    info.len = len;
-    return make_ext4fs_internal(filename, NULL, NULL, 0, 0, 0, 0, 1, 0);
+	int fd;
+	int status;
+
+	reset_ext4fs_info();
+	info.len = len;
+
+	fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644);
+	if (fd < 0) {
+		error_errno("open");
+		return EXIT_FAILURE;
+	}
+
+	status = make_ext4fs_internal(fd, NULL, NULL, 0, 0, 0, 0, 1, 0);
+	close(fd);
+
+	return status;
 }
 
-int make_ext4fs_internal(const char *filename, const char *directory,
+int make_ext4fs_internal(int fd, const char *directory,
                          char *mountpoint, int android, int gzip, int sparse,
                          int crc, int wipe, int init_itabs)
 {
-        u32 root_inode_num;
-        u16 root_mode;
+	u32 root_inode_num;
+	u16 root_mode;
 
 	if (setjmp(setjmp_env))
 		return EXIT_FAILURE; /* Handle a call to longjmp() */
 
 	if (info.len <= 0)
-		info.len = get_file_size(filename);
+		info.len = get_file_size(fd);
 
 	if (info.len <= 0) {
 		fprintf(stderr, "Need size of filesystem\n");
-                return EXIT_FAILURE;
+		return EXIT_FAILURE;
 	}
 
 	if (info.block_size <= 0)
@@ -400,7 +418,7 @@ int make_ext4fs_internal(const char *filename, const char *directory,
 			aux_info.sb->s_blocks_count_lo - aux_info.sb->s_free_blocks_count_lo,
 			aux_info.sb->s_blocks_count_lo);
 
-	write_ext4_image(filename, gzip, sparse, crc, wipe);
+	write_ext4_image(fd, gzip, sparse, crc, wipe);
 
 	return 0;
 }

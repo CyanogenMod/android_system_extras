@@ -21,6 +21,8 @@ struct output_file;
 
 struct output_file *open_output_file(const char *filename, int gz, int sparse,
         int chunks, int crc, int wipe);
+struct output_file *open_output_fd(int fd, int gz, int sparse,
+        int chunks, int crc, int wipe);
 void write_data_block(struct output_file *out, u64 off, u8 *data, int len);
 void write_fill_block(struct output_file *out, u64 off, u32 fill_val, int len);
 void write_data_file(struct output_file *out, u64 off, const char *file,

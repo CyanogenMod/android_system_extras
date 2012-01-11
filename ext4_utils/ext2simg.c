@@ -28,6 +28,10 @@
 #include <libgen.h>
 #include <unistd.h>
 
+#ifndef USE_MINGW /* O_BINARY is windows-specific flag */
+#define O_BINARY 0
+#endif
+
 extern struct fs_info info;
 
 static int verbose = 0;
@@ -169,7 +173,7 @@ int main(int argc, char **argv)
 	const char *out = NULL;
 	int gzip = 0;
 	int sparse = 1;
-	int fd;
+	int infd, outfd;
 	int crc = 0;
 
 	while ((opt = getopt(argc, argv, "cvzS")) != -1) {
@@ -211,18 +215,29 @@ int main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 
-	fd = open(in, O_RDONLY);
+	infd = open(in, O_RDONLY);
 
-	if (fd < 0)
+	if (infd < 0)
 		critical_error_errno("failed to open input image");
 
-	read_ext(fd);
+	read_ext(infd);
 
-	build_sparse_ext(fd, in);
+	build_sparse_ext(infd, in);
 
-	close(fd);
+	close(infd);
 
-	write_ext4_image(out, gzip, sparse, crc, 0);
+	if (strcmp(out, "-")) {
+		outfd = open(out, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644);
+		if (outfd < 0) {
+			error_errno("open");
+			return EXIT_FAILURE;
+		}
+	} else {
+		outfd = STDOUT_FILENO;
+	}
+
+	write_ext4_image(outfd, gzip, sparse, crc, 0);
+	close(outfd);
 
 	return 0;
 }
