@@ -20,12 +20,13 @@
 #include "sparse_crc32.h"
 #include "wipe.h"
 
+#include <fcntl.h>
+#include <stdbool.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <unistd.h>
-#include <fcntl.h>
 
 #include <zlib.h>
 
@@ -48,6 +49,7 @@ struct output_file_ops {
 struct output_file {
 	int fd;
 	gzFile gz_fd;
+	bool close_fd;
 	int sparse;
 	u64 cur_out_ptr;
 	u32 chunk_cnt;
@@ -85,7 +87,9 @@ static int file_write(struct output_file *out, u8 *data, int len)
 
 static void file_close(struct output_file *out)
 {
-	close(out->fd);
+	if (out->close_fd) {
+		close(out->fd);
+	}
 }
 
 
@@ -343,7 +347,7 @@ void close_output_file(struct output_file *out)
 	out->ops->close(out);
 }
 
-struct output_file *open_output_file(const char *filename, int gz, int sparse,
+struct output_file *open_output_fd(int fd, int gz, int sparse,
         int chunks, int crc, int wipe)
 {
 	int ret;
@@ -361,25 +365,17 @@ struct output_file *open_output_file(const char *filename, int gz, int sparse,
 
 	if (gz) {
 		out->ops = &gz_file_ops;
-		out->gz_fd = gzopen(filename, "wb9");
+		out->gz_fd = gzdopen(fd, "wb9");
 		if (!out->gz_fd) {
 			error_errno("gzopen");
 			free(out);
 			return NULL;
 		}
 	} else {
-		if (strcmp(filename, "-")) {
-			out->fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-			if (out->fd < 0) {
-				error_errno("open");
-				free(out);
-				return NULL;
-			}
-		} else {
-			out->fd = STDOUT_FILENO;
-		}
+		out->fd = fd;
 		out->ops = &file_ops;
 	}
+	out->close_fd = false;
 	out->sparse = sparse;
 	out->cur_out_ptr = 0ll;
 	out->chunk_cnt = 0;
@@ -404,6 +400,33 @@ struct output_file *open_output_file(const char *filename, int gz, int sparse,
 	}
 
 	return out;
+}
+
+struct output_file *open_output_file(const char *filename, int gz, int sparse,
+        int chunks, int crc, int wipe) {
+
+	int fd;
+	struct output_file *file;
+
+	if (strcmp(filename, "-")) {
+		fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+		if (fd < 0) {
+			error_errno("open");
+			return NULL;
+		}
+	} else {
+		fd = STDOUT_FILENO;
+	}
+
+	file = open_output_fd(fd, gz, sparse, chunks, crc, wipe);
+	if (!file) {
+		close(fd);
+		return NULL;
+	}
+
+	file->close_fd = true; // we opened descriptor thus we responsible for closing it
+
+	return file;
 }
 
 void pad_output_file(struct output_file *out, u64 len)
