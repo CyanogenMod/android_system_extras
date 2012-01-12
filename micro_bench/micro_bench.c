@@ -37,11 +37,12 @@ static void tv_sub(struct timeval *tv2, struct timeval *tv1) {
         }
 }
 
-static int do_sleep(int delay) {
+static int do_sleep(int iters, int delay) {
     struct timeval tv1;
     struct timeval tv2;
+    int i;
 
-    while (1) {
+    for (i = 0; iters == -1 || i < iters; i++) {
         gettimeofday(&tv1, NULL);
         sleep(delay);
         gettimeofday(&tv2, NULL);
@@ -56,11 +57,12 @@ static int do_sleep(int delay) {
 
 int cpu_foo;
 
-static int do_cpu(int a) {
+static int do_cpu(int iters, int a) {
     struct timeval tv1;
     struct timeval tv2;
+    int i;
 
-    while (1) {
+    for (i = 0; iters == -1 || i < iters; i++) {
         gettimeofday(&tv1, NULL);
         for (cpu_foo = 0; cpu_foo < 100000000; cpu_foo++);
         gettimeofday(&tv2, NULL);
@@ -77,33 +79,34 @@ static double mb_sec(unsigned long bytes, struct timeval *delta) {
     return (double)bytes * 1000000.0 / 1048576.0 / (double)us;
 }
 
-static int do_memset(int sz) {
+static int do_memset(int iters, int sz) {
     struct timeval tv1;
     struct timeval tv2;
-    int i;
+    int i, j;
 
     uint8_t *b = malloc(sz);
     if (!b) return -1;
     int c = 1000000000/sz;
 
-    while (1) {
+    for (i = 0; iters == -1 || i < iters; i++) {
         gettimeofday(&tv1, NULL);
-        for (i = 0; i < c; i++)
+        for (j = 0; j < c; j++)
             memset(b, 0, sz);
 
         gettimeofday(&tv2, NULL);
 
         tv_sub(&tv2, &tv1);
 
-        printf("memset %dx%d bytes took %ld.%06ld seconds (%f MB/s)\n", c, sz, tv2.tv_sec, tv2.tv_usec, mb_sec(c*sz, &tv2));
+        printf("memset %dx%d bytes took %ld.%06ld seconds (%f MB/s)\n",
+                c, sz, tv2.tv_sec, tv2.tv_usec, mb_sec(c*sz, &tv2));
     }
     return 0;
 }
 
-static int do_memcpy(int sz) {
+static int do_memcpy(int iters, int sz) {
     struct timeval tv1;
     struct timeval tv2;
-    int i;
+    int i, j;
 
     uint8_t *a = malloc(sz);
     if (!a) return -1;
@@ -111,49 +114,51 @@ static int do_memcpy(int sz) {
     if (!b) return -1;
     int c = 1000000000/sz;
 
-    while (1) {
+    for (i = 0; iters == -1 || i < iters; i++) {
         gettimeofday(&tv1, NULL);
-        for (i = 0; i < c; i++)
+        for (j = 0; j < c; j++)
             memcpy(b, a, sz);
 
         gettimeofday(&tv2, NULL);
 
         tv_sub(&tv2, &tv1);
 
-        printf("memcpy %dx%d bytes took %ld.%06ld seconds (%f MB/s)\n", c, sz, tv2.tv_sec, tv2.tv_usec, mb_sec(c*sz, &tv2));
+        printf("memcpy %dx%d bytes took %ld.%06ld seconds (%f MB/s)\n",
+                c, sz, tv2.tv_sec, tv2.tv_usec, mb_sec(c*sz, &tv2));
     }
     return 0;
 }
 
 int foo;
 
-static int do_memread(int sz) {
+static int do_memread(int iters, int sz) {
     struct timeval tv1;
     struct timeval tv2;
-    int i, j;
+    int i, j, k;
 
     int *b = malloc(sz);
     if (!b) return -1;
     int c = 1000000000/sz;
 
-    while (1) {
+    for (i = 0; iters == -1 || i < iters; i++) {
         gettimeofday(&tv1, NULL);
-        for (i = 0; i < c; i++)
-            for (j = 0; j < sz/4; j++)
-                foo = b[j];
+        for (j = 0; j < c; j++)
+            for (k = 0; k < sz/4; k++)
+                foo = b[k];
 
         gettimeofday(&tv2, NULL);
 
         tv_sub(&tv2, &tv1);
 
-        printf("read %dx%d bytes took %ld.%06ld seconds (%f MB/s)\n", c, sz, tv2.tv_sec, tv2.tv_usec, mb_sec(c*sz, &tv2));
+        printf("read %dx%d bytes took %ld.%06ld seconds (%f MB/s)\n",
+                c, sz, tv2.tv_sec, tv2.tv_usec, mb_sec(c*sz, &tv2));
     }
     return 0;
 }
 
 struct {
     char *name;
-    int (*ptr)(int);
+    int (*ptr)(int, int);
 } function_table[]  = {
     {"sleep", do_sleep},
     {"cpu", do_cpu},
@@ -168,21 +173,27 @@ static void usage() {
 
     printf("Usage:\n");
     for (i = 0; function_table[i].name; i++) {
-        printf("\tmicro_bench %s ARG\n", function_table[i].name);
+        printf("\tmicro_bench %s ARG [ITERS]\n", function_table[i].name);
     }
 }
 
 int main(int argc, char **argv) {
     int i;
+    int iters;
 
-    if (argc != 3) {
+    if (argc < 3 || argc > 4) {
         usage();
         return -1;
+    }
+    if (argc == 3) {
+        iters = -1;
+    } else {
+        iters = atoi(argv[3]);
     }
     for (i = 0; function_table[i].name; i++) {
         if (!strcmp(argv[1], function_table[i].name)) {
             printf("%s\n", function_table[i].name);
-            return (*function_table[i].ptr)(atoi(argv[2]));
+            return (*function_table[i].ptr)(iters, atoi(argv[2]));
         }
     }
     usage();
