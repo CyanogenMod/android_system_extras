@@ -70,7 +70,7 @@ static u32 build_default_directory_structure()
 /* Read a local directory and create the same tree in the generated filesystem.
    Calls itself recursively with each directory in the given directory */
 static u32 build_directory_structure(const char *full_path, const char *dir_path,
-		u32 dir_inode, int android)
+		     u32 dir_inode, int android, struct selabel_handle *sehnd)
 {
 	int entries = 0;
 	struct dentry *dentries;
@@ -127,6 +127,18 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 			error("can't set android permissions - built without android support");
 #endif
 		}
+#ifdef HAVE_SELINUX
+		if (sehnd) {
+			char *sepath = NULL;
+			asprintf(&sepath, "/%s", dentries[i].path);
+			if (selabel_lookup(sehnd, &dentries[i].secon, sepath, stat.st_mode) < 0) {
+				error("cannot lookup security context for %s", sepath);
+			}
+			if (dentries[i].secon)
+				printf("Labeling %s as %s\n", sepath, dentries[i].secon);
+			free(sepath);
+		}
+#endif
 
 		if (S_ISREG(stat.st_mode)) {
 			dentries[i].file_type = EXT4_FT_REG_FILE;
@@ -160,7 +172,7 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 			entry_inode = make_file(dentries[i].full_path, dentries[i].size);
 		} else if (dentries[i].file_type == EXT4_FT_DIR) {
 			entry_inode = build_directory_structure(dentries[i].full_path,
-					dentries[i].path, inode, android);
+					dentries[i].path, inode, android, sehnd);
 		} else if (dentries[i].file_type == EXT4_FT_SYMLINK) {
 			entry_inode = make_link(dentries[i].full_path, dentries[i].link);
 		} else {
@@ -174,11 +186,15 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 			dentries[i].mtime);
 		if (ret)
 			error("failed to set permissions on %s\n", dentries[i].path);
+		ret = inode_set_selinux(entry_inode, dentries[i].secon);
+		if (ret)
+			error("failed to set SELinux context on %s\n", dentries[i].path);
 
 		free(dentries[i].path);
 		free(dentries[i].full_path);
 		free(dentries[i].link);
 		free((void *)dentries[i].filename);
+		free(dentries[i].secon);
 	}
 
 	free(dentries);
@@ -254,12 +270,13 @@ int make_ext4fs(const char *filename, s64 len)
 {
     reset_ext4fs_info();
     info.len = len;
-    return make_ext4fs_internal(filename, NULL, NULL, 0, 0, 0, 0, 1, 0);
+    return make_ext4fs_internal(filename, NULL, NULL, 0, 0, 0, 0, 1, 0, 0);
 }
 
 int make_ext4fs_internal(const char *filename, const char *directory,
                          char *mountpoint, int android, int gzip, int sparse,
-                         int crc, int wipe, int init_itabs)
+                         int crc, int wipe, int init_itabs,
+                         struct selabel_handle *sehnd)
 {
         u32 root_inode_num;
         u16 root_mode;
@@ -346,12 +363,29 @@ int make_ext4fs_internal(const char *filename, const char *directory,
 		ext4_create_resize_inode();
 
 	if (directory)
-		root_inode_num = build_directory_structure(directory, mountpoint, 0, android);
+		root_inode_num = build_directory_structure(directory, mountpoint, 0, android, sehnd);
 	else
 		root_inode_num = build_default_directory_structure();
 
 	root_mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
 	inode_set_permissions(root_inode_num, root_mode, 0, 0, 0);
+
+#ifdef HAVE_SELINUX
+	if (sehnd) {
+		char *sepath = NULL;
+		char *secontext = NULL;
+		asprintf(&sepath, "/%s", mountpoint);
+		if (selabel_lookup(sehnd, &secontext, sepath, S_IFDIR) < 0) {
+			error("cannot lookup security context for %s", sepath);
+		}
+		if (secontext) {
+			printf("Labeling %s as %s\n", sepath, secontext);
+			inode_set_selinux(root_inode_num, secontext);
+		}
+		free(sepath);
+		freecon(secontext);
+	}
+#endif
 
 	ext4_update_free();
 

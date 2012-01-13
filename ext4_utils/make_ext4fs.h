@@ -20,10 +20,18 @@
 #include "ext4_utils.h"
 #include "ext4.h"
 
+#ifdef HAVE_SELINUX
+#include <selinux/selinux.h>
+#include <selinux/label.h>
+#else
+struct selabel_handle;
+#endif
+
 void reset_ext4fs_info();
 int make_ext4fs(const char *filename, s64 len);
 int make_ext4fs_internal(const char *filename, const char *directory,
                          char *mountpoint, int android, int gzip, int sparse,
-                         int crc, int wipe, int init_itabs);
+                         int crc, int wipe, int init_itabs,
+                         struct selabel_handle *sehnd);
 
 #endif
