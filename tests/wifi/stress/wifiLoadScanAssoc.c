@@ -285,7 +285,7 @@ main(int argc, char *argv[])
 
         // Start Supplicant
         randBind(&availCPU, &cpu);
-        if ((rv = wifi_start_supplicant()) != 0) {
+        if ((rv = wifi_start_supplicant(false)) != 0) {
             testPrintE("CPU: %i wifi_start_supplicant() failed, rv: %i\n",
                 cpu, rv);
             exit(21);
@@ -341,7 +341,7 @@ main(int argc, char *argv[])
         }
 
         // Start supplicant
-        if ((rv = wifi_start_supplicant()) != 0) {
+        if ((rv = wifi_start_supplicant(false)) != 0) {
             testPrintE("main start supplicant failed, rv: %i", rv);
             exit(26);
         }
