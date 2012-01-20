@@ -460,6 +460,7 @@ static u64 get_block_device_size(const char *filename)
 #elif defined(__APPLE__) && defined(__MACH__)
 	ret = ioctl(fd, DKIOCGETBLOCKCOUNT, &size);
 #else
+	close(fd);
 	return 0;
 #endif
 
