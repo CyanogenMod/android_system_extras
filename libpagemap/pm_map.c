@@ -83,10 +83,6 @@ int pm_map_workingset(pm_map_t *map, pm_memusage_t *ws_out) {
     pm_memusage_zero(&ws);
     
     for (i = 0; i < len; i++) {
-        if (!PM_PAGEMAP_PRESENT(pagemap[i]) ||
-            PM_PAGEMAP_SWAPPED(pagemap[i]))
-            continue;
-
         error = pm_kernel_flags(map->proc->ker, PM_PAGEMAP_PFN(pagemap[i]),
                                 &flags);
         if (error) goto out;
@@ -99,6 +95,7 @@ int pm_map_workingset(pm_map_t *map, pm_memusage_t *ws_out) {
         if (error) goto out;
 
         ws.vss += map->proc->ker->pagesize;
+        if( PM_PAGEMAP_SWAPPED(pagemap[i]) ) continue;
         ws.rss += (count >= 1) ? (map->proc->ker->pagesize) : (0);
         ws.pss += (count >= 1) ? (map->proc->ker->pagesize / count) : (0);
         ws.uss += (count == 1) ? (map->proc->ker->pagesize) : (0);
