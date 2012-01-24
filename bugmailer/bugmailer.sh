@@ -1,5 +1,12 @@
 #!/system/bin/sh
 
+# Do not allow bugreports on user builds unless USB debugging
+# is enabled.
+if [ "x$(getprop ro.build.type)" = "xuser" -a \
+     "x$(getprop init.svc.adbd)" != "xrunning" ]; then
+  exit 0
+fi
+
 timestamp=`date +'%Y-%m-%d-%H-%M-%S'`
 storagePath="$EXTERNAL_STORAGE/bugreports"
 bugreport=$storagePath/bugreport-$timestamp
