@@ -14,9 +14,8 @@
  * limitations under the License.
  */
 
-#include <fcntl.h>
-#include <libgen.h>
 #include <unistd.h>
+#include <libgen.h>
 
 #if defined(__linux__)
 #include <linux/fs.h>
@@ -50,8 +49,6 @@ int main(int argc, char **argv)
         int crc = 0;
         int wipe = 0;
         int init_itabs = 0;
-        int fd;
-        int exitcode;
 
         while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:fwzJsct")) != -1) {
                 switch (opt) {
@@ -142,19 +139,6 @@ int main(int argc, char **argv)
                 exit(EXIT_FAILURE);
         }
 
-        if (strcmp(filename, "-")) {
-                fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-                if (fd < 0) {
-                        error_errno("open");
-                        return EXIT_FAILURE;
-                }
-        } else {
-                fd = STDOUT_FILENO;
-        }
-
-        exitcode = make_ext4fs_internal(fd, directory, mountpoint, android, gzip,
+        return make_ext4fs_internal(filename, directory, mountpoint, android, gzip,
                        sparse, crc, wipe, init_itabs);
-        close(fd);
-
-        return exitcode;
 }
