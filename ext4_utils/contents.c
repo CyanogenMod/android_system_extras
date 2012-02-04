@@ -26,6 +26,10 @@
 #include "extent.h"
 #include "indirect.h"
 
+#ifdef USE_MINGW
+#define S_IFLNK 0  /* used by make_link, not needed under mingw */
+#endif
+
 static u32 dentry_size(u32 entries, struct dentry *dentries)
 {
 	u32 len = 24;

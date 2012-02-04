@@ -23,11 +23,16 @@
 #include "extent.h"
 
 #include <fcntl.h>
-#include <arpa/inet.h>
-#include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <string.h>
+
+#ifdef USE_MINGW
+#include <winsock2.h>
+#else
+#include <arpa/inet.h>
+#include <sys/ioctl.h>
+#endif
 
 #if defined(__linux__)
 #include <linux/fs.h>
@@ -514,4 +519,3 @@ u64 parse_num(const char *arg)
 
 	return num;
 }
-

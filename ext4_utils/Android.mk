@@ -4,7 +4,7 @@ LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
 libext4_utils_src_files := \
-	make_ext4fs.c \
+        make_ext4fs.c \
         ext4fixup.c \
         ext4_utils.c \
         allocate.c \
@@ -15,15 +15,40 @@ libext4_utils_src_files := \
         indirect.c \
         uuid.c \
         sha1.c \
-	sparse_crc32.c \
-	wipe.c
+        sparse_crc32.c \
+        wipe.c
+
+# -- All host/targets including windows
+
+LOCAL_SRC_FILES := $(libext4_utils_src_files)
+LOCAL_MODULE := libext4_utils
+LOCAL_MODULE_TAGS := optional
+LOCAL_C_INCLUDES += external/zlib
+
+include $(BUILD_HOST_STATIC_LIBRARY)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := make_ext4fs_main.c
+LOCAL_MODULE := make_ext4fs
+LOCAL_STATIC_LIBRARIES += libext4_utils libz
+ifeq ($(HOST_OS),windows)
+LOCAL_LDLIBS += -lws2_32
+endif
+
+include $(BUILD_HOST_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
+# -- All host/targets excluding windows
+
+ifneq ($(HOST_OS),windows)
 
 LOCAL_SRC_FILES := $(libext4_utils_src_files)
 LOCAL_MODULE := libext4_utils
 LOCAL_MODULE_TAGS := optional
 LOCAL_C_INCLUDES += external/zlib
 LOCAL_SHARED_LIBRARIES := libz
-
 
 include $(BUILD_SHARED_LIBRARY)
 
@@ -38,28 +63,12 @@ include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES := $(libext4_utils_src_files)
-LOCAL_MODULE := libext4_utils
-LOCAL_MODULE_TAGS := optional
-
-include $(BUILD_HOST_STATIC_LIBRARY)
-
-include $(CLEAR_VARS)
-
 LOCAL_SRC_FILES := make_ext4fs_main.c
 LOCAL_MODULE := make_ext4fs
 LOCAL_MODULE_TAGS := optional
 LOCAL_SHARED_LIBRARIES += libext4_utils libz
 
 include $(BUILD_EXECUTABLE)
-
-include $(CLEAR_VARS)
-
-LOCAL_SRC_FILES := make_ext4fs_main.c
-LOCAL_MODULE := make_ext4fs
-LOCAL_STATIC_LIBRARIES += libext4_utils libz
-
-include $(BUILD_HOST_EXECUTABLE)
 
 include $(CLEAR_VARS)
 
@@ -160,3 +169,5 @@ LOCAL_MODULE_CLASS := EXECUTABLES
 LOCAL_IS_HOST_MODULE := true
 
 include $(BUILD_PREBUILT)
+
+endif

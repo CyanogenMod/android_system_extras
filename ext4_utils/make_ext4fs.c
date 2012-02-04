@@ -22,6 +22,7 @@
 #include "uuid.h"
 #include "backed_block.h"
 
+#include <assert.h>
 #include <dirent.h>
 #include <libgen.h>
 #include <stdio.h>
@@ -33,6 +34,31 @@
 
 #ifdef ANDROID
 #include <private/android_filesystem_config.h>
+#endif
+
+#ifdef USE_MINGW
+
+#include <winsock2.h>
+
+/* These match the Linux definitions of these flags.
+   L_xx is defined to avoid conflicting with the win32 versions.
+*/
+#define L_S_IRUSR 00400
+#define L_S_IWUSR 00200
+#define L_S_IXUSR 00100
+#define S_IRWXU (L_S_IRUSR | L_S_IWUSR | L_S_IXUSR)
+#define S_IRGRP 00040
+#define S_IWGRP 00020
+#define S_IXGRP 00010
+#define S_IRWXG (S_IRGRP | S_IWGRP | S_IXGRP)
+#define S_IROTH 00004
+#define S_IWOTH 00002
+#define S_IXOTH 00001
+#define S_IRWXO (S_IROTH | S_IWOTH | S_IXOTH)
+#define S_ISUID 0004000
+#define S_ISGID 0002000
+#define S_ISVTX 0001000
+
 #endif
 
 /* TODO: Not implemented:
@@ -67,6 +93,7 @@ static u32 build_default_directory_structure()
 	return root_inode;
 }
 
+#ifndef USE_MINGW
 /* Read a local directory and create the same tree in the generated filesystem.
    Calls itself recursively with each directory in the given directory */
 static u32 build_directory_structure(const char *full_path, const char *dir_path,
@@ -184,6 +211,7 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 	free(dentries);
 	return inode;
 }
+#endif
 
 static u32 compute_block_size()
 {
@@ -345,10 +373,16 @@ int make_ext4fs_internal(const char *filename, const char *directory,
 	if (info.feat_compat & EXT4_FEATURE_COMPAT_RESIZE_INODE)
 		ext4_create_resize_inode();
 
+#ifdef USE_MINGW
+	// Windows needs only 'create an empty fs image' functionality
+	assert(!directory);
+	root_inode_num = build_default_directory_structure();
+#else
 	if (directory)
 		root_inode_num = build_directory_structure(directory, mountpoint, 0, android);
 	else
 		root_inode_num = build_default_directory_structure();
+#endif
 
 	root_mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
 	inode_set_permissions(root_inode_num, root_mode, 0, 0, 0);

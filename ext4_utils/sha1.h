@@ -9,9 +9,20 @@
 #ifndef _SYS_SHA1_H_
 #define	_SYS_SHA1_H_
 
-#include <sys/cdefs.h>
 #include <sys/types.h>
 #include <stdint.h>
+
+#ifdef USE_MINGW
+typedef unsigned char u_char;
+typedef unsigned int uint32_t;
+typedef unsigned int u_int32_t;
+typedef unsigned int u_int;
+
+#define __BEGIN_DECLS
+#define __END_DECLS
+#else
+#include <sys/cdefs.h>
+#endif
 
 #define SHA1_DIGEST_LENGTH		20
 #define SHA1_DIGEST_STRING_LENGTH	41

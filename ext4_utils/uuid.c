@@ -15,7 +15,12 @@
  */
 
 #include <string.h>
+
+#ifdef USE_MINGW
+#include <winsock2.h>
+#else
 #include <arpa/inet.h>
+#endif
 
 #include "ext4_utils.h"
 #include "sha1.h"

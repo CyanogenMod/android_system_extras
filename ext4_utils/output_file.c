@@ -23,11 +23,15 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/mman.h>
 #include <unistd.h>
 #include <fcntl.h>
-
 #include <zlib.h>
+
+#ifndef USE_MINGW
+#include <sys/mman.h>
+#define O_BINARY 0
+#endif
+
 
 #if defined(__APPLE__) && defined(__MACH__)
 #define lseek64 lseek
@@ -370,7 +374,7 @@ struct output_file *open_output_file(const char *filename, int gz, int sparse,
 		}
 	} else {
 		if (strcmp(filename, "-")) {
-			out->fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+			out->fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644);
 			if (out->fd < 0) {
 				error_errno("open");
 				free(out);
@@ -512,6 +516,7 @@ void write_data_file(struct output_file *out, u64 off, const char *file,
 	int ret;
 	off64_t aligned_offset;
 	int aligned_diff;
+	int buffer_size;
 
 	if (off + len >= (u64) info.len) {
 		error("attempted to write block %llu past end of filesystem",
@@ -519,7 +524,7 @@ void write_data_file(struct output_file *out, u64 off, const char *file,
 		return;
 	}
 
-	int file_fd = open(file, O_RDONLY);
+	int file_fd = open(file, O_RDONLY | O_BINARY);
 	if (file_fd < 0) {
 		error_errno("open");
 		return;
@@ -527,14 +532,25 @@ void write_data_file(struct output_file *out, u64 off, const char *file,
 
 	aligned_offset = offset & ~(4096 - 1);
 	aligned_diff = offset - aligned_offset;
+	buffer_size = len + aligned_diff;
 
-	u8 *data = mmap64(NULL, len + aligned_diff, PROT_READ, MAP_SHARED, file_fd,
+#ifndef USE_MINGW
+	u8 *data = mmap64(NULL, buffer_size, PROT_READ, MAP_SHARED, file_fd,
 			aligned_offset);
 	if (data == MAP_FAILED) {
 		error_errno("mmap64");
 		close(file_fd);
 		return;
 	}
+#else
+	u8 *data = malloc(buffer_size);
+	if (!data) {
+		error_errno("malloc");
+		close(file_fd);
+		return;
+	}
+	memset(data, 0, buffer_size);
+#endif
 
 	if (out->sparse) {
 		write_chunk_raw(out, off, data + aligned_diff, len);
@@ -549,6 +565,11 @@ void write_data_file(struct output_file *out, u64 off, const char *file,
 	}
 
 err:
-	munmap(data, len + aligned_diff);
+#ifndef USE_MINGW
+	munmap(data, buffer_size);
+#else
+	write(file_fd, data, buffer_size);
+	free(data);
+#endif
 	close(file_fd);
 }
