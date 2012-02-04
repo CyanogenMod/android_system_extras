@@ -151,7 +151,7 @@ static inline int log_2(int j)
 }
 
 int ext4_bg_has_super_block(int bg);
-void write_ext4_image(int fd, int gz, int sparse, int crc,
+void write_ext4_image(const char *filename, int gz, int sparse, int crc,
 		int wipe);
 void ext4_create_fs_aux_info(void);
 void ext4_free_fs_aux_info(void);
@@ -160,7 +160,7 @@ void ext4_create_resize_inode(void);
 void ext4_create_journal_inode(void);
 void ext4_update_free(void);
 void ext4_queue_sb(void);
-u64 get_file_size(int fd);
+u64 get_file_size(const char *filename);
 u64 parse_num(const char *arg);
 void ext4_parse_sb(struct ext4_super_block *sb);
 
