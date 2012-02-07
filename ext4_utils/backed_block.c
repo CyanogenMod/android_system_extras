@@ -150,7 +150,7 @@ void for_each_data_block(data_block_callback_t data_func,
 /* Frees the memory used by the linked list of data blocks */
 void free_data_blocks()
 {
-        if (!data_blocks) return;
+	if (!data_blocks) return;
 	struct data_block *db = data_blocks;
 	while (db) {
 		struct data_block *next = db->next;
@@ -167,6 +167,6 @@ void free_data_blocks()
 		free(db);
 		db = next;
 	}
-        data_blocks = NULL;
-        last_used = NULL;
+	data_blocks = NULL;
+	last_used = NULL;
 }
