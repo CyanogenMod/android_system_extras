@@ -247,7 +247,7 @@ int main(int argc, char *argv[])
 			fprintf(stderr, "Error reading chunk header\n");
 			exit(-1);
 		}
- 
+
 		if (sparse_header.chunk_hdr_sz > CHUNK_HEADER_LEN) {
 			/* Skip the remaining bytes in a header that is longer than
 			 * we expected.

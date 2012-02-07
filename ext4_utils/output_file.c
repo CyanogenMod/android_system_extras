@@ -447,7 +447,7 @@ void pad_output_file(struct output_file *out, u64 len)
 void write_data_block(struct output_file *out, u64 off, u8 *data, int len)
 {
 	int ret;
-	
+
 	if (off + len > (u64) info.len) {
 		error("attempted to write block %llu past end of filesystem",
 				off + len - info.len);
