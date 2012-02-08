@@ -549,6 +549,6 @@ void write_data_file(struct output_file *out, u64 off, const char *file,
 	}
 
 err:
-	munmap(data, len);
+	munmap(data, len + aligned_diff);
 	close(file_fd);
 }
