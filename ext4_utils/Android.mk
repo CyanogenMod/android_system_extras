@@ -96,22 +96,6 @@ LOCAL_MODULE := simg2img
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
-
-LOCAL_SRC_FILES := img2simg.c
-LOCAL_MODULE := img2simg
-LOCAL_MODULE_TAGS := optional
-
-include $(BUILD_HOST_EXECUTABLE)
-
-include $(CLEAR_VARS)
-
-LOCAL_SRC_FILES := img2simg.c
-LOCAL_MODULE := img2simg
-LOCAL_MODULE_TAGS := optional
-
-include $(BUILD_EXECUTABLE)
-
-include $(CLEAR_VARS)
 LOCAL_SRC_FILES := setup_fs.c
 LOCAL_MODULE := setup_fs
 LOCAL_MODULE_TAGS := optional
