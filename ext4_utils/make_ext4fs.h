@@ -28,9 +28,11 @@ struct selabel_handle;
 #endif
 
 void reset_ext4fs_info();
-int make_ext4fs(const char *filename, s64 len);
+int make_ext4fs(const char *filename, s64 len,
+                const char *mountpoint, struct selabel_handle *sehnd);
 int make_ext4fs_internal(const char *filename, const char *directory,
-                         char *mountpoint, int android, int gzip, int sparse,
+                         const char *mountpoint,
+                         int android, int gzip, int sparse,
                          int crc, int wipe, int init_itabs,
                          struct selabel_handle *sehnd);
 

@@ -266,15 +266,17 @@ void reset_ext4fs_info() {
     free_data_blocks();
 }
 
-int make_ext4fs(const char *filename, s64 len)
+int make_ext4fs(const char *filename, s64 len,
+                const char *mountpoint, struct selabel_handle *sehnd)
 {
     reset_ext4fs_info();
     info.len = len;
-    return make_ext4fs_internal(filename, NULL, NULL, 0, 0, 0, 0, 1, 0, 0);
+    return make_ext4fs_internal(filename, NULL, mountpoint, 0, 0, 0, 0, 1, 0, sehnd);
 }
 
 int make_ext4fs_internal(const char *filename, const char *directory,
-                         char *mountpoint, int android, int gzip, int sparse,
+                         const char *mountpoint,
+                         int android, int gzip, int sparse,
                          int crc, int wipe, int init_itabs,
                          struct selabel_handle *sehnd)
 {
@@ -374,7 +376,13 @@ int make_ext4fs_internal(const char *filename, const char *directory,
 	if (sehnd) {
 		char *sepath = NULL;
 		char *secontext = NULL;
-		asprintf(&sepath, "/%s", mountpoint);
+
+		if (mountpoint[0] == '/')
+			sepath = strdup(mountpoint);
+		else
+			asprintf(&sepath, "/%s", mountpoint);
+		if (!sepath)
+			critical_error_errno("malloc");
 		if (selabel_lookup(sehnd, &secontext, sepath, S_IFDIR) < 0) {
 			error("cannot lookup security context for %s", sepath);
 		}
