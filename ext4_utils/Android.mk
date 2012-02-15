@@ -93,6 +93,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := simg2img.c \
 	sparse_crc32.c
 LOCAL_MODULE := simg2img
+LOCAL_MODULE_TAGS := debug
 
 include $(BUILD_HOST_EXECUTABLE)
 
@@ -101,6 +102,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := simg2img.c \
 	sparse_crc32.c
 LOCAL_MODULE := simg2img
+LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_EXECUTABLE)
 
