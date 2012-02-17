@@ -20,7 +20,13 @@
 
 #include "ext4_utils.h"
 #include "sparse_format.h"
-#include <endian.h>
+#if 0 /* endian.h is not on all platforms */
+# include <endian.h>
+#else
+  /* For now, just assume we're going to run on little-endian. */
+# define my_htole32(h) (h)
+# define my_htole16(h) (h)
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -259,25 +265,25 @@ int main(int argc, char *argv[])
      * where the data belongs and then a Raw chunk with the actual data.
      */
     memset((void *)&file_hdr.sparse_hdr, 0, sizeof(file_hdr.sparse_hdr));
-    file_hdr.sparse_hdr.magic = htole32(SPARSE_HEADER_MAGIC);
-    file_hdr.sparse_hdr.major_version = htole16(1);
-    file_hdr.sparse_hdr.minor_version = htole16(0);
-    file_hdr.sparse_hdr.file_hdr_sz = htole16(sizeof(sparse_header_t));
-    file_hdr.sparse_hdr.chunk_hdr_sz = htole16(sizeof(chunk_header_t));
-    file_hdr.sparse_hdr.blk_sz = htole32(block_size);
+    file_hdr.sparse_hdr.magic = my_htole32(SPARSE_HEADER_MAGIC);
+    file_hdr.sparse_hdr.major_version = my_htole16(1);
+    file_hdr.sparse_hdr.minor_version = my_htole16(0);
+    file_hdr.sparse_hdr.file_hdr_sz = my_htole16(sizeof(sparse_header_t));
+    file_hdr.sparse_hdr.chunk_hdr_sz = my_htole16(sizeof(chunk_header_t));
+    file_hdr.sparse_hdr.blk_sz = my_htole32(block_size);
     /* The total_blks will be set in the file loop below. */
-    file_hdr.sparse_hdr.total_chunks = htole32(2);
-    file_hdr.sparse_hdr.image_checksum = htole32(0); /* Typically unused. */
+    file_hdr.sparse_hdr.total_chunks = my_htole32(2);
+    file_hdr.sparse_hdr.image_checksum = my_htole32(0); /* Typically unused. */
 
     memset((void *)&file_hdr.dont_care_hdr, 0, sizeof(file_hdr.dont_care_hdr));
-    file_hdr.dont_care_hdr.chunk_type = htole16(CHUNK_TYPE_DONT_CARE);
+    file_hdr.dont_care_hdr.chunk_type = my_htole16(CHUNK_TYPE_DONT_CARE);
     /* The Don't Care's chunk_sz will be set in the file loop below. */
-    file_hdr.dont_care_hdr.total_sz = htole32(sizeof(chunk_header_t));
+    file_hdr.dont_care_hdr.total_sz = my_htole32(sizeof(chunk_header_t));
 
     memset((void *)&file_hdr.raw_hdr, 0, sizeof(file_hdr.raw_hdr));
-    file_hdr.raw_hdr.chunk_type = htole16(CHUNK_TYPE_RAW);
-    file_hdr.raw_hdr.chunk_sz = htole32(blocks_per_chunk);
-    file_hdr.raw_hdr.total_sz = htole32(chunk_size + sizeof(chunk_header_t));
+    file_hdr.raw_hdr.chunk_type = my_htole16(CHUNK_TYPE_RAW);
+    file_hdr.raw_hdr.chunk_sz = my_htole32(blocks_per_chunk);
+    file_hdr.raw_hdr.total_sz = my_htole32(chunk_size + sizeof(chunk_header_t));
 
     /* Loop through writing chunk_size to each of the output files. */
     to_write = chunk_size;
@@ -285,8 +291,8 @@ int main(int argc, char *argv[])
 	/* Fix up the headers on the last block. */
 	if (left_to_write < (off_t)chunk_size) {
 	    to_write = left_to_write;
-	    file_hdr.raw_hdr.chunk_sz = htole32(left_to_write / block_size);
-	    file_hdr.raw_hdr.total_sz = htole32(left_to_write
+	    file_hdr.raw_hdr.chunk_sz = my_htole32(left_to_write / block_size);
+	    file_hdr.raw_hdr.total_sz = my_htole32(left_to_write
 						+ sizeof(chunk_header_t));
 	}
 
@@ -297,8 +303,9 @@ int main(int argc, char *argv[])
 
 	/* Update and write the headers to this output file. */
 	s = (file_count-1) * blocks_per_chunk;
-	file_hdr.dont_care_hdr.chunk_sz = htole32(s);
-	file_hdr.sparse_hdr.total_blks = htole32(s + (to_write / block_size));
+	file_hdr.dont_care_hdr.chunk_sz = my_htole32(s);
+	file_hdr.sparse_hdr.total_blks = my_htole32(s
+						+ (to_write / block_size));
 	s = write(out_fd, (void *)&file_hdr, sizeof(file_hdr));
 	if (s < 0)
 	    error_exit("\"%s\": %s", out_path, strerror(errno));
