@@ -34,7 +34,7 @@ static u32 dentry_size(u32 entries, struct dentry *dentries)
 
 	for (i = 0; i < entries; i++) {
 		dentry_len = 8 + ALIGN(strlen(dentries[i].filename), 4);
-		if (len % info.block_size + dentry_len > info.block_size)
+		if (len % info.block_size + dentry_len >= info.block_size)
 			len += info.block_size - (len % info.block_size);
 		len += dentry_len;
 	}
