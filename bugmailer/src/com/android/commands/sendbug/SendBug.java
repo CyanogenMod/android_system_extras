@@ -87,7 +87,7 @@ public class SendBug {
         if (mPm != null) {
             final List<ResolveInfo> results;
             try {
-                results = mPm.queryIntentActivities(intent, null, 0);
+                results = mPm.queryIntentActivities(intent, null, 0, 0);
             } catch (RemoteException e) {
                 return null;
             }
