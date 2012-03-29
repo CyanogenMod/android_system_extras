@@ -24,6 +24,10 @@
 #include <sys/disk.h>
 #endif
 
+#ifdef ANDROID
+#include <private/android_filesystem_config.h>
+#endif
+
 #include "make_ext4fs.h"
 
 #ifndef USE_MINGW /* O_BINARY is windows-specific flag */
@@ -48,7 +52,7 @@ int main(int argc, char **argv)
 	const char *filename = NULL;
 	const char *directory = NULL;
 	char *mountpoint = "";
-	int android = 0;
+	fs_config_func_t fs_config_func = NULL;
 	int gzip = 0;
 	int sparse = 0;
 	int crc = 0;
@@ -84,8 +88,14 @@ int main(int argc, char **argv)
 			force = 1;
 			break;
 		case 'a':
-			android = 1;
+#ifdef ANDROID
+			fs_config_func = fs_config;
 			mountpoint = optarg;
+#else
+			fprintf(stderr, "can't set android permissions - built without android support\n");
+			usage(argv[0]);
+			exit(EXIT_FAILURE);
+#endif
 			break;
 		case 'w':
 			wipe = 1;
@@ -156,7 +166,7 @@ int main(int argc, char **argv)
 		fd = STDOUT_FILENO;
 	}
 
-	exitcode = make_ext4fs_internal(fd, directory, mountpoint, android, gzip,
+	exitcode = make_ext4fs_internal(fd, directory, mountpoint, fs_config_func, gzip,
 			sparse, crc, wipe, init_itabs);
 	close(fd);
 

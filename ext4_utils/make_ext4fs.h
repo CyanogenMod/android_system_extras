@@ -24,10 +24,13 @@
 extern "C" {
 #endif
 
+typedef void (*fs_config_func_t)(const char *path, int dir, unsigned *uid, unsigned *gid,
+        unsigned *mode);
+
 void reset_ext4fs_info();
 int make_ext4fs(const char *filename, s64 len);
 int make_ext4fs_internal(int fd, const char *directory,
-                         char *mountpoint, int android, int gzip, int sparse,
+                         char *mountpoint, fs_config_func_t fs_config_func, int gzip, int sparse,
                          int crc, int wipe, int init_itabs);
 
 #ifdef __cplusplus

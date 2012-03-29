@@ -33,10 +33,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#ifdef ANDROID
-#include <private/android_filesystem_config.h>
-#endif
-
 #ifdef USE_MINGW
 
 #include <winsock2.h>
@@ -102,7 +98,7 @@ static u32 build_default_directory_structure()
 /* Read a local directory and create the same tree in the generated filesystem.
    Calls itself recursively with each directory in the given directory */
 static u32 build_directory_structure(const char *full_path, const char *dir_path,
-		u32 dir_inode, int android)
+		u32 dir_inode, fs_config_func_t fs_config_func)
 {
 	int entries = 0;
 	struct dentry *dentries;
@@ -145,13 +141,13 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 		dentries[i].size = stat.st_size;
 		dentries[i].mode = stat.st_mode & (S_ISUID|S_ISGID|S_ISVTX|S_IRWXU|S_IRWXG|S_IRWXO);
 		dentries[i].mtime = stat.st_mtime;
-		if (android) {
+		if (fs_config_func != NULL) {
 #ifdef ANDROID
 			unsigned int mode = 0;
 			unsigned int uid = 0;
 			unsigned int gid = 0;
 			int dir = S_ISDIR(stat.st_mode);
-			fs_config(dentries[i].path, dir, &uid, &gid, &mode);
+			fs_config_func(dentries[i].path, dir, &uid, &gid, &mode);
 			dentries[i].mode = mode;
 			dentries[i].uid = uid;
 			dentries[i].gid = gid;
@@ -192,7 +188,7 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 			entry_inode = make_file(dentries[i].full_path, dentries[i].size);
 		} else if (dentries[i].file_type == EXT4_FT_DIR) {
 			entry_inode = build_directory_structure(dentries[i].full_path,
-					dentries[i].path, inode, android);
+					dentries[i].path, inode, fs_config_func);
 		} else if (dentries[i].file_type == EXT4_FT_SYMLINK) {
 			entry_inode = make_link(dentries[i].full_path, dentries[i].link);
 		} else {
@@ -297,14 +293,14 @@ int make_ext4fs(const char *filename, s64 len)
 		return EXIT_FAILURE;
 	}
 
-	status = make_ext4fs_internal(fd, NULL, NULL, 0, 0, 0, 0, 1, 0);
+	status = make_ext4fs_internal(fd, NULL, NULL, NULL, 0, 0, 0, 1, 0);
 	close(fd);
 
 	return status;
 }
 
 int make_ext4fs_internal(int fd, const char *directory,
-                         char *mountpoint, int android, int gzip, int sparse,
+                         char *mountpoint, fs_config_func_t fs_config_func, int gzip, int sparse,
                          int crc, int wipe, int init_itabs)
 {
 	u32 root_inode_num;
@@ -397,7 +393,7 @@ int make_ext4fs_internal(int fd, const char *directory,
 	root_inode_num = build_default_directory_structure();
 #else
 	if (directory)
-		root_inode_num = build_directory_structure(directory, mountpoint, 0, android);
+		root_inode_num = build_directory_structure(directory, mountpoint, 0, fs_config_func);
 	else
 		root_inode_num = build_default_directory_structure();
 #endif
