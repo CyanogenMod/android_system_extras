@@ -1,11 +1,11 @@
-#!/bin/bash
+#!/bin/bash -x
 #
 # To call this script, make sure make_ext4fs is somewhere in PATH
 
 function usage() {
 cat<<EOT
 Usage:
-mkuserimg.sh [-s] SRC_DIR OUTPUT_FILE EXT_VARIANT MOUNT_POINT SIZE
+mkuserimg.sh [-s] SRC_DIR OUTPUT_FILE EXT_VARIANT MOUNT_POINT SIZE [FILE_CONTEXTS]
 EOT
 }
 
@@ -17,7 +17,7 @@ if [ "$1" = "-s" ]; then
   shift
 fi
 
-if [ $# -ne 4 -a $# -ne 5 ]; then
+if [ $# -ne 4 -a $# -ne 5 -a $# -ne 6 ]; then
   usage
   exit 1
 fi
@@ -32,6 +32,7 @@ OUTPUT_FILE=$2
 EXT_VARIANT=$3
 MOUNT_POINT=$4
 SIZE=$5
+FC=$6
 
 case $EXT_VARIANT in
   ext4) ;;
@@ -47,7 +48,11 @@ if [ -z $SIZE ]; then
     SIZE=128M
 fi
 
-MAKE_EXT4FS_CMD="make_ext4fs $ENABLE_SPARSE_IMAGE -l $SIZE -a $MOUNT_POINT $OUTPUT_FILE $SRC_DIR"
+if [ -n "$FC" ]; then
+    FCOPT="-S $FC"
+fi
+
+MAKE_EXT4FS_CMD="make_ext4fs $ENABLE_SPARSE_IMAGE $FCOPT -l $SIZE -a $MOUNT_POINT $OUTPUT_FILE $SRC_DIR"
 echo $MAKE_EXT4FS_CMD
 $MAKE_EXT4FS_CMD
 if [ $? -ne 0 ]; then

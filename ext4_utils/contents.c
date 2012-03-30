@@ -25,6 +25,7 @@
 #include "contents.h"
 #include "extent.h"
 #include "indirect.h"
+#include "xattr.h"
 
 static u32 dentry_size(u32 entries, struct dentry *dentries)
 {
@@ -244,3 +245,51 @@ int inode_set_permissions(u32 inode_num, u16 mode, u16 uid, u16 gid, u32 mtime)
 
 	return 0;
 }
+
+#ifdef HAVE_SELINUX
+#define XATTR_SELINUX_SUFFIX "selinux"
+
+/* XXX */
+#define cpu_to_le32(x) (x)
+#define cpu_to_le16(x) (x)
+
+int inode_set_selinux(u32 inode_num, const char *secon)
+{
+	struct ext4_inode *inode = get_inode(inode_num);
+	u32 *hdr;
+	struct ext4_xattr_entry *entry;
+	size_t name_len = strlen(XATTR_SELINUX_SUFFIX);
+	size_t value_len = strlen(secon)+1;
+	size_t size, min_offs;
+	char *val;
+
+	if (!secon)
+		return 0;
+
+	if (!inode)
+		return -1;
+
+	hdr = (u32 *) (inode + 1);
+	*hdr = cpu_to_le32(EXT4_XATTR_MAGIC);
+	entry = (struct ext4_xattr_entry *) (hdr+1);
+	memset(entry, 0, EXT4_XATTR_LEN(name_len));
+	entry->e_name_index = EXT4_XATTR_INDEX_SECURITY;
+	entry->e_name_len = name_len;
+	memcpy(entry->e_name, XATTR_SELINUX_SUFFIX, name_len);
+	entry->e_value_size = cpu_to_le32(value_len);
+	min_offs = (char *)inode + info.inode_size - (char*) entry;
+	size = EXT4_XATTR_SIZE(value_len);
+	val = (char *)entry + min_offs - size;
+	entry->e_value_offs = cpu_to_le16(min_offs - size);
+	memset(val + size - EXT4_XATTR_PAD, 0, EXT4_XATTR_PAD);
+	memcpy(val, secon, value_len);
+	inode->i_extra_isize = cpu_to_le16(sizeof(struct ext4_inode) - EXT4_GOOD_OLD_INODE_SIZE);
+
+	return 0;
+}
+#else
+int inode_set_selinux(u32 inode_num, const char *secon)
+{
+	return 0;
+}
+#endif
