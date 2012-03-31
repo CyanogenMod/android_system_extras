@@ -24,14 +24,22 @@
 extern "C" {
 #endif
 
+#ifdef HAVE_SELINUX
+#include <selinux/selinux.h>
+#include <selinux/label.h>
+#else
+struct selabel_handle;
+#endif
+
 typedef void (*fs_config_func_t)(const char *path, int dir, unsigned *uid, unsigned *gid,
         unsigned *mode);
 
 void reset_ext4fs_info();
-int make_ext4fs(const char *filename, s64 len);
+int make_ext4fs(const char *filename, s64 len,
+                const char *mountpoint, struct selabel_handle *sehnd);
 int make_ext4fs_internal(int fd, const char *directory,
                          char *mountpoint, fs_config_func_t fs_config_func, int gzip, int sparse,
-                         int crc, int wipe, int init_itabs);
+                         int crc, int wipe, int init_itabs, struct selabel_handle *sehnd);
 
 #ifdef __cplusplus
 }

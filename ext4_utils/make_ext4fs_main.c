@@ -42,6 +42,7 @@ static void usage(char *path)
 	fprintf(stderr, "%s [ -l <len> ] [ -j <journal size> ] [ -b <block_size> ]\n", basename(path));
 	fprintf(stderr, "    [ -g <blocks per group> ] [ -i <inodes> ] [ -I <inode size> ]\n");
 	fprintf(stderr, "    [ -L <label> ] [ -f ] [ -a <android mountpoint> ]\n");
+	fprintf(stderr, "    [ -S file_contexts ]\n");
 	fprintf(stderr, "    [ -z | -s ] [ -t ] [ -w ] [ -c ] [ -J ]\n");
 	fprintf(stderr, "    <filename> [<directory>]\n");
 }
@@ -60,8 +61,12 @@ int main(int argc, char **argv)
 	int init_itabs = 0;
 	int fd;
 	int exitcode;
+	struct selabel_handle *sehnd = NULL;
+#ifdef HAVE_SELINUX
+	struct selinux_opt seopts[] = { { SELABEL_OPT_PATH, "" } };
+#endif
 
-	while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:fwzJsct")) != -1) {
+	while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:fwzJsctS:")) != -1) {
 		switch (opt) {
 		case 'l':
 			info.len = parse_num(optarg);
@@ -115,6 +120,16 @@ int main(int argc, char **argv)
 		case 't':
 			init_itabs = 1;
 			break;
+		case 'S':
+#ifdef HAVE_SELINUX
+			seopts[0].value = optarg;
+			sehnd = selabel_open(SELABEL_CTX_FILE, seopts, 1);
+			if (!sehnd) {
+				perror(optarg);
+				exit(EXIT_FAILURE);
+			}
+#endif
+			   break;
 		default: /* '?' */
 			usage(argv[0]);
 			exit(EXIT_FAILURE);
@@ -167,7 +182,7 @@ int main(int argc, char **argv)
 	}
 
 	exitcode = make_ext4fs_internal(fd, directory, mountpoint, fs_config_func, gzip,
-			sparse, crc, wipe, init_itabs);
+			sparse, crc, wipe, init_itabs, sehnd);
 	close(fd);
 
 	return exitcode;

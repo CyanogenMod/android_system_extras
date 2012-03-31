@@ -25,6 +25,12 @@ LOCAL_MODULE := libext4_utils
 LOCAL_MODULE_TAGS := optional
 LOCAL_C_INCLUDES += external/zlib
 
+ifeq ($(HAVE_SELINUX), true)
+LOCAL_C_INCLUDES += external/libselinux/include
+LOCAL_SHARED_LIBRARIES += libselinux
+LOCAL_CFLAGS += -DHAVE_SELINUX
+endif # HAVE_SELINUX
+
 include $(BUILD_HOST_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
@@ -50,6 +56,12 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_C_INCLUDES += external/zlib
 LOCAL_SHARED_LIBRARIES := libz
 
+ifeq ($(HAVE_SELINUX), true)
+LOCAL_C_INCLUDES += external/libselinux/include
+LOCAL_SHARED_LIBRARIES += libselinux
+LOCAL_CFLAGS += -DHAVE_SELINUX
+endif # HAVE_SELINUX
+
 include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
@@ -58,6 +70,12 @@ LOCAL_SRC_FILES := $(libext4_utils_src_files)
 LOCAL_MODULE := libext4_utils
 LOCAL_MODULE_TAGS := optional
 LOCAL_C_INCLUDES += external/zlib
+
+ifeq ($(HAVE_SELINUX), true)
+LOCAL_C_INCLUDES += external/libselinux/include
+LOCAL_STATIC_LIBRARIES += libselinux
+LOCAL_CFLAGS += -DHAVE_SELINUX
+endif # HAVE_SELINUX
 
 include $(BUILD_STATIC_LIBRARY)
 
@@ -68,6 +86,12 @@ LOCAL_MODULE := make_ext4fs
 LOCAL_MODULE_TAGS := optional
 LOCAL_SHARED_LIBRARIES += libext4_utils libz
 
+ifeq ($(HAVE_SELINUX), true)
+LOCAL_C_INCLUDES += external/libselinux/include
+LOCAL_SHARED_LIBRARIES += libselinux
+LOCAL_CFLAGS += -DHAVE_SELINUX
+endif # HAVE_SELINUX
+
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
@@ -77,6 +101,12 @@ LOCAL_MODULE := ext2simg
 LOCAL_MODULE_TAGS := optional
 LOCAL_SHARED_LIBRARIES += libext4_utils libz
 
+ifeq ($(HAVE_SELINUX), true)
+LOCAL_C_INCLUDES += external/libselinux/include
+LOCAL_SHARED_LIBRARIES += libselinux
+LOCAL_CFLAGS += -DHAVE_SELINUX
+endif # HAVE_SELINUX
+
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
@@ -85,6 +115,12 @@ LOCAL_SRC_FILES := ext2simg.c
 LOCAL_MODULE := ext2simg
 LOCAL_MODULE_TAGS := optional
 LOCAL_STATIC_LIBRARIES += libext4_utils libz
+
+ifeq ($(HAVE_SELINUX), true)
+LOCAL_C_INCLUDES += external/libselinux/include
+LOCAL_STATIC_LIBRARIES += libselinux
+LOCAL_CFLAGS += -DHAVE_SELINUX
+endif # HAVE_SELINUX
 
 include $(BUILD_HOST_EXECUTABLE)
 
