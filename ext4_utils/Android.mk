@@ -27,7 +27,7 @@ LOCAL_C_INCLUDES += external/zlib
 
 ifeq ($(HAVE_SELINUX), true)
 LOCAL_C_INCLUDES += external/libselinux/include
-LOCAL_SHARED_LIBRARIES += libselinux
+LOCAL_STATIC_LIBRARIES += libselinux
 LOCAL_CFLAGS += -DHAVE_SELINUX
 endif # HAVE_SELINUX
 
@@ -40,6 +40,10 @@ LOCAL_MODULE := make_ext4fs
 LOCAL_STATIC_LIBRARIES += libext4_utils libz
 ifeq ($(HOST_OS),windows)
 LOCAL_LDLIBS += -lws2_32
+else
+ifeq ($(HAVE_SELINUX), true)
+LOCAL_STATIC_LIBRARIES += libselinux
+endif # HAVE_SELINUX
 endif
 
 include $(BUILD_HOST_EXECUTABLE)
