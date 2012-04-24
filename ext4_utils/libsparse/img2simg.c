@@ -18,7 +18,6 @@
 #define DEFAULT_CHUNK_SIZE	"64M"
 #define DEFAULT_SUFFIX		"%03d"
 
-#include "ext4_utils.h"
 #include "sparse_format.h"
 #if 0 /* endian.h is not on all platforms */
 # include <endian.h>

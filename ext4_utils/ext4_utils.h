@@ -25,7 +25,7 @@ extern "C" {
 #define _GNU_SOURCE
 #endif
 #define _FILE_OFFSET_BITS 64
-#define _LARGEFILE64_SOURCE
+#define _LARGEFILE64_SOURCE 1
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -153,8 +153,7 @@ static inline int log_2(int j)
 }
 
 int ext4_bg_has_super_block(int bg);
-void write_ext4_image(int fd, int gz, int sparse, int crc,
-		int wipe);
+void write_ext4_image(int fd, int gz, int sparse, int crc);
 void ext4_create_fs_aux_info(void);
 void ext4_free_fs_aux_info(void);
 void ext4_fill_in_sb(void);

@@ -17,9 +17,10 @@
 #include "ext4_utils.h"
 #include "ext4.h"
 #include "ext4_extents.h"
-#include "backed_block.h"
 #include "indirect.h"
 #include "allocate.h"
+
+#include <sparse/sparse.h>
 
 #include <stdlib.h>
 #include <stdio.h>

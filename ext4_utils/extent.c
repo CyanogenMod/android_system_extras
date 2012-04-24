@@ -17,8 +17,9 @@
 #include "ext4_utils.h"
 #include "ext4.h"
 #include "ext4_extents.h"
-#include "backed_block.h"
 #include "extent.h"
+
+#include <sparse/sparse.h>
 
 #include <stdlib.h>
 #include <stdio.h>

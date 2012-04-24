@@ -15,12 +15,13 @@
  */
 
 #include "make_ext4fs.h"
-#include "output_file.h"
 #include "ext4_utils.h"
 #include "allocate.h"
 #include "contents.h"
 #include "uuid.h"
-#include "backed_block.h"
+#include "wipe.h"
+
+#include <sparse/sparse.h>
 
 #include <assert.h>
 #include <dirent.h>
@@ -456,7 +457,10 @@ int make_ext4fs_internal(int fd, const char *directory,
 			aux_info.sb->s_blocks_count_lo - aux_info.sb->s_free_blocks_count_lo,
 			aux_info.sb->s_blocks_count_lo);
 
-	write_ext4_image(fd, gzip, sparse, crc, wipe);
+	if (wipe)
+		wipe_block_device(fd, info.len);
+
+	write_ext4_image(fd, gzip, sparse, crc);
 
 	return 0;
 }

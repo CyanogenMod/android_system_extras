@@ -17,22 +17,16 @@
 #ifndef _BACKED_BLOCK_H_
 #define _BACKED_BLOCK_H_
 
-#include "ext4_utils.h"
-#include "output_file.h"
+#include <sparse/sparse.h>
 
-typedef void (*data_block_callback_t)(void *priv, u64 off, u8 *data, int len);
-typedef void (*data_block_fill_callback_t)(void *priv, u64 off, u32 fill_val, int len);
-typedef void (*data_block_file_callback_t)(void *priv, u64 off,
+typedef void (*data_block_callback_t)(void *priv, off64_t off, void *data, int len);
+typedef void (*data_block_fill_callback_t)(void *priv, off64_t off, unsigned int fill_val, int len);
+typedef void (*data_block_file_callback_t)(void *priv, off64_t off,
 					   const char *file, off64_t offset,
 					   int len);
 
-void queue_data_block(u8 *data, u32 len, u32 block);
-void queue_fill_block(u32 fill_val, u32 len, u32 block);
-void queue_data_file(const char *filename, off64_t offset, u32 len,
-	u32 block);
 void for_each_data_block(data_block_callback_t data_func,
 	data_block_file_callback_t file_func,
-	data_block_fill_callback_t fill_func, void *priv);
-void free_data_blocks();
+	data_block_fill_callback_t fill_func, void *priv, unsigned int);
 
 #endif

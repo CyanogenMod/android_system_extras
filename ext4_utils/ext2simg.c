@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
+#include <sparse/sparse.h>
+
 #include "ext4_utils.h"
 #include "make_ext4fs.h"
-#include "output_file.h"
-#include "backed_block.h"
 #include "allocate.h"
 
 #include <sys/types.h>
@@ -236,7 +236,7 @@ int main(int argc, char **argv)
 		outfd = STDOUT_FILENO;
 	}
 
-	write_ext4_image(outfd, gzip, sparse, crc, 0);
+	write_ext4_image(outfd, gzip, sparse, crc);
 	close(outfd);
 
 	return 0;
