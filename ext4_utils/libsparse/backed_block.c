@@ -14,20 +14,18 @@
  * limitations under the License.
  */
 
-#include <sparse/sparse.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "backed_block.h"
 #include "sparse_defs.h"
-
-#include <stdlib.h>
-#include <string.h>
 
 struct data_block {
 	u32 block;
 	u32 len;
 	void *data;
 	const char *filename;
-	off64_t offset;
+	int64_t offset;
 	struct data_block *next;
 	u32 fill_val;
 	u8 fill;
@@ -113,7 +111,7 @@ void queue_data_block(void *data, unsigned int len, unsigned int block)
 }
 
 /* Queues a chunk of a file on disk to be written to the specified data blocks */
-void queue_data_file(const char *filename, off64_t offset, unsigned int len,
+void queue_data_file(const char *filename, int64_t offset, unsigned int len,
 		unsigned int block)
 {
 	struct data_block *db = malloc(sizeof(struct data_block));

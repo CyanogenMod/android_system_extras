@@ -14,11 +14,8 @@
  * limitations under the License.
  */
 
-#include <sparse/sparse.h>
-
-#include "output_file.h"
-#include "sparse_format.h"
-#include "sparse_crc32.h"
+#define _FILE_OFFSET_BITS 64
+#define _LARGEFILE64_SOURCE 1
 
 #include <fcntl.h>
 #include <stdbool.h>
@@ -29,6 +26,10 @@
 #include <unistd.h>
 #include <zlib.h>
 
+#include "output_file.h"
+#include "sparse_format.h"
+#include "sparse_crc32.h"
+
 #ifndef USE_MINGW
 #include <sys/mman.h>
 #define O_BINARY 0
@@ -38,6 +39,7 @@
 #define lseek64 lseek
 #define ftruncate64 ftruncate
 #define mmap64 mmap
+#define off64_t off_t
 #endif
 
 #ifdef __BIONIC__
@@ -55,7 +57,7 @@ static inline void *mmap64(void *addr, size_t length, int prot, int flags,
 #define CHUNK_HEADER_LEN (sizeof(chunk_header_t))
 
 struct output_file_ops {
-	int (*seek)(struct output_file *, off64_t);
+	int (*seek)(struct output_file *, int64_t);
 	int (*write)(struct output_file *, u8 *, int);
 	void (*close)(struct output_file *);
 };
@@ -65,16 +67,16 @@ struct output_file {
 	gzFile gz_fd;
 	bool close_fd;
 	int sparse;
-	off64_t cur_out_ptr;
+	int64_t cur_out_ptr;
 	u32 chunk_cnt;
 	u32 crc32;
 	struct output_file_ops *ops;
 	int use_crc;
 	unsigned int block_size;
-	off64_t len;
+	int64_t len;
 };
 
-static int file_seek(struct output_file *out, off64_t off)
+static int file_seek(struct output_file *out, int64_t off)
 {
 	off64_t ret;
 
@@ -115,7 +117,7 @@ static struct output_file_ops file_ops = {
 	.close = file_close,
 };
 
-static int gz_file_seek(struct output_file *out, off64_t off)
+static int gz_file_seek(struct output_file *out, int64_t off)
 {
 	off64_t ret;
 
@@ -195,7 +197,7 @@ static int emit_skip_chunk(struct output_file *out, u64 skip_len)
 	return 0;
 }
 
-static int write_chunk_fill(struct output_file *out, off64_t off, u32 fill_val, int len)
+static int write_chunk_fill(struct output_file *out, int64_t off, u32 fill_val, int len)
 {
 	chunk_header_t chunk_header;
 	int rnd_up_len, zero_len, count;
@@ -268,7 +270,7 @@ static int write_chunk_fill(struct output_file *out, off64_t off, u32 fill_val, 
 	return 0;
 }
 
-static int write_chunk_raw(struct output_file *out, off64_t off, u8 *data, int len)
+static int write_chunk_raw(struct output_file *out, int64_t off, u8 *data, int len)
 {
 	chunk_header_t chunk_header;
 	int rnd_up_len, zero_len;
@@ -363,7 +365,7 @@ void close_output_file(struct output_file *out)
 	out->ops->close(out);
 }
 
-struct output_file *open_output_fd(int fd, unsigned int block_size, off64_t len,
+struct output_file *open_output_fd(int fd, unsigned int block_size, int64_t len,
 		int gz, int sparse, int chunks, int crc)
 {
 	int ret;
@@ -420,7 +422,7 @@ struct output_file *open_output_fd(int fd, unsigned int block_size, off64_t len,
 }
 
 struct output_file *open_output_file(const char *filename,
-		unsigned int block_size, off64_t len,
+		unsigned int block_size, int64_t len,
 		int gz, int sparse, int chunks, int crc)
 {
 	int fd;
@@ -447,7 +449,7 @@ struct output_file *open_output_file(const char *filename,
 	return file;
 }
 
-void pad_output_file(struct output_file *out, off64_t len)
+void pad_output_file(struct output_file *out, int64_t len)
 {
 	int ret;
 
@@ -484,7 +486,7 @@ void pad_output_file(struct output_file *out, off64_t len)
 }
 
 /* Write a contiguous region of data blocks from a memory buffer */
-void write_data_block(struct output_file *out, off64_t off, void *data, int len)
+void write_data_block(struct output_file *out, int64_t off, void *data, int len)
 {
 	int ret;
 
@@ -508,7 +510,7 @@ void write_data_block(struct output_file *out, off64_t off, void *data, int len)
 }
 
 /* Write a contiguous region of data blocks with a fill value */
-void write_fill_block(struct output_file *out, off64_t off, unsigned int fill_val, int len)
+void write_fill_block(struct output_file *out, int64_t off, unsigned int fill_val, int len)
 {
 	int ret;
 	unsigned int i;
@@ -546,11 +548,11 @@ void write_fill_block(struct output_file *out, off64_t off, unsigned int fill_va
 }
 
 /* Write a contiguous region of data blocks from a file */
-void write_data_file(struct output_file *out, off64_t off, const char *file,
-		     off64_t offset, int len)
+void write_data_file(struct output_file *out, int64_t off, const char *file,
+		int64_t offset, int len)
 {
 	int ret;
-	off64_t aligned_offset;
+	int64_t aligned_offset;
 	int aligned_diff;
 	int buffer_size;
 

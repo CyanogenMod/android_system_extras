@@ -119,6 +119,8 @@ struct fs_info {
 	u32 bg_desc_reserve_blocks;
 	const char *label;
 	u8 no_journal;
+
+	struct sparse_file *sparse_file;
 };
 
 struct fs_aux_info {

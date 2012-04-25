@@ -19,14 +19,21 @@
 
 #include <sparse/sparse.h>
 
-typedef void (*data_block_callback_t)(void *priv, off64_t off, void *data, int len);
-typedef void (*data_block_fill_callback_t)(void *priv, off64_t off, unsigned int fill_val, int len);
-typedef void (*data_block_file_callback_t)(void *priv, off64_t off,
-					   const char *file, off64_t offset,
+typedef void (*data_block_callback_t)(void *priv, int64_t off, void *data, int len);
+typedef void (*data_block_fill_callback_t)(void *priv, int64_t off, unsigned int fill_val, int len);
+typedef void (*data_block_file_callback_t)(void *priv, int64_t off,
+					   const char *file, int64_t offset,
 					   int len);
 
 void for_each_data_block(data_block_callback_t data_func,
 	data_block_file_callback_t file_func,
 	data_block_fill_callback_t fill_func, void *priv, unsigned int);
+
+void queue_data_block(void *data, unsigned int len, unsigned int block);
+void queue_fill_block(unsigned int fill_val, unsigned int len, unsigned int block);
+void queue_data_file(const char *filename, int64_t offset, unsigned int len,
+		unsigned int block);
+
+void free_data_blocks();
 
 #endif

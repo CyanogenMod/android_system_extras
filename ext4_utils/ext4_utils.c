@@ -83,7 +83,7 @@ int ext4_bg_has_super_block(int bg)
 /* Write the filesystem image to a file */
 void write_ext4_image(int fd, int gz, int sparse, int crc)
 {
-	write_sparse_image(fd, gz, sparse, crc, info.block_size, info.len);
+	sparse_file_write(info.sparse_file, fd, gz, sparse, crc);
 }
 
 /* Compute the rest of the parameters of the filesystem from the basic info */
@@ -226,10 +226,10 @@ void ext4_fill_in_sb()
 				memcpy(aux_info.backup_sb[i], sb, info.block_size);
 				/* Update the block group nr of this backup superblock */
 				aux_info.backup_sb[i]->s_block_group_nr = i;
-				queue_data_block((u8 *)aux_info.backup_sb[i],
-                                                  info.block_size, group_start_block);
+				sparse_file_add_data(info.sparse_file, aux_info.backup_sb[i],
+						info.block_size, group_start_block);
 			}
-			queue_data_block((u8 *)aux_info.bg_desc,
+			sparse_file_add_data(info.sparse_file, aux_info.bg_desc,
 				aux_info.bg_desc_blocks * info.block_size,
 				group_start_block + 1);
 			header_size = 1 + aux_info.bg_desc_blocks + info.bg_desc_reserve_blocks;
@@ -255,9 +255,9 @@ void ext4_queue_sb(void)
 	if (info.block_size > 1024) {
 		u8 *buf = calloc(info.block_size, 1);
 		memcpy(buf + 1024, (u8*)aux_info.sb, 1024);
-		queue_data_block(buf, info.block_size, 0);
+		sparse_file_add_data(info.sparse_file, buf, info.block_size, 0);
 	} else {
-		queue_data_block((u8*)aux_info.sb, 1024, 1);
+		sparse_file_add_data(info.sparse_file, aux_info.sb, 1024, 1);
 	}
 }
 
