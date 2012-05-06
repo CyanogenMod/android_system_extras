@@ -484,9 +484,10 @@ u8 *inode_allocate_data_indirect(struct ext4_inode *inode, unsigned long len,
 		unsigned long backing_len)
 {
 	struct block_allocation *alloc;
+	u32 block_len = DIV_ROUND_UP(len, info.block_size);
 	u8 *data = NULL;
 
-	alloc = do_inode_allocate_indirect(inode, len);
+	alloc = do_inode_allocate_indirect(inode, block_len);
 	if (alloc == NULL) {
 		error("failed to allocate extents for %lu bytes", len);
 		return NULL;
@@ -497,6 +498,10 @@ u8 *inode_allocate_data_indirect(struct ext4_inode *inode, unsigned long len,
 		if (!data)
 			error("failed to create backing for %lu bytes", backing_len);
 	}
+
+	rewind_alloc(alloc);
+	if (do_inode_attach_indirect(inode, alloc, block_len))
+		error("failed to attach blocks to indirect inode");
 
 	free_alloc(alloc);
 
