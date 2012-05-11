@@ -321,6 +321,7 @@ int main(int argc, char *argv[])
     char *arg;
     char *argend;
 
+    signal(SIGPIPE, SIG_IGN);
     for (argc--, argv++; argc > 0; argc--, argv++) {
         arg = argv[0];
         if (!strcmp(arg,"-v")) {

@@ -184,6 +184,7 @@ int main(int argc, char *argv[]) {
 
     int i, j, error;
 
+    signal(SIGPIPE, SIG_IGN);
     compfn = &sort_by_pss;
     order = -1;
     prefix = NULL;

@@ -133,6 +133,7 @@ int main(int argc, char *argv[]) {
     int arg;
     size_t i, j;
 
+    signal(SIGPIPE, SIG_IGN);
     compfn = &sort_by_pss;
     order = -1;
     ws = WS_OFF;
