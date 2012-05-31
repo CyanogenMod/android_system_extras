@@ -263,7 +263,7 @@ int inode_set_selinux(u32 inode_num, const char *secon)
 	u32 *hdr;
 	struct ext4_xattr_entry *entry;
 	size_t name_len = strlen(XATTR_SELINUX_SUFFIX);
-	size_t value_len = strlen(secon)+1;
+	size_t value_len;
 	size_t size, min_offs;
 	char *val;
 
@@ -280,6 +280,7 @@ int inode_set_selinux(u32 inode_num, const char *secon)
 	entry->e_name_index = EXT4_XATTR_INDEX_SECURITY;
 	entry->e_name_len = name_len;
 	memcpy(entry->e_name, XATTR_SELINUX_SUFFIX, name_len);
+	value_len = strlen(secon)+1;
 	entry->e_value_size = cpu_to_le32(value_len);
 	min_offs = (char *)inode + info.inode_size - (char*) entry;
 	size = EXT4_XATTR_SIZE(value_len);
