@@ -31,6 +31,10 @@ LOCAL_STATIC_LIBRARIES += libselinux
 LOCAL_CFLAGS += -DHAVE_SELINUX
 endif # HAVE_SELINUX
 
+ifeq ($(BOARD_SUPPRESS_EMMC_WIPE),true)
+    LOCAL_CFLAGS += -DSUPPRESS_EMMC_WIPE
+endif
+
 include $(BUILD_HOST_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
@@ -44,6 +48,10 @@ else
 ifeq ($(HAVE_SELINUX), true)
 LOCAL_STATIC_LIBRARIES += libselinux
 endif # HAVE_SELINUX
+endif
+
+ifeq ($(BOARD_SUPPRESS_EMMC_WIPE),true)
+    LOCAL_CFLAGS += -DSUPPRESS_EMMC_WIPE
 endif
 
 include $(BUILD_HOST_EXECUTABLE)
@@ -95,6 +103,8 @@ LOCAL_C_INCLUDES += external/libselinux/include
 LOCAL_SHARED_LIBRARIES += libselinux
 LOCAL_CFLAGS += -DHAVE_SELINUX
 endif # HAVE_SELINUX
+
+include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
 
