@@ -24,6 +24,10 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_C_INCLUDES += external/zlib
 LOCAL_SHARED_LIBRARIES := libz
 
+ifeq ($(BOARD_SUPPRESS_EMMC_WIPE),true)
+    LOCAL_CFLAGS += -DSUPPRESS_EMMC_WIPE
+endif
+
 
 include $(BUILD_SHARED_LIBRARY)
 
@@ -34,6 +38,10 @@ LOCAL_MODULE := libext4_utils
 LOCAL_MODULE_TAGS := optional
 LOCAL_C_INCLUDES += external/zlib
 LOCAL_STATIC_LIBRARIES := libz
+
+ifeq ($(BOARD_SUPPRESS_EMMC_WIPE),true)
+    LOCAL_CFLAGS += -DSUPPRESS_EMMC_WIPE
+endif
 
 
 include $(BUILD_STATIC_LIBRARY)
