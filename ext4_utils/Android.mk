@@ -32,6 +32,11 @@ ifneq ($(HOST_OS),windows)
   LOCAL_STATIC_LIBRARIES += libselinux
 endif
 LOCAL_C_INCLUDES += external/lz4/lib
+
+ifeq ($(BOARD_SUPPRESS_EMMC_WIPE),true)
+    LOCAL_CFLAGS += -DSUPPRESS_EMMC_WIPE
+endif
+
 include $(BUILD_HOST_STATIC_LIBRARY)
 
 
@@ -49,6 +54,11 @@ else
   LOCAL_STATIC_LIBRARIES += libselinux
   LOCAL_CFLAGS := -DHOST
 endif
+
+ifeq ($(BOARD_SUPPRESS_EMMC_WIPE),true)
+    LOCAL_CFLAGS += -DSUPPRESS_EMMC_WIPE
+endif
+
 include $(BUILD_HOST_EXECUTABLE)
 
 
@@ -93,6 +103,8 @@ LOCAL_C_INCLUDES += external/lz4/lib
 LOCAL_STATIC_LIBRARIES += liblz4-static
 include $(BUILD_EXECUTABLE)
 
+
+include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := ext2simg.c
