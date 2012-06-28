@@ -19,7 +19,8 @@
  * out.  Without O_SYNC, the close(2) blocks until all the dirty buffers are written
  * out, but the numbers tend to be higher.
  */
- 
+
+#define _LARGEFILE64_SOURCE
 #include <string.h>
 #include <stdio.h>
 #include <sys/types.h>
@@ -27,6 +28,7 @@
 #include <fcntl.h>
 #include <sys/time.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #define TST_BLK_SIZE 4096
 /* Number of seconds to run the test */
@@ -79,14 +81,14 @@ int main(int argc, char *argv[])
     }
 
     /* Size is given in megabytes, so compute the number of TST_BLK_SIZE blocks. */
-    max_blocks = atol(argv[2]) * ((1024*1024) / TST_BLK_SIZE);
+    max_blocks = atol(argv[optind]) * ((1024*1024) / TST_BLK_SIZE);
 
-    if ((fd = open(argv[3], O_RDWR | o_sync)) < 0) {
-        fprintf(stderr, "Cannot open block device %s\n", argv[2]);
+    if ((fd = open(argv[optind + 1], O_RDWR | o_sync)) < 0) {
+        fprintf(stderr, "Cannot open block device %s\n", argv[optind + 1]);
         exit(1);
     }
 
-    fd2 = open("/dev/urandom\n", O_RDONLY);
+    fd2 = open("/dev/urandom", O_RDONLY);
     if (fd2 < 0) {
         fprintf(stderr, "Cannot open /dev/urandom\n");
     }
