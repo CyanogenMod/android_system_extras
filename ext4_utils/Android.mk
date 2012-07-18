@@ -166,4 +166,3 @@ include $(BUILD_PREBUILT)
 
 endif
 
-include $(LOCAL_PATH)/libsparse/Android.mk
