@@ -14,17 +14,24 @@
  * limitations under the License.
  */
 
-#include "ext4_utils.h"
+#define _FILE_OFFSET_BITS 64
+#define _LARGEFILE64_SOURCE 1
+#include <sys/types.h>
+#include <unistd.h>
+
+#include "sparse_defs.h"
 #include "sparse_format.h"
 #include "sparse_crc32.h"
 
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <unistd.h>
-#include <fcntl.h>
-#include <stdio.h>
 
 #define COPY_BUF_SIZE (1024*1024)
 u8 *copybuf;
