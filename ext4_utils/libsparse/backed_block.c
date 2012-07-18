@@ -14,17 +14,18 @@
  * limitations under the License.
  */
 
-#include "ext4_utils.h"
-#include "backed_block.h"
-
 #include <stdlib.h>
+#include <string.h>
+
+#include "backed_block.h"
+#include "sparse_defs.h"
 
 struct data_block {
 	u32 block;
 	u32 len;
-	u8 *data;
+	void *data;
 	const char *filename;
-	off64_t offset;
+	int64_t offset;
 	struct data_block *next;
 	u32 fill_val;
 	u8 fill;
@@ -71,11 +72,13 @@ static void queue_db(struct data_block *new_db)
 }
 
 /* Queues a fill block of memory to be written to the specified data blocks */
-void queue_fill_block(u32 fill_val, u32 len, u32 block)
+void queue_fill_block(unsigned int fill_val, unsigned int len, unsigned int block)
 {
 	struct data_block *db = malloc(sizeof(struct data_block));
-	if (db == NULL)
-		critical_error_errno("malloc");
+	if (db == NULL) {
+		error_errno("malloc");
+		return;
+	}
 
 	db->block = block;
 	db->len = len;
@@ -89,11 +92,13 @@ void queue_fill_block(u32 fill_val, u32 len, u32 block)
 }
 
 /* Queues a block of memory to be written to the specified data blocks */
-void queue_data_block(u8 *data, u32 len, u32 block)
+void queue_data_block(void *data, unsigned int len, unsigned int block)
 {
 	struct data_block *db = malloc(sizeof(struct data_block));
-	if (db == NULL)
-		critical_error_errno("malloc");
+	if (db == NULL) {
+		error_errno("malloc");
+		return;
+	}
 
 	db->block = block;
 	db->len = len;
@@ -106,12 +111,14 @@ void queue_data_block(u8 *data, u32 len, u32 block)
 }
 
 /* Queues a chunk of a file on disk to be written to the specified data blocks */
-void queue_data_file(const char *filename, off64_t offset, u32 len,
-	u32 block)
+void queue_data_file(const char *filename, int64_t offset, unsigned int len,
+		unsigned int block)
 {
 	struct data_block *db = malloc(sizeof(struct data_block));
-	if (db == NULL)
-		critical_error_errno("malloc");
+	if (db == NULL) {
+		error_errno("malloc");
+		return;
+	}
 
 	db->block = block;
 	db->len = len;
@@ -128,7 +135,7 @@ void queue_data_file(const char *filename, off64_t offset, u32 len,
    data block, and file_func for each contiguous file block */
 void for_each_data_block(data_block_callback_t data_func,
 	data_block_file_callback_t file_func,
-	data_block_fill_callback_t fill_func, void *priv)
+	data_block_fill_callback_t fill_func, void *priv, unsigned int block_size)
 {
 	struct data_block *db;
 	u32 last_block = 0;
@@ -136,14 +143,14 @@ void for_each_data_block(data_block_callback_t data_func,
 	for (db = data_blocks; db; db = db->next) {
 		if (db->block < last_block)
 			error("data blocks out of order: %u < %u", db->block, last_block);
-		last_block = db->block + DIV_ROUND_UP(db->len, info.block_size) - 1;
+		last_block = db->block + DIV_ROUND_UP(db->len, block_size) - 1;
 
 		if (db->filename)
-			file_func(priv, (u64)db->block * info.block_size, db->filename, db->offset, db->len);
+			file_func(priv, (u64)db->block * block_size, db->filename, db->offset, db->len);
 		else if (db->fill)
-			fill_func(priv, (u64)db->block * info.block_size, db->fill_val, db->len);
+			fill_func(priv, (u64)db->block * block_size, db->fill_val, db->len);
 		else
-			data_func(priv, (u64)db->block * info.block_size, db->data, db->len);
+			data_func(priv, (u64)db->block * block_size, db->data, db->len);
 	}
 }
 

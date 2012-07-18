@@ -14,29 +14,41 @@
  * limitations under the License.
  */
 
-#include "ext4_utils.h"
-#include "output_file.h"
-#include "sparse_format.h"
-#include "sparse_crc32.h"
-#include "wipe.h"
+#define _FILE_OFFSET_BITS 64
+#define _LARGEFILE64_SOURCE 1
 
 #include <fcntl.h>
 #include <stdbool.h>
-#include <sys/types.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <zlib.h>
+
+#include "output_file.h"
+#include "sparse_format.h"
+#include "sparse_crc32.h"
 
 #ifndef USE_MINGW
 #include <sys/mman.h>
 #define O_BINARY 0
 #endif
 
-
 #if defined(__APPLE__) && defined(__MACH__)
 #define lseek64 lseek
+#define ftruncate64 ftruncate
+#define mmap64 mmap
 #define off64_t off_t
+#endif
+
+#ifdef __BIONIC__
+extern void*  __mmap2(void *, size_t, int, int, int, off_t);
+static inline void *mmap64(void *addr, size_t length, int prot, int flags,
+        int fd, off64_t offset)
+{
+    return __mmap2(addr, length, prot, flags, fd, offset >> 12);
+}
 #endif
 
 #define SPARSE_HEADER_MAJOR_VER 1
@@ -45,7 +57,7 @@
 #define CHUNK_HEADER_LEN (sizeof(chunk_header_t))
 
 struct output_file_ops {
-	int (*seek)(struct output_file *, off64_t);
+	int (*seek)(struct output_file *, int64_t);
 	int (*write)(struct output_file *, u8 *, int);
 	void (*close)(struct output_file *);
 };
@@ -55,14 +67,16 @@ struct output_file {
 	gzFile gz_fd;
 	bool close_fd;
 	int sparse;
-	u64 cur_out_ptr;
+	int64_t cur_out_ptr;
 	u32 chunk_cnt;
 	u32 crc32;
 	struct output_file_ops *ops;
 	int use_crc;
+	unsigned int block_size;
+	int64_t len;
 };
 
-static int file_seek(struct output_file *out, off64_t off)
+static int file_seek(struct output_file *out, int64_t off)
 {
 	off64_t ret;
 
@@ -103,7 +117,7 @@ static struct output_file_ops file_ops = {
 	.close = file_close,
 };
 
-static int gz_file_seek(struct output_file *out, off64_t off)
+static int gz_file_seek(struct output_file *out, int64_t off)
 {
 	off64_t ret;
 
@@ -162,16 +176,16 @@ static int emit_skip_chunk(struct output_file *out, u64 skip_len)
 
 	//DBG printf("skip chunk: 0x%llx bytes\n", skip_len);
 
-	if (skip_len % info.block_size) {
+	if (skip_len % out->block_size) {
 		error("don't care size %llu is not a multiple of the block size %u",
-				skip_len, info.block_size);
+				skip_len, out->block_size);
 		return -1;
 	}
 
 	/* We are skipping data, so emit a don't care chunk. */
 	chunk_header.chunk_type = CHUNK_TYPE_DONT_CARE;
 	chunk_header.reserved1 = 0;
-	chunk_header.chunk_sz = skip_len / info.block_size;
+	chunk_header.chunk_sz = skip_len / out->block_size;
 	chunk_header.total_sz = CHUNK_HEADER_LEN;
 	ret = out->ops->write(out, (u8 *)&chunk_header, sizeof(chunk_header));
 	if (ret < 0)
@@ -183,7 +197,7 @@ static int emit_skip_chunk(struct output_file *out, u64 skip_len)
 	return 0;
 }
 
-static int write_chunk_fill(struct output_file *out, u64 off, u32 fill_val, int len)
+static int write_chunk_fill(struct output_file *out, int64_t off, u32 fill_val, int len)
 {
 	chunk_header_t chunk_header;
 	int rnd_up_len, zero_len, count;
@@ -210,9 +224,9 @@ static int write_chunk_fill(struct output_file *out, u64 off, u32 fill_val, int 
 		emit_skip_chunk(out, off - out->cur_out_ptr);
 	}
 
-	if (off % info.block_size) {
+	if (off % out->block_size) {
 		error("write chunk offset %llu is not a multiple of the block size %u",
-				off, info.block_size);
+				off, out->block_size);
 		return -1;
 	}
 
@@ -222,12 +236,12 @@ static int write_chunk_fill(struct output_file *out, u64 off, u32 fill_val, int 
 	}
 
 	/* Round up the file length to a multiple of the block size */
-	rnd_up_len = (len + (info.block_size - 1)) & (~(info.block_size -1));
+	rnd_up_len = (len + (out->block_size - 1)) & (~(out->block_size -1));
 
 	/* Finally we can safely emit a chunk of data */
 	chunk_header.chunk_type = CHUNK_TYPE_FILL;
 	chunk_header.reserved1 = 0;
-	chunk_header.chunk_sz = rnd_up_len / info.block_size;
+	chunk_header.chunk_sz = rnd_up_len / out->block_size;
 	chunk_header.total_sz = CHUNK_HEADER_LEN + sizeof(fill_val);
 	ret = out->ops->write(out, (u8 *)&chunk_header, sizeof(chunk_header));
 
@@ -239,13 +253,13 @@ static int write_chunk_fill(struct output_file *out, u64 off, u32 fill_val, int 
 
 	if (out->use_crc) {
                 /* Initialize fill_buf with the fill_val */
-		for (i = 0; i < (info.block_size / sizeof(u32)); i++) {
+		for (i = 0; i < (out->block_size / sizeof(u32)); i++) {
 			fill_buf[i] = fill_val;
 		}
 
 		count = chunk_header.chunk_sz;
 		while (count) {
-			out->crc32 = sparse_crc32(out->crc32, fill_buf, info.block_size);
+			out->crc32 = sparse_crc32(out->crc32, fill_buf, out->block_size);
 			count--;
 		}
 	}
@@ -256,7 +270,7 @@ static int write_chunk_fill(struct output_file *out, u64 off, u32 fill_val, int 
 	return 0;
 }
 
-static int write_chunk_raw(struct output_file *out, u64 off, u8 *data, int len)
+static int write_chunk_raw(struct output_file *out, int64_t off, u8 *data, int len)
 {
 	chunk_header_t chunk_header;
 	int rnd_up_len, zero_len;
@@ -281,9 +295,9 @@ static int write_chunk_raw(struct output_file *out, u64 off, u8 *data, int len)
 		emit_skip_chunk(out, off - out->cur_out_ptr);
 	}
 
-	if (off % info.block_size) {
+	if (off % out->block_size) {
 		error("write chunk offset %llu is not a multiple of the block size %u",
-				off, info.block_size);
+				off, out->block_size);
 		return -1;
 	}
 
@@ -293,13 +307,13 @@ static int write_chunk_raw(struct output_file *out, u64 off, u8 *data, int len)
 	}
 
 	/* Round up the file length to a multiple of the block size */
-	rnd_up_len = (len + (info.block_size - 1)) & (~(info.block_size -1));
+	rnd_up_len = (len + (out->block_size - 1)) & (~(out->block_size -1));
 	zero_len = rnd_up_len - len;
 
 	/* Finally we can safely emit a chunk of data */
 	chunk_header.chunk_type = CHUNK_TYPE_RAW;
 	chunk_header.reserved1 = 0;
-	chunk_header.chunk_sz = rnd_up_len / info.block_size;
+	chunk_header.chunk_sz = rnd_up_len / out->block_size;
 	chunk_header.total_sz = CHUNK_HEADER_LEN + rnd_up_len;
 	ret = out->ops->write(out, (u8 *)&chunk_header, sizeof(chunk_header));
 
@@ -351,8 +365,8 @@ void close_output_file(struct output_file *out)
 	out->ops->close(out);
 }
 
-struct output_file *open_output_fd(int fd, int gz, int sparse,
-        int chunks, int crc, int wipe)
+struct output_file *open_output_fd(int fd, unsigned int block_size, int64_t len,
+		int gz, int sparse, int chunks, int crc)
 {
 	int ret;
 	struct output_file *out = malloc(sizeof(struct output_file));
@@ -360,13 +374,13 @@ struct output_file *open_output_fd(int fd, int gz, int sparse,
 		error_errno("malloc struct out");
 		return NULL;
 	}
-	zero_buf = malloc(info.block_size);
+	zero_buf = malloc(out->block_size);
 	if (!zero_buf) {
 		error_errno("malloc zero_buf");
 		free(out);
 		return NULL;
 	}
-	memset(zero_buf, '\0', info.block_size);
+	memset(zero_buf, '\0', out->block_size);
 
 	if (gz) {
 		out->ops = &gz_file_ops;
@@ -389,12 +403,12 @@ struct output_file *open_output_fd(int fd, int gz, int sparse,
 	out->crc32 = 0;
 	out->use_crc = crc;
 
-	if (wipe)
-		wipe_block_device(out->fd, info.len);
+	out->len = len;
+	out->block_size = block_size;
 
 	if (out->sparse) {
-		sparse_header.blk_sz = info.block_size,
-		sparse_header.total_blks = info.len / info.block_size,
+		sparse_header.blk_sz = out->block_size,
+		sparse_header.total_blks = out->len / out->block_size,
 		sparse_header.total_chunks = chunks;
 		if (out->use_crc)
 			sparse_header.total_chunks++;
@@ -407,9 +421,10 @@ struct output_file *open_output_fd(int fd, int gz, int sparse,
 	return out;
 }
 
-struct output_file *open_output_file(const char *filename, int gz, int sparse,
-        int chunks, int crc, int wipe) {
-
+struct output_file *open_output_file(const char *filename,
+		unsigned int block_size, int64_t len,
+		int gz, int sparse, int chunks, int crc)
+{
 	int fd;
 	struct output_file *file;
 
@@ -423,7 +438,7 @@ struct output_file *open_output_file(const char *filename, int gz, int sparse,
 		fd = STDOUT_FILENO;
 	}
 
-	file = open_output_fd(fd, gz, sparse, chunks, crc, wipe);
+	file = open_output_fd(fd, block_size, len, gz, sparse, chunks, crc);
 	if (!file) {
 		close(fd);
 		return NULL;
@@ -434,13 +449,13 @@ struct output_file *open_output_file(const char *filename, int gz, int sparse,
 	return file;
 }
 
-void pad_output_file(struct output_file *out, u64 len)
+void pad_output_file(struct output_file *out, int64_t len)
 {
 	int ret;
 
-	if (len > (u64) info.len) {
+	if (len > out->len) {
 		error("attempted to pad file %llu bytes past end of filesystem",
-				len - info.len);
+				len - out->len);
 		return;
 	}
 	if (out->sparse) {
@@ -471,13 +486,13 @@ void pad_output_file(struct output_file *out, u64 len)
 }
 
 /* Write a contiguous region of data blocks from a memory buffer */
-void write_data_block(struct output_file *out, u64 off, u8 *data, int len)
+void write_data_block(struct output_file *out, int64_t off, void *data, int len)
 {
 	int ret;
 
-	if (off + len > (u64) info.len) {
+	if (off + len > out->len) {
 		error("attempted to write block %llu past end of filesystem",
-				off + len - info.len);
+				off + len - out->len);
 		return;
 	}
 
@@ -495,16 +510,16 @@ void write_data_block(struct output_file *out, u64 off, u8 *data, int len)
 }
 
 /* Write a contiguous region of data blocks with a fill value */
-void write_fill_block(struct output_file *out, u64 off, u32 fill_val, int len)
+void write_fill_block(struct output_file *out, int64_t off, unsigned int fill_val, int len)
 {
 	int ret;
 	unsigned int i;
 	int write_len;
 	u32 fill_buf[4096/sizeof(u32)]; /* Maximum size of a block */
 
-	if (off + len > (u64) info.len) {
+	if (off + len > out->len) {
 		error("attempted to write block %llu past end of filesystem",
-				off + len - info.len);
+				off + len - out->len);
 		return;
 	}
 
@@ -533,17 +548,17 @@ void write_fill_block(struct output_file *out, u64 off, u32 fill_val, int len)
 }
 
 /* Write a contiguous region of data blocks from a file */
-void write_data_file(struct output_file *out, u64 off, const char *file,
-		     off64_t offset, int len)
+void write_data_file(struct output_file *out, int64_t off, const char *file,
+		int64_t offset, int len)
 {
 	int ret;
-	off64_t aligned_offset;
+	int64_t aligned_offset;
 	int aligned_diff;
 	int buffer_size;
 
-	if (off + len >= (u64) info.len) {
+	if (off + len >= out->len) {
 		error("attempted to write block %llu past end of filesystem",
-				off + len - info.len);
+				off + len - out->len);
 		return;
 	}
 

@@ -14,11 +14,8 @@
  * limitations under the License.
  */
 
-#include "ext4_utils.h"
-#include "make_ext4fs.h"
-#include "output_file.h"
-#include "backed_block.h"
-#include "allocate.h"
+#define _FILE_OFFSET_BITS 64
+#define _LARGEFILE64_SOURCE 1
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -27,6 +24,16 @@
 #include <fcntl.h>
 #include <libgen.h>
 #include <unistd.h>
+
+#include <sparse/sparse.h>
+
+#include "ext4_utils.h"
+#include "make_ext4fs.h"
+#include "allocate.h"
+
+#if defined(__APPLE__) && defined(__MACH__)
+#define off64_t off_t
+#endif
 
 #ifndef USE_MINGW /* O_BINARY is windows-specific flag */
 #define O_BINARY 0
@@ -120,7 +127,7 @@ static int build_sparse_ext(int fd, const char *filename)
 		critical_error("failed to allocate block bitmap");
 
 	if (aux_info.first_data_block > 0)
-		queue_data_file(filename, 0,
+		sparse_file_add_file(info.sparse_file, filename, 0,
 				info.block_size * aux_info.first_data_block, 0);
 
 	for (i = 0; i < aux_info.groups; i++) {
@@ -145,7 +152,8 @@ static int build_sparse_ext(int fd, const char *filename)
 					u32 start_block = first_block + start_contiguous_block;
 					u32 len_blocks = block - start_contiguous_block;
 
-					queue_data_file(filename, (u64)info.block_size * start_block,
+					sparse_file_add_file(info.sparse_file, filename,
+							(u64)info.block_size * start_block,
 							info.block_size * len_blocks, start_block);
 					start_contiguous_block = -1;
 				}
@@ -158,7 +166,8 @@ static int build_sparse_ext(int fd, const char *filename)
 		if (start_contiguous_block >= 0) {
 			u32 start_block = first_block + start_contiguous_block;
 			u32 len_blocks = last_block - start_contiguous_block;
-			queue_data_file(filename, (u64)info.block_size * start_block,
+			sparse_file_add_file(info.sparse_file, filename,
+					(u64)info.block_size * start_block,
 					info.block_size * len_blocks, start_block);
 		}
 	}
@@ -222,6 +231,8 @@ int main(int argc, char **argv)
 
 	read_ext(infd);
 
+	info.sparse_file = sparse_file_new(info.block_size, info.len);
+
 	build_sparse_ext(infd, in);
 
 	close(infd);
@@ -236,8 +247,10 @@ int main(int argc, char **argv)
 		outfd = STDOUT_FILENO;
 	}
 
-	write_ext4_image(outfd, gzip, sparse, crc, 0);
+	write_ext4_image(outfd, gzip, sparse, crc);
 	close(outfd);
+
+	sparse_file_destroy(info.sparse_file);
 
 	return 0;
 }

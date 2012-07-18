@@ -136,12 +136,6 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (gzip && sparse) {
-		fprintf(stderr, "Cannot specify both gzip and sparse\n");
-		usage(argv[0]);
-		exit(EXIT_FAILURE);
-	}
-
 	if (wipe && sparse) {
 		fprintf(stderr, "Cannot specifiy both wipe and sparse\n");
 		usage(argv[0]);
