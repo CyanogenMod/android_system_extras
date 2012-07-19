@@ -40,6 +40,7 @@ ifeq ($(HOST_OS),windows)
 LOCAL_LDLIBS += -lws2_32
 else
 ifeq ($(HAVE_SELINUX), true)
+LOCAL_C_INCLUDES += external/libselinux/include
 LOCAL_STATIC_LIBRARIES += libselinux
 LOCAL_CFLAGS += -DHAVE_SELINUX
 endif # HAVE_SELINUX
