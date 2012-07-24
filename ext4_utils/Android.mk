@@ -95,7 +95,6 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := make_ext4fs_main.c
 LOCAL_MODULE := make_ext4fs
-LOCAL_MODULE_TAGS := optional
 LOCAL_SHARED_LIBRARIES += libext4_utils libz
 
 ifeq ($(HAVE_SELINUX), true)
