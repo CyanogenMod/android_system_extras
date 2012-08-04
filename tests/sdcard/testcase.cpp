@@ -41,7 +41,7 @@ namespace android_test {
 
 TestCase::TestCase(const char *appName)
     : mTestBody(NULL), mAppName(appName), mDataSize(1000 * 1000),
-      mChunkSize(mDataSize), mIter(20), mNproc(1),
+      mChunkSize(mDataSize), mTreeDepth(8), mIter(20), mNproc(1),
       mType(UNKNOWN_TEST),  mDump(false), mCpuScaling(false),
       mSync(NO_SYNC), mFadvice(POSIX_FADV_NORMAL), mTruncateToSize(false),
       mTestTimer(NULL)
@@ -105,6 +105,7 @@ bool TestCase::runTest()
             if(writeTimer()->used()) writeTimer()->sprint(&str, &size_left);
             if(syncTimer()->used()) syncTimer()->sprint(&str, &size_left);
             if(truncateTimer()->used()) truncateTimer()->sprint(&str, &size_left);
+            if(traverseTimer()->used()) traverseTimer()->sprint(&str, &size_left);
 
             write(mIpc[TestCase::WRITE_TO_PARENT], buffer, str - buffer);
 
@@ -163,6 +164,8 @@ void TestCase::createTimers()
     mSyncTimer = new StopWatch("sync", iter());
 
     mTruncateTimer = new StopWatch("truncate", iter());
+
+    mTraverseTimer = new StopWatch("traversal", iter());
 }
 
 bool TestCase::setTypeFromName(const char *test_name)
@@ -172,6 +175,7 @@ bool TestCase::setTypeFromName(const char *test_name)
     if (strcmp(mName, "read") == 0) mType = READ;
     if (strcmp(mName, "read_write") == 0) mType = READ_WRITE;
     if (strcmp(mName, "open_create") == 0) mType = OPEN_CREATE;
+    if (strcmp(mName, "traverse") == 0) mType = TRAVERSE;
 
     return UNKNOWN_TEST != mType;
 }

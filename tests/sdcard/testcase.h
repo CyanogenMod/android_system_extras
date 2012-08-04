@@ -41,7 +41,7 @@ namespace android_test {
 
 class TestCase {
   public:
-    enum Type {UNKNOWN_TEST, WRITE, READ, OPEN_CREATE, READ_WRITE};
+    enum Type {UNKNOWN_TEST, WRITE, READ, OPEN_CREATE, READ_WRITE, TRAVERSE};
     enum Pipe {READ_FROM_CHILD = 0, WRITE_TO_PARENT, READ_FROM_PARENT, WRITE_TO_CHILD};
     enum Sync {NO_SYNC, FSYNC, SYNC};
 
@@ -65,6 +65,9 @@ class TestCase {
 
     size_t chunkSize() const { return mChunkSize; }
     void setChunkSize(size_t val) { mChunkSize = val; }
+
+    size_t treeDepth() const { return mTreeDepth; }
+    void setTreeDepth(size_t val) { mTreeDepth = val; }
 
     bool newFairSleepers() const { return mNewFairSleepers; }
     void setNewFairSleepers(bool val) {
@@ -101,6 +104,7 @@ class TestCase {
     StopWatch *writeTimer() { return mWriteTimer; }
     StopWatch *syncTimer() { return mSyncTimer; }
     StopWatch *truncateTimer() { return mTruncateTimer; }
+    StopWatch *traverseTimer() { return mTraverseTimer; }
 
     // Fork the children, run the test and wait for them to complete.
     bool runTest();
@@ -125,6 +129,7 @@ private:
     const char *mAppName;
     size_t mDataSize;
     size_t mChunkSize;
+    size_t mTreeDepth;
     size_t mIter;
     size_t mNproc;
     pid_t mPid;
@@ -156,6 +161,7 @@ private:
     StopWatch *mWriteTimer;  // Used to time the write calls.
     StopWatch *mSyncTimer;  // Used to time the sync/fsync calls.
     StopWatch *mTruncateTimer;  // Used to time the ftruncate calls.
+    StopWatch *mTraverseTimer;  // Used to time each traversal.
 };
 
 }  // namespace android_test

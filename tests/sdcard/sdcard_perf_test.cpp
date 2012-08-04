@@ -37,13 +37,14 @@
 #include <sys/stat.h>
 #include <linux/fadvise.h>
 #include <unistd.h>
+#include <fts.h>
 
 #include "stopwatch.h"
 #include "sysutil.h"
 #include "testcase.h"
 
 // Stress test for the sdcard. Use this to generate some load on the
-// sdcard and collect performance statistics. The ouput is either a
+// sdcard and collect performance statistics. The output is either a
 // human readable report or the raw timing samples that can be
 // processed using another tool.
 //
@@ -109,6 +110,7 @@ const bool kVerbose = false;
 struct option long_options[] = {
     {"size", required_argument, 0, 's'},
     {"chunk-size", required_argument, 0, 'S'},
+    {"depth", required_argument, 0, 'D'},
     {"iterations",  required_argument, 0, 'i'},
     {"procnb",  required_argument, 0, 'p'},
     {"test",  required_argument, 0, 't'},
@@ -125,11 +127,12 @@ struct option long_options[] = {
 
 void usage()
 {
-    printf("sdcard_perf_test --test=write|read|read_write|open_create [options]\n\n"
+    printf("sdcard_perf_test --test=write|read|read_write|open_create|traverse [options]\n\n"
            "  -t --test:        Select the test.\n"
            "  -s --size:        Size in kbytes of the data.\n"
            "  -S --chunk-size:  Size of a chunk. Default to size ie 1 chunk.\n"
            "                    Data will be written/read using that chunk size.\n"
+           "  -D --depth:       Depth of directory tree to create for traversal.\n",
            "  -i --iterations:  Number of time a process should carry its task.\n"
            "  -p --procnb:      Number of processes to use.\n"
            "  -d --dump:        Print the raw timing on stdout.\n"
@@ -208,7 +211,7 @@ void parseCmdLine(int argc, char **argv, TestCase *testCase)\
         int option_index = 0;
 
         c = getopt_long (argc, argv,
-                         "hS:s:i:p:t:dcf:ezZa:",
+                         "hS:s:D:i:p:t:dcf:ezZa:",
                          long_options,
                          &option_index);
         // Detect the end of the options.
@@ -221,6 +224,9 @@ void parseCmdLine(int argc, char **argv, TestCase *testCase)\
                 break;
             case 'S':
                 testCase->setChunkSize(atoi(optarg) * 1024);
+                break;
+            case 'D': // tree depth
+                testCase->setTreeDepth(atoi(optarg));
                 break;
             case 'i':
                 testCase->setIter(atoi(optarg));
@@ -367,7 +373,7 @@ bool testRead(TestCase *testCase) {
         char filename[80] = {'\0',};
 
         sprintf(filename, "%s/file-%d-%d", kTestDir, i, testCase->pid());
-        int fd = open(filename, O_RDWR | O_CREAT);
+        int fd = open(filename, O_RDWR | O_CREAT, S_IRWXU);
 
         size_t left = size;
         while (left > 0)
@@ -414,7 +420,7 @@ bool writeData(const char *const chunk, const int idx, TestCase *testCase) {
 
     sprintf(filename, "%s/file-%d-%d", kTestDir, idx, getpid());
     testCase->openTimer()->start();
-    int fd = open(filename, O_RDWR | O_CREAT);  // no O_TRUNC, see header comment
+    int fd = open(filename, O_RDWR | O_CREAT, S_IRWXU);  // no O_TRUNC, see header comment
     testCase->openTimer()->stop();
 
     if (fd < 0)
@@ -533,7 +539,7 @@ bool testOpenCreate(TestCase *testCase)
     {
         sprintf(filename, "%s/file-%d-%d", kTestDir, i, testCase->pid());
 
-        int fd = open(filename, O_RDWR | O_CREAT);
+        int fd = open(filename, O_RDWR | O_CREAT, S_IRWXU);
         FADVISE(fd, 0, 0, testCase->fadvise());
 
         if (testCase->truncateToSize())
@@ -546,6 +552,127 @@ bool testOpenCreate(TestCase *testCase)
         }
         close(fd);
     }
+    testCase->testTimer()->stop();
+    return true;
+}
+
+bool writeTestFile(TestCase *testCase, const char* filename) {
+    int fd = open(filename, O_RDWR | O_CREAT, S_IRWXU);
+    if (fd < 0) {
+        fprintf(stderr, "open() failed: %s\n", strerror(errno));
+        return false;
+    }
+
+    bool res = false;
+
+    char * const chunk = new char[testCase->chunkSize()];
+    memset(chunk, 0xaa, testCase->chunkSize());
+
+    size_t left = testCase->dataSize();
+    while (left > 0) {
+        char *dest = chunk;
+        size_t chunk_size = testCase->chunkSize();
+
+        if (chunk_size > left) {
+            chunk_size = left;
+            left = 0;
+        } else {
+            left -= chunk_size;
+        }
+
+        while (chunk_size > 0) {
+            ssize_t s = write(fd, dest, chunk_size);
+            if (s < 0) {
+                fprintf(stderr, "write() failed: %s\n", strerror(errno));
+                goto fail;
+            }
+            chunk_size -= s;
+            dest += s;
+        }
+    }
+
+    res = true;
+fail:
+    close(fd);
+    delete[] chunk;
+    return res;
+}
+
+// ----------------------------------------------------------------------
+// TRAVERSE
+
+#define MAX_PATH 512
+
+// Creates a directory tree that is both deep and wide, and times
+// traversal using fts_open().
+bool testTraverse(TestCase *testCase) {
+    char path[MAX_PATH];
+    char filepath[MAX_PATH];
+    strcpy(path, kTestDir);
+
+    // Generate a deep directory hierarchy
+    size_t depth = testCase->treeDepth();
+    for (size_t i = 0; i < depth; i++) {
+        // Go deeper by appending onto current path
+        snprintf(path + strlen(path), MAX_PATH - strlen(path), "/dir%d", i);
+        mkdir(path, S_IRWXU);
+
+        // Create some files at this depth
+        strcpy(filepath, path);
+        int pathlen = strlen(path);
+        char* nameStart = filepath + pathlen;
+        for (size_t j = 0; j < depth; j++) {
+            snprintf(nameStart, MAX_PATH - pathlen, "/file%d", j);
+            writeTestFile(testCase, filepath);
+        }
+    }
+
+    testCase->signalParentAndWait();
+    testCase->testTimer()->start();
+
+    // Now traverse structure
+    size_t iter = testCase->iter();
+    for (size_t i = 0; i < iter; i++) {
+        testCase->traverseTimer()->start();
+
+        FTS *ftsp;
+        if ((ftsp = fts_open((char **) &kTestDir, FTS_LOGICAL | FTS_XDEV, NULL)) == NULL) {
+            fprintf(stderr, "fts_open() failed: %s\n", strerror(errno));
+            return false;
+        }
+
+        // Count discovered files
+        int dirs = 0, files = 0;
+
+        FTSENT *curr;
+        while ((curr = fts_read(ftsp)) != NULL) {
+            switch (curr->fts_info) {
+            case FTS_D:
+                dirs++;
+                break;
+            case FTS_F:
+                files++;
+                break;
+            }
+        }
+
+        fts_close(ftsp);
+
+        testCase->traverseTimer()->stop();
+
+        int expectedDirs = depth + 1;
+        if (expectedDirs != dirs) {
+            fprintf(stderr, "expected %d dirs, but found %d\n", expectedDirs, dirs);
+            return false;
+        }
+
+        int expectedFiles = depth * depth;
+        if (expectedFiles != files) {
+            fprintf(stderr, "expected %d files, but found %d\n", expectedFiles, files);
+            return false;
+        }
+    }
+
     testCase->testTimer()->stop();
     return true;
 }
@@ -582,6 +709,9 @@ int main(int argc, char **argv)
             break;
         case TestCase::READ_WRITE:
             testCase.mTestBody = testReadWrite;
+            break;
+        case TestCase::TRAVERSE:
+            testCase.mTestBody = testTraverse;
             break;
         default:
             fprintf(stderr, "Unknown test type %s", testCase.name());
