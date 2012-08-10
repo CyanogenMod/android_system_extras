@@ -27,15 +27,18 @@ import android.net.Uri;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemProperties;
+import android.util.Log;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 public class SendBug {
 
-    private static final String GOOGLE_ACCOUNT_TYPE = "com.google";
-    private static final String EMAIL_ACCOUNT_TYPE = "com.android.email";
+    private static final String LOG_TAG = SendBug.class.getSimpleName();
+    private static final Pattern EMAIL_REGEX = Pattern.compile(
+            "^[\\w.%+-]+@[\\w.-]+\\.[a-zA-Z]{2,}$");
     private static final String SEND_BUG_INTENT_ACTION = "android.testing.SEND_BUG";
 
     public static void main(String[] args) {
@@ -69,12 +72,17 @@ public class SendBug {
                         ? Uri.fromFile(screenShot) : null;
                 intent = getSendMailIntent(bugreportUri, screenshotUri);
             }
-            final IActivityManager mAm = ActivityManagerNative.getDefault();
-            try {
-                mAm.startActivity(null, intent, intent.getType(), null, null, 0, 0,
-                        null, null, null);
-            } catch (RemoteException e) {
-                // ignore
+            if (intent != null) {
+                final IActivityManager mAm = ActivityManagerNative.getDefault();
+                try {
+                    mAm.startActivity(null, intent, intent.getType(), null, null, 0, 0,
+                            null, null, null);
+                } catch (RemoteException e) {
+                    // ignore
+                }
+            } else {
+                Log.w(LOG_TAG, "Cannot find account to send bugreport, local path: "
+                        + bugreportPath);
             }
         }
     }
@@ -109,11 +117,11 @@ public class SendBug {
         final Intent intent = new Intent(Intent.ACTION_SEND);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         intent.setType("application/octet-stream");
-        intent.putExtra("subject", bugreportUri.getLastPathSegment());
+        intent.putExtra(Intent.EXTRA_SUBJECT, bugreportUri.getLastPathSegment());
         final StringBuilder sb = new StringBuilder();
         sb.append(SystemProperties.get("ro.build.description"));
         sb.append("\n(Sent from BugMailer)");
-        intent.putExtra("body", sb.toString());
+        intent.putExtra(Intent.EXTRA_TEXT, (CharSequence)sb);
         if (screenshotUri != null) {
             final ArrayList<Uri> attachments = new ArrayList<Uri>();
             attachments.add(bugreportUri);
@@ -124,9 +132,10 @@ public class SendBug {
             intent.putExtra(Intent.EXTRA_STREAM, bugreportUri);
         }
         if (sendToAccount != null) {
-            intent.putExtra("to", sendToAccount.name);
+            intent.putExtra(Intent.EXTRA_EMAIL, new String[]{sendToAccount.name});
+            return intent;
         }
-        return intent;
+        return null;
     }
 
     private Account findSendToAccount() {
@@ -134,6 +143,10 @@ public class SendBug {
                 .getService(Context.ACCOUNT_SERVICE));
         Account[] accounts = null;
         Account foundAccount = null;
+        String preferredDomain = SystemProperties.get("sendbug.preferred.domain");
+        if (!preferredDomain.startsWith("@")) {
+            preferredDomain = "@" + preferredDomain;
+        }
         try {
             accounts = accountManager.getAccounts(null);
         } catch (RemoteException e) {
@@ -141,13 +154,20 @@ public class SendBug {
         }
         if (accounts != null) {
             for (Account account : accounts) {
-                if (GOOGLE_ACCOUNT_TYPE.equals(account.type)) {
-                    // return first gmail account found
-                    return account;
-                } else if (EMAIL_ACCOUNT_TYPE.equals(account.type)) {
-                    // keep regular email account for now in case there are gmail accounts
-                    // found later
-                    foundAccount = account;
+                if (EMAIL_REGEX.matcher(account.name).matches()) {
+                    if (!preferredDomain.isEmpty()) {
+                        // if we have a preferred domain and it matches, return; otherwise keep
+                        // looking
+                        if (account.name.endsWith(preferredDomain)) {
+                            return account;
+                        } else {
+                            foundAccount = account;
+                        }
+                        // if we don't have a preferred domain, just return since it looks like
+                        // an email address
+                    } else {
+                        return account;
+                    }
                 }
             }
         }
