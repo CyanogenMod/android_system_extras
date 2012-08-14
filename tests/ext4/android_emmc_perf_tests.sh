@@ -7,11 +7,6 @@ then
   echo "Cannot read $PERF test binary"
 fi
 
-if [ ! -r "$PERF_OSYNC" ]
-then
-  echo "Cannot read $PERF_OSYNC test binary"
-fi
-
 if ! adb shell true >/dev/null 2>&1
 then
   echo "No device detected over adb"
@@ -49,6 +44,11 @@ case "$HARDWARE" in
     CACHE="/dev/block/platform/sdhci-tegra.3/by-name/CAC"
     ;;
 
+  manta)
+    CPUFREQ="/sys/devices/system/cpu/cpu0/cpufreq"
+    CACHE="/dev/block/platform/dw_mmc.0/by-name/cache"
+    ;;
+
   *)
     echo "Unknown hardware $HARDWARE.  Exiting."
     exit 1
@@ -58,7 +58,6 @@ esac
 adb root
 adb wait-for-device
 adb push "$PERF" /dev
-adb push "$PERF_OSYNC" /dev
 adb shell stop
 adb shell stop sdcard
 adb shell stop ril-daemon
@@ -99,6 +98,7 @@ done
 # Random read test
 for I in 1 2 3
 do
+  adb shell "echo 3 > /proc/sys/vm/drop_caches"
   echo "Random read test $I"
   adb shell /dev/"$PERF" -r 100 "$CACHE"
 done
@@ -114,7 +114,7 @@ done
 for I in 1 2 3
 do
   echo "Random write with o_sync test $I"
-  adb shell /dev/"$PERF" -w 100 -o "$CACHE"
+  adb shell /dev/"$PERF" -w -o 100 "$CACHE"
 done
 
 # Make a new empty /cache filesystem
