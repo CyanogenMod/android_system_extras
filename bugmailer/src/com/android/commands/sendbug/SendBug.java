@@ -58,32 +58,26 @@ public class SendBug {
         File screenShot = null;
         if (screenShotPath != null) {
             screenShot = new File(screenShotPath);
-            if (!screenShot.exists()) {
-              // screen shot probably failed
-              screenShot = null;
-            }
         }
-        if (bugreport.exists()) {
-            final Uri bugreportUri = Uri.fromFile(bugreport);
-            // todo (aalbert): investigate adding a screenshot to BugReporter
-            Intent intent = tryBugReporter(bugreportUri);
-            if (intent == null) {
-                final Uri screenshotUri = screenShot != null
-                        ? Uri.fromFile(screenShot) : null;
-                intent = getSendMailIntent(bugreportUri, screenshotUri);
+        final Uri bugreportUri = Uri.fromFile(bugreport);
+        // todo (aalbert): investigate adding a screenshot to BugReporter
+        Intent intent = tryBugReporter(bugreportUri);
+        if (intent == null) {
+            final Uri screenshotUri = screenShot != null
+                    ? Uri.fromFile(screenShot) : null;
+            intent = getSendMailIntent(bugreportUri, screenshotUri);
+        }
+        if (intent != null) {
+            final IActivityManager mAm = ActivityManagerNative.getDefault();
+            try {
+                mAm.startActivity(null, intent, intent.getType(), null, null, 0, 0,
+                        null, null, null);
+            } catch (RemoteException e) {
+                // ignore
             }
-            if (intent != null) {
-                final IActivityManager mAm = ActivityManagerNative.getDefault();
-                try {
-                    mAm.startActivity(null, intent, intent.getType(), null, null, 0, 0,
-                            null, null, null);
-                } catch (RemoteException e) {
-                    // ignore
-                }
-            } else {
-                Log.w(LOG_TAG, "Cannot find account to send bugreport, local path: "
-                        + bugreportPath);
-            }
+        } else {
+            Log.w(LOG_TAG, "Cannot find account to send bugreport, local path: "
+                    + bugreportPath);
         }
     }
 
