@@ -66,6 +66,7 @@ public class SendBug {
             final Uri screenshotUri = screenShot != null
                     ? Uri.fromFile(screenShot) : null;
             intent = getSendMailIntent(bugreportUri, screenshotUri);
+            intent = Intent.createChooser(intent, "Send Bugreport via");
         }
         if (intent != null) {
             final IActivityManager mAm = ActivityManagerNative.getDefault();
