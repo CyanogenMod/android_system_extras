@@ -99,8 +99,15 @@ int pm_process_pagemap_range(pm_process_t *proc,
     off_t off;
     int error;
 
-    if (!proc || (low >= high) || !range_out || !len)
+    if (!proc || (low > high) || !range_out || !len)
         return -1;
+
+    if(low == high) {
+        // a 0 page mapping??
+        *len = 0;
+        *range_out = NULL;
+        return 0;
+    }
 
     firstpage = low / proc->ker->pagesize;
     numpages = (high - low) / proc->ker->pagesize;
