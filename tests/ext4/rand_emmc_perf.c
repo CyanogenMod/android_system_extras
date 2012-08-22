@@ -41,7 +41,7 @@ static void usage(void) {
 
 int main(int argc, char *argv[])
 {
-    long max_blocks;
+    unsigned long long max_blocks;
     int fd, fd2, write_mode = 0, iops = 0;
     struct timeval start, end, res;
     unsigned int seed;
