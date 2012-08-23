@@ -66,7 +66,6 @@ public class SendBug {
             final Uri screenshotUri = screenShot != null
                     ? Uri.fromFile(screenShot) : null;
             intent = getSendMailIntent(bugreportUri, screenshotUri);
-            intent = Intent.createChooser(intent, "Send Bugreport via");
         }
         if (intent != null) {
             final IActivityManager mAm = ActivityManagerNative.getDefault();
@@ -110,7 +109,7 @@ public class SendBug {
     private Intent getSendMailIntent(Uri bugreportUri, Uri screenshotUri) {
         final Account sendToAccount = findSendToAccount();
         final Intent intent = new Intent(Intent.ACTION_SEND);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        intent.addCategory(Intent.CATEGORY_DEFAULT);
         intent.setType("application/octet-stream");
         intent.putExtra(Intent.EXTRA_SUBJECT, bugreportUri.getLastPathSegment());
         final StringBuilder sb = new StringBuilder();
