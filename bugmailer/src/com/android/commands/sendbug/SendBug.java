@@ -68,9 +68,13 @@ public class SendBug {
             intent = getSendMailIntent(bugreportUri, screenshotUri);
         }
         if (intent != null) {
-            final IActivityManager mAm = ActivityManagerNative.getDefault();
+            final IActivityManager am = ActivityManagerNative.getDefault();
+            if (am == null) {
+                Log.e(LOG_TAG, "Cannot get ActivityManager, is the system running?");
+                return;
+            }
             try {
-                mAm.startActivity(null, intent, intent.getType(), null, null, 0, 0,
+                am.startActivity(null, intent, intent.getType(), null, null, 0, 0,
                         null, null, null);
             } catch (RemoteException e) {
                 // ignore
@@ -84,26 +88,27 @@ public class SendBug {
     private Intent tryBugReporter(Uri bugreportUri) {
         final Intent intent = new Intent(SEND_BUG_INTENT_ACTION);
         intent.setData(bugreportUri);
-        final IPackageManager mPm = IPackageManager.Stub.asInterface(
+        final IPackageManager pm = IPackageManager.Stub.asInterface(
                 ServiceManager.getService("package"));
-        if (mPm != null) {
-            final List<ResolveInfo> results;
-            try {
-                results = mPm.queryIntentActivities(intent, null, 0, 0);
-            } catch (RemoteException e) {
-                return null;
-            }
-            if (results != null && results.size() > 0) {
-                final ResolveInfo info = results.get(0);
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                intent.setClassName(info.activityInfo.applicationInfo.packageName,
-                        info.activityInfo.name);
-                return intent;
-            } else {
-                return null;
-            }
+        if (pm == null) {
+            Log.e(LOG_TAG, "Cannot get PackageManager, is the system running?");
+            return null;
         }
-        return null;
+        final List<ResolveInfo> results;
+        try {
+            results = pm.queryIntentActivities(intent, null, 0, 0);
+        } catch (RemoteException e) {
+            return null;
+        }
+        if (results != null && results.size() > 0) {
+            final ResolveInfo info = results.get(0);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            intent.setClassName(info.activityInfo.applicationInfo.packageName,
+                    info.activityInfo.name);
+            return intent;
+        } else {
+            return null;
+        }
     }
 
     private Intent getSendMailIntent(Uri bugreportUri, Uri screenshotUri) {
@@ -135,6 +140,10 @@ public class SendBug {
     private Account findSendToAccount() {
         final IAccountManager accountManager = IAccountManager.Stub.asInterface(ServiceManager
                 .getService(Context.ACCOUNT_SERVICE));
+        if (accountManager == null) {
+            Log.e(LOG_TAG, "Cannot get AccountManager, is the system running?");
+            return null;
+        }
         Account[] accounts = null;
         Account foundAccount = null;
         String preferredDomain = SystemProperties.get("sendbug.preferred.domain");
@@ -167,5 +176,4 @@ public class SendBug {
         }
         return foundAccount;
     }
-
 }
