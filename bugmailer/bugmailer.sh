@@ -9,14 +9,15 @@ if [ "x$(getprop ro.build.type)" = "xuser" -a \
   exit 0
 fi
 
-# Use bugreport-specific paths if defined
-if [ -n "$BUGREPORT_WRITE_PATH" ]; then
-  writePath="$BUGREPORT_WRITE_PATH"
+# Build emulated storage paths when appropriate
+# See storage config details at http://source.android.com/tech/storage/
+if [ -n "$EMULATED_STORAGE_SOURCE" ]; then
+  writePath="$EMULATED_STORAGE_SOURCE/0"
+  readPath="$EMULATED_STORAGE_TARGET/0"
 else
   writePath="$EXTERNAL_STORAGE"
+  readPath="$EXTERNAL_STORAGE"
 fi
-
-readPath="$EXTERNAL_STORAGE"
 
 tmpPath="/data/local/tmp"
 bugreportPath="bugreports"
