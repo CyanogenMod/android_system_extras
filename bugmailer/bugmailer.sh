@@ -15,11 +15,8 @@ if [ -n "$BUGREPORT_WRITE_PATH" ]; then
 else
   writePath="$EXTERNAL_STORAGE"
 fi
-if [ -n "$BUGREPORT_READ_PATH" ]; then
-  readPath="$BUGREPORT_READ_PATH"
-else
-  readPath="$EXTERNAL_STORAGE"
-fi
+
+readPath="$EXTERNAL_STORAGE"
 
 tmpPath="/data/local/tmp"
 bugreportPath="bugreports"
