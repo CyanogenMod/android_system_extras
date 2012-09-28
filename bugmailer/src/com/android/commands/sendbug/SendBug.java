@@ -27,6 +27,7 @@ import android.net.Uri;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemProperties;
+import android.os.UserHandle;
 import android.util.Log;
 
 import java.io.File;
@@ -74,8 +75,8 @@ public class SendBug {
                 return;
             }
             try {
-                am.startActivity(null, intent, intent.getType(), null, null, 0, 0,
-                        null, null, null);
+                am.startActivityAsUser(null, intent, intent.getType(), null, null, 0, 0,
+                        null, null, null, UserHandle.USER_CURRENT);
             } catch (RemoteException e) {
                 // ignore
             }
