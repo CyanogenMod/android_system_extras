@@ -157,15 +157,18 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 			error("can't set android permissions - built without android support");
 #endif
 		}
-#ifdef HAVE_SELINUX
+#ifndef USE_MINGW
 		if (sehnd) {
 			char *sepath = NULL;
 			asprintf(&sepath, "/%s", dentries[i].path);
 			if (selabel_lookup(sehnd, &dentries[i].secon, sepath, stat.st_mode) < 0) {
 				error("cannot lookup security context for %s", sepath);
 			}
+#if 0
+			// TODO make this a debug flag
 			if (dentries[i].secon)
 				printf("Labeling %s as %s\n", sepath, dentries[i].secon);
+#endif
 			free(sepath);
 		}
 #endif
@@ -428,7 +431,7 @@ int make_ext4fs_internal(int fd, const char *directory,
 	root_mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
 	inode_set_permissions(root_inode_num, root_mode, 0, 0, 0);
 
-#ifdef HAVE_SELINUX
+#ifndef USE_MINGW
 	if (sehnd) {
 		char *sepath = NULL;
 		char *secontext = NULL;

@@ -62,7 +62,7 @@ int main(int argc, char **argv)
 	int fd;
 	int exitcode;
 	struct selabel_handle *sehnd = NULL;
-#ifdef HAVE_SELINUX
+#ifndef USE_MINGW
 	struct selinux_opt seopts[] = { { SELABEL_OPT_PATH, "" } };
 #endif
 
@@ -121,7 +121,7 @@ int main(int argc, char **argv)
 			init_itabs = 1;
 			break;
 		case 'S':
-#ifdef HAVE_SELINUX
+#ifndef USE_MINGW
 			seopts[0].value = optarg;
 			sehnd = selabel_open(SELABEL_CTX_FILE, seopts, 1);
 			if (!sehnd) {
@@ -129,7 +129,7 @@ int main(int argc, char **argv)
 				exit(EXIT_FAILURE);
 			}
 #endif
-			   break;
+			break;
 		default: /* '?' */
 			usage(argv[0]);
 			exit(EXIT_FAILURE);
