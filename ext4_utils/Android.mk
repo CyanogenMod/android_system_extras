@@ -41,6 +41,7 @@ ifeq ($(HOST_OS),windows)
   LOCAL_LDLIBS += -lws2_32
 else
   LOCAL_STATIC_LIBRARIES += libselinux
+  LOCAL_CFLAGS := -DHOST
 endif
 include $(BUILD_HOST_EXECUTABLE)
 
