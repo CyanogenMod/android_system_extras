@@ -24,7 +24,7 @@
 extern "C" {
 #endif
 
-#ifdef HAVE_SELINUX
+#ifndef USE_MINGW
 #include <selinux/selinux.h>
 #include <selinux/label.h>
 #else
