@@ -136,6 +136,18 @@ int main(int argc, char **argv)
 		}
 	}
 
+#if !defined(HOST)
+	// Use only if -S option not requested
+	if (!sehnd && mountpoint[0] != '\0') {
+		sehnd = selinux_android_file_context_handle();
+
+		if (!sehnd) {
+			perror(optarg);
+			exit(EXIT_FAILURE);
+		}
+	}
+#endif
+
 	if (wipe && sparse) {
 		fprintf(stderr, "Cannot specifiy both wipe and sparse\n");
 		usage(argv[0]);
