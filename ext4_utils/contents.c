@@ -250,7 +250,6 @@ int inode_set_permissions(u32 inode_num, u16 mode, u16 uid, u16 gid, u32 mtime)
 	return 0;
 }
 
-#ifdef HAVE_SELINUX
 #define XATTR_SELINUX_SUFFIX "selinux"
 
 /* XXX */
@@ -292,9 +291,3 @@ int inode_set_selinux(u32 inode_num, const char *secon)
 
 	return 0;
 }
-#else
-int inode_set_selinux(u32 inode_num, const char *secon)
-{
-	return 0;
-}
-#endif
