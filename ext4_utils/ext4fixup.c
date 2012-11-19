@@ -16,10 +16,10 @@
 #include "ext4_utils.h"
 #include "make_ext4fs.h"
 #include "ext4_extents.h"
-#include "output_file.h"
-#include "backed_block.h"
 #include "allocate.h"
 #include "ext4fixup.h"
+
+#include <sparse/sparse.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>

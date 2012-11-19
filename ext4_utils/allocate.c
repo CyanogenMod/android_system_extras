@@ -16,8 +16,9 @@
 
 #include "ext4_utils.h"
 #include "allocate.h"
-#include "backed_block.h"
 #include "ext4.h"
+
+#include <sparse/sparse.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -154,8 +155,8 @@ static void allocate_bg_inode_table(struct block_group_info *bg)
 	if (bg->inode_table == NULL)
 		critical_error_errno("calloc");
 
-	queue_data_block(bg->inode_table, aux_info.inode_table_blocks
-			* info.block_size, block);
+	sparse_file_add_data(info.sparse_file, bg->inode_table,
+			aux_info.inode_table_blocks	* info.block_size, block);
 }
 
 void init_unused_inode_tables(void)
@@ -170,9 +171,10 @@ void init_unused_inode_tables(void)
 			block = bg->first_block + 2;
 			if (bg->has_superblock)
 				block += aux_info.bg_desc_blocks + info.bg_desc_reserve_blocks + 1;
-			queue_fill_block(0, aux_info.inode_table_blocks * info.block_size, block);
-                }
-       }
+			sparse_file_add_fill(info.sparse_file, 0,
+					aux_info.inode_table_blocks * info.block_size, block);
+		}
+	}
 }
 
 static int bitmap_set_bit(u8 *bitmap, u32 bit)
@@ -287,7 +289,8 @@ static void init_bg(struct block_group_info *bg, unsigned int i)
 	u32 block = bg->first_block;
 	if (bg->has_superblock)
 		block += 1 + aux_info.bg_desc_blocks +  info.bg_desc_reserve_blocks;
-	queue_data_block(bg->bitmaps, 2 * info.block_size, block);
+	sparse_file_add_data(info.sparse_file, bg->bitmaps, 2 * info.block_size,
+			block);
 
 	bg->data_blocks_used = 0;
 	bg->free_blocks = info.blocks_per_group;
