@@ -17,7 +17,7 @@ if [ "$1" = "-s" ]; then
   shift
 fi
 
-if [ $# -ne 4 -a $# -ne 5 -a $# -ne 6 ]; then
+if [ $# -ne 5 -a $# -ne 6 ]; then
   usage
   exit 1
 fi
@@ -45,7 +45,8 @@ if [ -z $MOUNT_POINT ]; then
 fi
 
 if [ -z $SIZE ]; then
-    SIZE=128M
+  echo "Need size of filesystem"
+  exit 2
 fi
 
 if [ -n "$FC" ]; then
