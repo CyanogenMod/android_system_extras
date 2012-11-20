@@ -313,7 +313,11 @@ int make_ext4fs(const char *filename, s64 len,
 		return EXIT_FAILURE;
 	}
 
+#ifdef NO_LAZYINIT
+	status = make_ext4fs_internal(fd, NULL, mountpoint, NULL, 0, 0, 0, 1, 1, sehnd);
+#else
 	status = make_ext4fs_internal(fd, NULL, mountpoint, NULL, 0, 0, 0, 1, 0, sehnd);
+#endif
 	close(fd);
 
 	return status;
