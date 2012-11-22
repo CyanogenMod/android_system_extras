@@ -115,7 +115,12 @@ LOCAL_FORCE_STATIC_EXECUTABLE := true
 LOCAL_MODULE_CLASS := UTILITY_EXECUTABLES
 LOCAL_MODULE_PATH := $(PRODUCT_OUT)/utilities
 LOCAL_UNSTRIPPED_PATH := $(PRODUCT_OUT)/symbols/utilities
-LOCAL_STATIC_LIBRARIES += libext4_utils libz libcutils libc
+LOCAL_STATIC_LIBRARIES += \
+    libext4_utils_static \
+    libsparse_static \
+    libz \
+    libcutils \
+    libc
 
 include $(BUILD_EXECUTABLE)
 
