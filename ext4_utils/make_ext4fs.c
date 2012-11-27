@@ -215,7 +215,7 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 		dentries = tmp;
 
 		dentries[0].filename = strdup("lost+found");
-		dentries[0].path = strdup("/lost+found");
+		asprintf(&dentries[0].path, "%s/lost+found", dir_path);
 		dentries[0].full_path = NULL;
 		dentries[0].size = 0;
 		dentries[0].mode = S_IRWXU;
@@ -223,9 +223,13 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 		dentries[0].uid = 0;
 		dentries[0].gid = 0;
 #ifdef HAVE_SELINUX
-		if (sehnd)
-			if (selabel_lookup(sehnd, &dentries[0].secon, "lost+found", dentries[0].mode) < 0)
-				error("cannot lookup security context for /lost+found");
+		if (sehnd) {
+			char *sepath = NULL;
+			asprintf(&sepath, "/%s", dentries[0].path);
+			if (selabel_lookup(sehnd, &dentries[0].secon, sepath, dentries[0].mode) < 0)
+				error("cannot lookup security context for %s", dentries[0].path);
+			free(sepath);
+		}
 #endif
 		entries++;
 		dirs++;
