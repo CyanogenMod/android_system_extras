@@ -290,7 +290,7 @@ void ext4_fill_in_sb(int real_uuid)
 	sb->s_mtime = 0;
 	sb->s_wtime = 0;
 	sb->s_mnt_count = 0;
-	sb->s_max_mnt_count = 0xFFFF;
+	sb->s_max_mnt_count = 10;
 	sb->s_magic = EXT4_SUPER_MAGIC;
 	sb->s_state = EXT4_VALID_FS;
 	sb->s_errors = EXT4_ERRORS_RO;
