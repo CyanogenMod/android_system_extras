@@ -104,18 +104,30 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 {
 	int entries = 0;
 	struct dentry *dentries;
-	struct dirent **namelist;
+	struct dirent **namelist = NULL;
 	struct stat stat;
 	int ret;
 	int i;
 	u32 inode;
 	u32 entry_inode;
 	u32 dirs = 0;
+	bool needs_lost_and_found = false;
 
-	entries = scandir(full_path, &namelist, filter_dot, (void*)alphasort);
-	if (entries < 0) {
-		error_errno("scandir");
-		return EXT4_ALLOCATE_FAILED;
+	if (full_path) {
+		entries = scandir(full_path, &namelist, filter_dot, (void*)alphasort);
+		if (entries < 0) {
+			error_errno("scandir");
+			return EXT4_ALLOCATE_FAILED;
+		}
+	}
+
+	if (dir_inode == 0) {
+		/* root directory, check if lost+found already exists */
+		for (i = 0; i < entries; i++)
+			if (strcmp(namelist[i]->d_name, "lost+found") == 0)
+				break;
+		if (i == entries)
+			needs_lost_and_found = true;
 	}
 
 	dentries = calloc(entries, sizeof(struct dentry));
@@ -194,6 +206,30 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 		}
 	}
 	free(namelist);
+
+	if (needs_lost_and_found) {
+		/* insert a lost+found directory at the beginning of the dentries */
+		struct dentry *tmp = calloc(entries + 1, sizeof(struct dentry));
+		memset(tmp, 0, sizeof(struct dentry));
+		memcpy(tmp + 1, dentries, entries * sizeof(struct dentry));
+		dentries = tmp;
+
+		dentries[0].filename = strdup("lost+found");
+		dentries[0].path = strdup("/lost+found");
+		dentries[0].full_path = NULL;
+		dentries[0].size = 0;
+		dentries[0].mode = S_IRWXU;
+		dentries[0].file_type = EXT4_FT_DIR;
+		dentries[0].uid = 0;
+		dentries[0].gid = 0;
+#ifdef HAVE_SELINUX
+		if (sehnd)
+			if (selabel_lookup(sehnd, &dentries[0].secon, "lost+found", dentries[0].mode) < 0)
+				error("cannot lookup security context for /lost+found");
+#endif
+		entries++;
+		dirs++;
+	}
 
 	inode = make_directory(dir_inode, entries, dentries, dirs);
 
