@@ -52,7 +52,7 @@ int main(int argc, char **argv)
 	int opt;
 	const char *filename = NULL;
 	const char *directory = NULL;
-	char *mountpoint = "";
+	char *mountpoint = NULL;
 	fs_config_func_t fs_config_func = NULL;
 	int gzip = 0;
 	int sparse = 0;
@@ -138,7 +138,7 @@ int main(int argc, char **argv)
 
 #if !defined(HOST)
 	// Use only if -S option not requested
-	if (!sehnd && mountpoint[0] != '\0') {
+	if (!sehnd && mountpoint) {
 		sehnd = selinux_android_file_context_handle();
 
 		if (!sehnd) {
