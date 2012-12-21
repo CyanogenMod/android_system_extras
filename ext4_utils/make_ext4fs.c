@@ -374,6 +374,63 @@ int make_ext4fs(const char *filename, s64 len,
 	return status;
 }
 
+/* return a newly-malloc'd string that is a copy of str.  The new string
+   is guaranteed to have a trailing slash.  If absolute is true, the new string
+   is also guaranteed to have a leading slash.
+*/
+static char *canonicalize_slashes(const char *str, bool absolute)
+{
+	char *ret;
+	int len = strlen(str);
+	int newlen = len;
+	char *ptr;
+
+	if (len == 0 && absolute) {
+		return strdup("/");
+	}
+
+	if (str[0] != '/' && absolute) {
+		newlen++;
+	}
+	if (str[len - 1] != '/') {
+		newlen++;
+	}
+	ret = malloc(newlen + 1);
+	if (!ret) {
+		critical_error("malloc");
+	}
+
+	ptr = ret;
+	if (str[0] != '/' && absolute) {
+		*ptr++ = '/';
+	}
+
+	strcpy(ptr, str);
+	ptr += len;
+
+	if (str[len - 1] != '/') {
+		*ptr++ = '/';
+	}
+
+	if (ptr != ret + newlen) {
+		critical_error("assertion failed\n");
+	}
+
+	*ptr = '\0';
+
+	return ret;
+}
+
+static char *canonicalize_abs_slashes(const char *str)
+{
+	return canonicalize_slashes(str, true);
+}
+
+static char *canonicalize_rel_slashes(const char *str)
+{
+	return canonicalize_slashes(str, false);
+}
+
 int make_ext4fs_internal(int fd, const char *_directory,
                          const char *_mountpoint, fs_config_func_t fs_config_func, int gzip,
                          int sparse, int crc, int wipe, int init_itabs,
@@ -390,23 +447,12 @@ int make_ext4fs_internal(int fd, const char *_directory,
 
 	if (_mountpoint == NULL) {
 		mountpoint = strdup("");
-	} else if (_mountpoint[0] == '\0') {
-		mountpoint = strdup("/");
 	} else {
-		ret = asprintf(&mountpoint, "%s%s%s",
-			       _mountpoint[0] == '/' ? "" : "/",
-			       _mountpoint,
-			       _mountpoint[strlen(_mountpoint) - 1] == '/' ? "" : "/");
-		if (ret < 0)
-			critical_error_errno("asprintf");
+		mountpoint = canonicalize_abs_slashes(_mountpoint);
 	}
 
 	if (_directory) {
-		ret = asprintf(&directory, "%s%s",
-			       _directory,
-			       _directory[strlen(_directory) - 1] == '/' ? "" : "/");
-		if (ret < 0)
-			critical_error_errno("asprintf");
+		directory = canonicalize_rel_slashes(_directory);
 	}
 
 	if (info.len <= 0)
