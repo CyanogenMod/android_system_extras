@@ -47,13 +47,13 @@ int main(int argc, char *argv[]) {
     pm_process_t *proc;
 
     /* maps and such */
-    pm_map_t **maps; int num_maps;
+    pm_map_t **maps; size_t num_maps;
 
     struct map_info **mis;
     struct map_info *mi;
 
     /* pagemap information */
-    uint64_t *pagemap; int num_pages;
+    uint64_t *pagemap; size_t num_pages;
     unsigned long address; uint64_t mapentry;
     uint64_t count, flags;
 
@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
     int hide_zeros;
 
     /* temporary variables */
-    int i, j;
+    size_t i, j;
     char *endptr;
     int error;
 
@@ -82,7 +82,7 @@ int main(int argc, char *argv[]) {
     ws = WS_OFF;
     compfn = NULL;
     hide_zeros = 0;
-    for (i = 1; i < argc - 1; i++) {
+    for (i = 1; i < (size_t)(argc - 1); i++) {
         if (!strcmp(argv[i], "-w")) { ws = WS_ONLY; continue; }
         if (!strcmp(argv[i], "-W")) { ws = WS_RESET; continue; }
         if (!strcmp(argv[i], "-m")) { compfn = NULL; continue; }
