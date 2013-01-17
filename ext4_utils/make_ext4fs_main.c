@@ -53,7 +53,7 @@ static void usage(char *path)
 	fprintf(stderr, "    [ -g <blocks per group> ] [ -i <inodes> ] [ -I <inode size> ]\n");
 	fprintf(stderr, "    [ -L <label> ] [ -f ] [ -a <android mountpoint> ]\n");
 	fprintf(stderr, "    [ -S file_contexts ]\n");
-	fprintf(stderr, "    [ -z | -s ] [ -t ] [ -w ] [ -c ] [ -J ]\n");
+	fprintf(stderr, "    [ -z | -s ] [ -t ] [ -w ] [ -c ] [ -J ] [ -v ]\n");
 	fprintf(stderr, "    <filename> [<directory>]\n");
 }
 
@@ -71,12 +71,13 @@ int main(int argc, char **argv)
 	int init_itabs = 0;
 	int fd;
 	int exitcode;
+	int verbose = 0;
 	struct selabel_handle *sehnd = NULL;
 #ifndef USE_MINGW
 	struct selinux_opt seopts[] = { { SELABEL_OPT_PATH, "" } };
 #endif
 
-	while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:fwzJsctS:")) != -1) {
+	while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:S:fwzJsctv")) != -1) {
 		switch (opt) {
 		case 'l':
 			info.len = parse_num(optarg);
@@ -140,6 +141,9 @@ int main(int argc, char **argv)
 			}
 #endif
 			break;
+		case 'v':
+			verbose = 1;
+			break;
 		default: /* '?' */
 			usage(argv[0]);
 			exit(EXIT_FAILURE);
@@ -198,7 +202,7 @@ int main(int argc, char **argv)
 	}
 
 	exitcode = make_ext4fs_internal(fd, directory, mountpoint, fs_config_func, gzip,
-			sparse, crc, wipe, init_itabs, sehnd);
+			sparse, crc, wipe, init_itabs, sehnd, verbose);
 	close(fd);
 
 	return exitcode;
