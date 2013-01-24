@@ -353,6 +353,15 @@ void reset_ext4fs_info() {
     }
 }
 
+int make_ext4fs_sparse_fd(int fd, s64 len,
+                const char *mountpoint, struct selabel_handle *sehnd)
+{
+	reset_ext4fs_info();
+	info.len = len;
+
+	return make_ext4fs_internal(fd, NULL, mountpoint, NULL, 0, 1, 0, 0, 0, sehnd);
+}
+
 int make_ext4fs(const char *filename, s64 len,
                 const char *mountpoint, struct selabel_handle *sehnd)
 {
