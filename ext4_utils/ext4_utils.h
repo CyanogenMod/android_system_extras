@@ -167,6 +167,16 @@ u64 get_file_size(int fd);
 u64 parse_num(const char *arg);
 void ext4_parse_sb(struct ext4_super_block *sb);
 
+typedef void (*fs_config_func_t)(const char *path, int dir, unsigned *uid, unsigned *gid,
+        unsigned *mode);
+
+struct selabel_handle;
+
+int make_ext4fs_internal(int fd, const char *directory,
+                         const char *mountpoint, fs_config_func_t fs_config_func, int gzip,
+                         int sparse, int crc, int wipe, int init_itabs,
+                         struct selabel_handle *sehnd);
+
 #ifdef __cplusplus
 }
 #endif
