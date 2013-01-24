@@ -59,6 +59,10 @@
 
 #else
 
+#include <selinux/selinux.h>
+#include <selinux/label.h>
+#include <selinux/android.h>
+
 #define O_BINARY 0
 
 #endif
@@ -353,7 +357,7 @@ void reset_ext4fs_info() {
     }
 }
 
-int make_ext4fs_sparse_fd(int fd, s64 len,
+int make_ext4fs_sparse_fd(int fd, long long len,
                 const char *mountpoint, struct selabel_handle *sehnd)
 {
 	reset_ext4fs_info();
@@ -362,7 +366,7 @@ int make_ext4fs_sparse_fd(int fd, s64 len,
 	return make_ext4fs_internal(fd, NULL, mountpoint, NULL, 0, 1, 0, 0, 0, sehnd);
 }
 
-int make_ext4fs(const char *filename, s64 len,
+int make_ext4fs(const char *filename, long long len,
                 const char *mountpoint, struct selabel_handle *sehnd)
 {
 	int fd;
