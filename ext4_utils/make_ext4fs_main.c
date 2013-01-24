@@ -16,6 +16,7 @@
 
 #include <fcntl.h>
 #include <libgen.h>
+#include <stdio.h>
 #include <unistd.h>
 
 #if defined(__linux__)
@@ -28,7 +29,16 @@
 #include <private/android_filesystem_config.h>
 #endif
 
+#ifndef USE_MINGW
+#include <selinux/selinux.h>
+#include <selinux/label.h>
+#include <selinux/android.h>
+#else
+struct selabel_handle;
+#endif
+
 #include "make_ext4fs.h"
+#include "ext4_utils.h"
 
 #ifndef USE_MINGW /* O_BINARY is windows-specific flag */
 #define O_BINARY 0
