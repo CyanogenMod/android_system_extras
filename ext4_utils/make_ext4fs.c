@@ -568,8 +568,10 @@ int make_ext4fs_internal(int fd, const char *_directory,
 		if (selabel_lookup(sehnd, &secontext, mountpoint, S_IFDIR) < 0) {
 			error("cannot lookup security context for %s", mountpoint);
 		}
-		if (secontext && verbose) {
-			printf("Labeling %s as %s\n", mountpoint, secontext);
+		if (secontext) {
+			if (verbose) {
+				printf("Labeling %s as %s\n", mountpoint, secontext);
+			}
 			inode_set_selinux(root_inode_num, secontext);
 		}
 		freecon(secontext);
