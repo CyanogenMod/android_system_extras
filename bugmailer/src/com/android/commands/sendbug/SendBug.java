@@ -75,7 +75,7 @@ public class SendBug {
                 return;
             }
             try {
-                am.startActivityAsUser(null, intent, intent.getType(), null, null, 0, 0,
+                am.startActivityAsUser(null, null, intent, intent.getType(), null, null, 0, 0,
                         null, null, null, UserHandle.USER_CURRENT);
             } catch (RemoteException e) {
                 // ignore
