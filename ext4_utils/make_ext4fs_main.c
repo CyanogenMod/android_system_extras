@@ -53,7 +53,7 @@ static void usage(char *path)
 	fprintf(stderr, "    [ -g <blocks per group> ] [ -i <inodes> ] [ -I <inode size> ]\n");
 	fprintf(stderr, "    [ -L <label> ] [ -f ] [ -a <android mountpoint> ]\n");
 	fprintf(stderr, "    [ -S file_contexts ]\n");
-	fprintf(stderr, "    [ -z | -s ] [ -t ] [ -w ] [ -c ] [ -J ] [ -v ]\n");
+	fprintf(stderr, "    [ -z | -s ] [ -w ] [ -c ] [ -J ] [ -v ]\n");
 	fprintf(stderr, "    <filename> [<directory>]\n");
 }
 
@@ -68,7 +68,6 @@ int main(int argc, char **argv)
 	int sparse = 0;
 	int crc = 0;
 	int wipe = 0;
-	int init_itabs = 0;
 	int fd;
 	int exitcode;
 	int verbose = 0;
@@ -129,7 +128,7 @@ int main(int argc, char **argv)
 			sparse = 1;
 			break;
 		case 't':
-			init_itabs = 1;
+			fprintf(stderr, "Warning: -t (initialize inode tables) is deprecated\n");
 			break;
 		case 'S':
 #ifndef USE_MINGW
@@ -202,7 +201,7 @@ int main(int argc, char **argv)
 	}
 
 	exitcode = make_ext4fs_internal(fd, directory, mountpoint, fs_config_func, gzip,
-			sparse, crc, wipe, init_itabs, sehnd, verbose);
+			sparse, crc, wipe, sehnd, verbose);
 	close(fd);
 
 	return exitcode;
