@@ -361,7 +361,7 @@ int make_ext4fs_sparse_fd(int fd, long long len,
 	reset_ext4fs_info();
 	info.len = len;
 
-	return make_ext4fs_internal(fd, NULL, mountpoint, NULL, 0, 1, 0, 0, 0, sehnd, 0);
+	return make_ext4fs_internal(fd, NULL, mountpoint, NULL, 0, 1, 0, 0, sehnd, 0);
 }
 
 int make_ext4fs(const char *filename, long long len,
@@ -379,7 +379,7 @@ int make_ext4fs(const char *filename, long long len,
 		return EXIT_FAILURE;
 	}
 
-	status = make_ext4fs_internal(fd, NULL, mountpoint, NULL, 0, 0, 0, 1, 0, sehnd, 0);
+	status = make_ext4fs_internal(fd, NULL, mountpoint, NULL, 0, 0, 0, 1, sehnd, 0);
 	close(fd);
 
 	return status;
@@ -444,7 +444,7 @@ static char *canonicalize_rel_slashes(const char *str)
 
 int make_ext4fs_internal(int fd, const char *_directory,
                          const char *_mountpoint, fs_config_func_t fs_config_func, int gzip,
-                         int sparse, int crc, int wipe, int init_itabs,
+                         int sparse, int crc, int wipe,
                          struct selabel_handle *sehnd, int verbose)
 {
 	u32 root_inode_num;
@@ -507,7 +507,8 @@ int make_ext4fs_internal(int fd, const char *_directory,
 
 	info.feat_ro_compat |=
 			EXT4_FEATURE_RO_COMPAT_SPARSE_SUPER |
-			EXT4_FEATURE_RO_COMPAT_LARGE_FILE;
+			EXT4_FEATURE_RO_COMPAT_LARGE_FILE |
+			EXT4_FEATURE_RO_COMPAT_GDT_CSUM;
 
 	info.feat_incompat |=
 			EXT4_FEATURE_INCOMPAT_EXTENTS |
@@ -579,9 +580,6 @@ int make_ext4fs_internal(int fd, const char *_directory,
 #endif
 
 	ext4_update_free();
-
-	if (init_itabs)
-		init_unused_inode_tables();
 
 	ext4_queue_sb();
 

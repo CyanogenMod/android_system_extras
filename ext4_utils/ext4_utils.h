@@ -99,8 +99,10 @@ struct ext2_group_desc {
 	__le16 bg_free_blocks_count;
 	__le16 bg_free_inodes_count;
 	__le16 bg_used_dirs_count;
-	__le16 bg_pad;
-	__le32 bg_reserved[3];
+	__le16 bg_flags;
+	__le32 bg_reserved[2];
+	__le16 bg_reserved16;
+	__le16 bg_checksum;
 };
 
 struct fs_info {
@@ -166,6 +168,7 @@ void ext4_queue_sb(void);
 u64 get_file_size(int fd);
 u64 parse_num(const char *arg);
 void ext4_parse_sb(struct ext4_super_block *sb);
+u16 ext4_crc16(u16 crc_in, const void *buf, int size);
 
 typedef void (*fs_config_func_t)(const char *path, int dir, unsigned *uid, unsigned *gid,
         unsigned *mode);
@@ -174,7 +177,7 @@ struct selabel_handle;
 
 int make_ext4fs_internal(int fd, const char *directory,
                          const char *mountpoint, fs_config_func_t fs_config_func, int gzip,
-                         int sparse, int crc, int wipe, int init_itabs,
+                         int sparse, int crc, int wipe,
                          struct selabel_handle *sehnd, int verbose);
 
 #ifdef __cplusplus
