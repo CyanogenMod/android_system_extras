@@ -12,7 +12,8 @@ libext4_utils_src_files := \
     indirect.c \
     uuid.c \
     sha1.c \
-    wipe.c
+    wipe.c \
+    crc16.c
 
 #
 # -- All host/targets including windows

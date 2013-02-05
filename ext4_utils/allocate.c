@@ -56,6 +56,7 @@ struct block_group_info {
 	u32 first_free_block;
 	u32 free_inodes;
 	u32 first_free_inode;
+	u16 flags;
 	u16 used_dirs;
 };
 
@@ -157,24 +158,8 @@ static void allocate_bg_inode_table(struct block_group_info *bg)
 
 	sparse_file_add_data(info.sparse_file, bg->inode_table,
 			aux_info.inode_table_blocks	* info.block_size, block);
-}
 
-void init_unused_inode_tables(void)
-{
-	unsigned int i;
-	u32 block;
-	struct block_group_info *bg;
-
-	for (i = 0; i < aux_info.groups; i++) {
-		if (!aux_info.bgs[i].inode_table) {
-			bg = &aux_info.bgs[i];
-			block = bg->first_block + 2;
-			if (bg->has_superblock)
-				block += aux_info.bg_desc_blocks + info.bg_desc_reserve_blocks + 1;
-			sparse_file_add_fill(info.sparse_file, 0,
-					aux_info.inode_table_blocks * info.block_size, block);
-		}
-	}
+	bg->flags &= ~EXT4_BG_INODE_UNINIT;
 }
 
 static int bitmap_set_bit(u8 *bitmap, u32 bit)
@@ -297,6 +282,7 @@ static void init_bg(struct block_group_info *bg, unsigned int i)
 	bg->first_free_block = 0;
 	bg->free_inodes = info.inodes_per_group;
 	bg->first_free_inode = 1;
+	bg->flags = EXT4_BG_INODE_UNINIT;
 
 	if (reserve_blocks(bg, bg->first_free_block, bg->header_blocks) < 0)
 		error("failed to reserve %u blocks in block group %u\n", bg->header_blocks, i);
@@ -742,6 +728,12 @@ void add_directory(u32 inode)
 u16 get_directories(int bg)
 {
 	return aux_info.bgs[bg].used_dirs;
+}
+
+/* Returns the flags for a block group */
+u16 get_bg_flags(int bg)
+{
+	return aux_info.bgs[bg].flags;
 }
 
 /* Frees the memory used by a linked list of allocation regions */
