@@ -126,6 +126,7 @@ void ext4_create_fs_aux_info()
 	aux_info.bg_desc = calloc(info.block_size, aux_info.bg_desc_blocks);
 	if (!aux_info.bg_desc)
 		critical_error_errno("calloc");
+	aux_info.xattrs = NULL;
 }
 
 void ext4_free_fs_aux_info()

@@ -60,6 +60,12 @@ struct block_group_info {
 	u16 used_dirs;
 };
 
+struct xattr_list_element {
+	struct ext4_inode *inode;
+	struct ext4_xattr_header *header;
+	struct xattr_list_element *next;
+};
+
 struct block_allocation *create_allocation()
 {
 	struct block_allocation *alloc = malloc(sizeof(struct block_allocation));
@@ -72,6 +78,25 @@ struct block_allocation *create_allocation()
 	alloc->oob_list.iter = NULL;
 	alloc->oob_list.partial_iter = 0;
 	return alloc;
+}
+
+static struct ext4_xattr_header *xattr_list_find(struct ext4_inode *inode)
+{
+	struct xattr_list_element *element;
+	for (element = aux_info.xattrs; element != NULL; element = element->next) {
+		if (element->inode == inode)
+			return element->header;
+	}
+	return NULL;
+}
+
+static void xattr_list_insert(struct ext4_inode *inode, struct ext4_xattr_header *header)
+{
+	struct xattr_list_element *element = malloc(sizeof(struct xattr_list_element));
+	element->inode = inode;
+	element->header = header;
+	element->next = aux_info.xattrs;
+	aux_info.xattrs = element;
 }
 
 static void region_list_remove(struct region_list *list, struct region *reg)
@@ -671,6 +696,35 @@ struct ext4_inode *get_inode(u32 inode)
 	allocate_bg_inode_table(&aux_info.bgs[bg]);
 	return (struct ext4_inode *)(aux_info.bgs[bg].inode_table + inode *
 		info.inode_size);
+}
+
+struct ext4_xattr_header *get_xattr_block_for_inode(struct ext4_inode *inode)
+{
+	struct ext4_xattr_header *block = xattr_list_find(inode);
+	if (block != NULL)
+		return block;
+
+	u32 block_num = allocate_block();
+	block = calloc(info.block_size, 1);
+	if (block == NULL) {
+		error("get_xattr: failed to allocate %d", info.block_size);
+		return NULL;
+	}
+
+	block->h_magic = cpu_to_le32(EXT4_XATTR_MAGIC);
+	block->h_refcount = cpu_to_le32(1);
+	block->h_blocks = cpu_to_le32(1);
+	inode->i_blocks_lo = cpu_to_le32(le32_to_cpu(inode->i_blocks_lo) + (info.block_size / 512));
+	inode->i_file_acl_lo = cpu_to_le32(block_num);
+
+	int result = sparse_file_add_data(info.sparse_file, block, info.block_size, block_num);
+	if (result != 0) {
+		error("get_xattr: sparse_file_add_data failure %d", result);
+		free(block);
+		return NULL;
+	}
+	xattr_list_insert(inode, block);
+	return block;
 }
 
 /* Mark the first len inodes in a block group as used */
