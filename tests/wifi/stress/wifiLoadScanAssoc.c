@@ -311,7 +311,7 @@ main(int argc, char *argv[])
 
         // Stop Supplicant
         randBind(&availCPU, &cpu);
-        if ((rv = wifi_stop_supplicant()) != 0) {
+        if ((rv = wifi_stop_supplicant(false)) != 0) {
             testPrintE("CPU: %i wifi_stop_supplicant() failed, rv: %i\n",
                 cpu, rv);
             exit(23);
@@ -420,7 +420,7 @@ init(void)
         // Stop wpa_supplicant
         // Might already be stopped, in which case request should
         // return immediately with success.
-        if ((rv = wifi_stop_supplicant()) != 0) {
+        if ((rv = wifi_stop_supplicant(false)) != 0) {
             testPrintE("init stop supplicant failed, rv: %i", rv);
             exit(42);
         }
