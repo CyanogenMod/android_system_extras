@@ -152,7 +152,6 @@ $(call device-test, $(sources))
 
 sources := \
     other/bench_locks.c \
-    other/test_aligned.c \
     other/test_arc4random.c \
     other/test_sysconf.c \
     other/test_system.c \
