@@ -258,7 +258,7 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 			free(subdir_full_path);
 			free(subdir_dir_path);
 		} else if (dentries[i].file_type == EXT4_FT_SYMLINK) {
-			entry_inode = make_link(dentries[i].full_path, dentries[i].link);
+			entry_inode = make_link(dentries[i].link);
 		} else {
 			error("unknown file type on %s", dentries[i].path);
 			entry_inode = 0;
@@ -451,7 +451,6 @@ int make_ext4fs_internal(int fd, const char *_directory,
 	u16 root_mode;
 	char *mountpoint;
 	char *directory = NULL;
-	int ret;
 
 	if (setjmp(setjmp_env))
 		return EXIT_FAILURE; /* Handle a call to longjmp() */

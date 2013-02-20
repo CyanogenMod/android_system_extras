@@ -200,7 +200,6 @@ static int read_ext(int fd)
 {
     off64_t ret;
     struct ext4_super_block sb;
-    unsigned int i;
 
     read_sb(fd, &sb);
 
@@ -510,7 +509,7 @@ static int get_block_list_indirect(int fd, struct ext4_inode *inode, unsigned lo
     return count;
 }
 
-static int get_extent_ents(int fd, struct ext4_extent_header *ext_hdr, unsigned long long *block_list)
+static int get_extent_ents(struct ext4_extent_header *ext_hdr, unsigned long long *block_list)
 {
     int i, j;
     struct ext4_extent *extent;
@@ -560,7 +559,7 @@ static int get_extent_idx(int fd, struct ext4_extent_header *ext_hdr, unsigned l
          tmp_ext_hdr = (struct ext4_extent_header *)block;
 
          if (tmp_ext_hdr->eh_depth == 0) {
-             get_extent_ents(fd, tmp_ext_hdr, block_list); /* leaf node, fill in block_list */
+             get_extent_ents(tmp_ext_hdr, block_list); /* leaf node, fill in block_list */
          } else {
              get_extent_idx(fd, tmp_ext_hdr, block_list); /* recurse down the tree */
          }
@@ -581,7 +580,7 @@ static int get_block_list_extents(int fd, struct ext4_inode *inode, unsigned lon
     }
 
     if (extent_hdr->eh_depth == 0) {
-         get_extent_ents(fd, (struct ext4_extent_header *)inode->i_block, block_list);
+         get_extent_ents((struct ext4_extent_header *)inode->i_block, block_list);
          return 0;
     }
 
