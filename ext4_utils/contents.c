@@ -190,7 +190,7 @@ u32 make_file(const char *filename, u64 len)
 }
 
 /* Creates a file on disk.  Returns the inode number of the new file */
-u32 make_link(const char *filename, const char *link)
+u32 make_link(const char *link)
 {
 	struct ext4_inode *inode;
 	u32 inode_num;
