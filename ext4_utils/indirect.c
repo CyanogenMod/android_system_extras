@@ -387,7 +387,7 @@ static int do_inode_attach_indirect(struct ext4_inode *inode,
 }
 
 static struct block_allocation *do_inode_allocate_indirect(
-		struct ext4_inode *inode, u32 block_len)
+		u32 block_len)
 {
 	u32 indirect_len = indirect_blocks_needed(block_len);
 
@@ -408,7 +408,7 @@ void inode_allocate_indirect(struct ext4_inode *inode, unsigned long len)
 	u32 block_len = DIV_ROUND_UP(len, info.block_size);
 	u32 indirect_len = indirect_blocks_needed(block_len);
 
-	alloc = do_inode_allocate_indirect(inode, block_len);
+	alloc = do_inode_allocate_indirect(block_len);
 	if (alloc == NULL) {
 		error("failed to allocate extents for %lu bytes", len);
 		return;
@@ -494,7 +494,7 @@ u8 *inode_allocate_data_indirect(struct ext4_inode *inode, unsigned long len,
 	u32 block_len = DIV_ROUND_UP(len, info.block_size);
 	u8 *data = NULL;
 
-	alloc = do_inode_allocate_indirect(inode, block_len);
+	alloc = do_inode_allocate_indirect(block_len);
 	if (alloc == NULL) {
 		error("failed to allocate extents for %lu bytes", len);
 		return NULL;
