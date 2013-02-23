@@ -164,16 +164,18 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 		dentries[i].size = stat.st_size;
 		dentries[i].mode = stat.st_mode & (S_ISUID|S_ISGID|S_ISVTX|S_IRWXU|S_IRWXG|S_IRWXO);
 		dentries[i].mtime = stat.st_mtime;
+		uint64_t capabilities;
 		if (fs_config_func != NULL) {
 #ifdef ANDROID
 			unsigned int mode = 0;
 			unsigned int uid = 0;
 			unsigned int gid = 0;
 			int dir = S_ISDIR(stat.st_mode);
-			fs_config_func(dentries[i].path, dir, &uid, &gid, &mode);
+			fs_config_func(dentries[i].path, dir, &uid, &gid, &mode, &capabilities);
 			dentries[i].mode = mode;
 			dentries[i].uid = uid;
 			dentries[i].gid = gid;
+			dentries[i].capabilities = capabilities;
 #else
 			error("can't set android permissions - built without android support");
 #endif
@@ -270,9 +272,20 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 			dentries[i].mtime);
 		if (ret)
 			error("failed to set permissions on %s\n", dentries[i].path);
+
+		/*
+		 * It's important to call inode_set_selinux() before
+		 * inode_set_capabilities(). Extended attributes need to
+		 * be stored sorted order, and we guarantee this by making
+		 * the calls in the proper order.
+		 * Please see xattr_assert_sane() in contents.c
+		 */
 		ret = inode_set_selinux(entry_inode, dentries[i].secon);
 		if (ret)
 			error("failed to set SELinux context on %s\n", dentries[i].path);
+		ret = inode_set_capabilities(entry_inode, dentries[i].capabilities);
+		if (ret)
+			error("failed to set capability on %s\n", dentries[i].path);
 
 		free(dentries[i].path);
 		free(dentries[i].full_path);
@@ -502,7 +515,8 @@ int make_ext4fs_internal(int fd, const char *_directory,
 	info.inodes_per_group = compute_inodes_per_group();
 
 	info.feat_compat |=
-			EXT4_FEATURE_COMPAT_RESIZE_INODE;
+			EXT4_FEATURE_COMPAT_RESIZE_INODE |
+			EXT4_FEATURE_COMPAT_EXT_ATTR;
 
 	info.feat_ro_compat |=
 			EXT4_FEATURE_RO_COMPAT_SPARSE_SUPER |

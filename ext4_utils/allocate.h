@@ -21,6 +21,7 @@
 
 #include "ext4_utils.h"
 #include "ext4.h"
+#include "xattr.h"
 
 struct block_allocation;
 
@@ -31,6 +32,7 @@ struct block_allocation *allocate_blocks(u32 len);
 int block_allocation_num_regions(struct block_allocation *alloc);
 int block_allocation_len(struct block_allocation *alloc);
 struct ext4_inode *get_inode(u32 inode);
+struct ext4_xattr_header *get_xattr_block_for_inode(struct ext4_inode *inode);
 void reduce_allocation(struct block_allocation *alloc, u32 len);
 u32 get_block(struct block_allocation *alloc, u32 block);
 u32 get_oob_block(struct block_allocation *alloc, u32 block);
