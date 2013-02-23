@@ -17,8 +17,27 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <stdio.h>
+#if defined(__linux__)
 #include <linux/capability.h>
 #include <linux/xattr.h>
+#else
+#include <stdint.h>
+#define VFS_CAP_FLAGS_EFFECTIVE  0x000001
+#define VFS_CAP_U32_2            2
+#define VFS_CAP_U32              VFS_CAP_U32_2
+#define VFS_CAP_REVISION_2       0x02000000
+#define VFS_CAP_REVISION         VFS_CAP_REVISION_2
+
+struct vfs_cap_data {
+	uint32_t magic_etc;
+	struct {
+		uint32_t permitted;
+		uint32_t inheritable;
+	} data[VFS_CAP_U32];
+};
+#define XATTR_SELINUX_SUFFIX "selinux"
+#define XATTR_CAPS_SUFFIX "capability"
+#endif /* !defined(__linux__) */
 
 #include "ext4_utils.h"
 #include "ext4.h"
