@@ -36,6 +36,7 @@ extern "C" {
 #include <stdlib.h>
 #include <string.h>
 #include <setjmp.h>
+#include <stdint.h>
 
 #if defined(__APPLE__) && defined(__MACH__)
 #define lseek64 lseek
@@ -84,6 +85,12 @@ extern int force;
 #define __u16 u16
 #define __u8 u8
 
+/* XXX */
+#define cpu_to_le32(x) (x)
+#define cpu_to_le16(x) (x)
+#define le32_to_cpu(x) (x)
+#define le16_to_cpu(x) (x)
+
 typedef unsigned long long u64;
 typedef signed long long s64;
 typedef unsigned int u32;
@@ -91,6 +98,7 @@ typedef unsigned short int u16;
 typedef unsigned char u8;
 
 struct block_group_info;
+struct xattr_list_element;
 
 struct ext2_group_desc {
 	__le32 bg_block_bitmap;
@@ -130,6 +138,7 @@ struct fs_aux_info {
 	struct ext4_super_block **backup_sb;
 	struct ext2_group_desc *bg_desc;
 	struct block_group_info *bgs;
+	struct xattr_list_element *xattrs;
 	u32 first_data_block;
 	u64 len_blocks;
 	u32 inode_table_blocks;
@@ -171,7 +180,7 @@ void ext4_parse_sb(struct ext4_super_block *sb);
 u16 ext4_crc16(u16 crc_in, const void *buf, int size);
 
 typedef void (*fs_config_func_t)(const char *path, int dir, unsigned *uid, unsigned *gid,
-        unsigned *mode);
+        unsigned *mode, uint64_t *capabilities);
 
 struct selabel_handle;
 
