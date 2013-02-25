@@ -467,6 +467,9 @@ static int xattr_add(u32 inode_num, int name_index, const char *name,
 
 int inode_set_selinux(u32 inode_num, const char *secon)
 {
+	if (!secon)
+		return 0;
+
 	return xattr_add(inode_num, EXT4_XATTR_INDEX_SECURITY,
 		XATTR_SELINUX_SUFFIX, secon, strlen(secon) + 1);
 }
