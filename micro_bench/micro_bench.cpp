@@ -15,7 +15,7 @@
 */
 
 /*
- * Micro-benchmarking of sleep/cpu speed/memcpy/memset/memory reads.
+ * Micro-benchmarking of sleep/cpu speed/memcpy/memset/memory reads/strcmp.
  */
 
 #include <stdio.h>
@@ -45,6 +45,13 @@
 #define COMPUTE_RUNNING(avg, running_avg, square_avg, cur_idx) \
     running_avg = ((running_avg) / ((cur_idx) + 1)) * (cur_idx) + (avg) / ((cur_idx) + 1); \
     square_avg = ((square_avg) / ((cur_idx) + 1)) * (cur_idx) + ((avg) / ((cur_idx) + 1)) * (avg);
+#define COMPUTE_MIN_MAX(avg, min, max) \
+    if (avg < min || min == 0.0) { \
+        min = avg; \
+    } \
+    if (avg > max) { \
+        max = avg; \
+    }
 
 #define GET_STD_DEV(running_avg, square_avg) \
     sqrt((square_avg) - (running_avg) * (running_avg))
@@ -55,7 +62,9 @@ typedef struct {
     bool print_each_iter;
 
     int dst_align;
+    int dst_or_mask;
     int src_align;
+    int src_or_mask;
 
     int cpu_to_lock;
 
@@ -83,19 +92,27 @@ uint64_t nanoTime() {
 // Allocate memory with a specific alignment and return that pointer.
 // This function assumes an alignment value that is a power of 2.
 // If the alignment is 0, then use the pointer returned by malloc.
-uint8_t *allocateAlignedMemory(size_t size, int alignment) {
-  uint64_t ptr = reinterpret_cast<uint64_t>(malloc(size + 2 * alignment));
-  if (!ptr)
-      return NULL;
+uint8_t *getAlignedMemory(uint8_t *orig_ptr, int alignment, int or_mask) {
+  uint64_t ptr = reinterpret_cast<uint64_t>(orig_ptr);
   if (alignment > 0) {
       // When setting the alignment, set it to exactly the alignment chosen.
       // The pointer returned will be guaranteed not to be aligned to anything
       // more than that.
       ptr += alignment - (ptr & (alignment - 1));
-      ptr |= alignment;
+      ptr |= alignment | or_mask;
   }
 
   return reinterpret_cast<uint8_t*>(ptr);
+}
+
+// Allocate memory with a specific alignment and return that pointer.
+// This function assumes an alignment value that is a power of 2.
+// If the alignment is 0, then use the pointer returned by malloc.
+uint8_t *allocateAlignedMemory(size_t size, int alignment, int or_mask) {
+  uint64_t ptr = reinterpret_cast<uint64_t>(malloc(size + 3 * alignment));
+  if (!ptr)
+      return NULL;
+  return getAlignedMemory((uint8_t*)ptr, alignment, or_mask);
 }
 
 int benchmarkSleep(const command_data_t &cmd_data) {
@@ -106,6 +123,7 @@ int benchmarkSleep(const command_data_t &cmd_data) {
     bool print_each_iter = cmd_data.print_each_iter;
     bool print_average = cmd_data.print_average;
     double avg, running_avg = 0.0, square_avg = 0.0;
+    double max = 0.0, min = 0.0;
     for (int i = 0; iters == -1 || i < iters; i++) {
         time_ns = nanoTime();
         sleep(delay);
@@ -115,6 +133,7 @@ int benchmarkSleep(const command_data_t &cmd_data) {
 
         if (print_average) {
             COMPUTE_RUNNING(avg, running_avg, square_avg, i);
+            COMPUTE_MIN_MAX(avg, min, max);
         }
 
         if (print_each_iter) {
@@ -123,8 +142,9 @@ int benchmarkSleep(const command_data_t &cmd_data) {
     }
 
     if (print_average) {
-        printf("  sleep(%d) average %.06f seconds std dev %f\n", delay,
-               running_avg, GET_STD_DEV(running_avg, square_avg));
+        printf("  sleep(%d) average %.06f seconds std dev %f min %.06f seconds max %0.6f seconds\n", delay,
+               running_avg, GET_STD_DEV(running_avg, square_avg),
+               min, max);
     }
 
     return 0;
@@ -139,6 +159,7 @@ int benchmarkCpu(const command_data_t &cmd_data) {
     bool print_each_iter = cmd_data.print_each_iter;
     bool print_average = cmd_data.print_average;
     double avg, running_avg = 0.0, square_avg = 0.0;
+    double max = 0.0, min = 0.0;
     for (int i = 0; iters == -1 || i < iters; i++) {
         time_ns = nanoTime();
         for (cpu_foo = 0; cpu_foo < 100000000; cpu_foo++);
@@ -148,6 +169,7 @@ int benchmarkCpu(const command_data_t &cmd_data) {
 
         if (print_average) {
             COMPUTE_RUNNING(avg, running_avg, square_avg, i);
+            COMPUTE_MIN_MAX(avg, min, max);
         }
 
         if (print_each_iter) {
@@ -156,8 +178,9 @@ int benchmarkCpu(const command_data_t &cmd_data) {
     }
 
     if (print_average) {
-        printf("  cpu average %.06f seconds std dev %f\n",
-               running_avg, GET_STD_DEV(running_avg, square_avg));
+        printf("  cpu average %.06f seconds std dev %f min %0.6f seconds max %0.6f seconds\n",
+               running_avg, GET_STD_DEV(running_avg, square_avg),
+               min, max);
     }
 
     return 0;
@@ -167,11 +190,12 @@ int benchmarkMemset(const command_data_t &cmd_data) {
     int size = cmd_data.args[0];
     int iters = cmd_data.args[1];
 
-    uint8_t *dst = allocateAlignedMemory(size, cmd_data.dst_align);
+    uint8_t *dst = allocateAlignedMemory(size, cmd_data.dst_align, cmd_data.dst_or_mask);
     if (!dst)
         return -1;
 
     double avg_kb, running_avg_kb = 0.0, square_avg_kb = 0.0;
+    double max_kb = 0.0, min_kb = 0.0;
     uint64_t time_ns;
     int j;
     bool print_average = cmd_data.print_average;
@@ -188,6 +212,7 @@ int benchmarkMemset(const command_data_t &cmd_data) {
 
         if (print_average) {
             COMPUTE_RUNNING(avg_kb, running_avg_kb, square_avg_kb, i);
+            COMPUTE_MIN_MAX(avg_kb, min_kb, max_kb);
         }
 
         if (print_each_iter) {
@@ -197,9 +222,10 @@ int benchmarkMemset(const command_data_t &cmd_data) {
     }
 
     if (print_average) {
-        printf("  memset %dx%d bytes average %.2f MB/s std dev %.4f\n",
+        printf("  memset %dx%d bytes average %.2f MB/s std dev %.4f min %.2f MB/s max %.2f MB/s\n",
                copies, size, running_avg_kb / 1024.0,
-               GET_STD_DEV(running_avg_kb, square_avg_kb) / 1024.0);
+               GET_STD_DEV(running_avg_kb, square_avg_kb) / 1024.0,
+               min_kb / 1024.0, max_kb / 1024.0);
     }
     return 0;
 }
@@ -208,15 +234,21 @@ int benchmarkMemcpy(const command_data_t &cmd_data) {
     int size = cmd_data.args[0];
     int iters = cmd_data.args[1];
 
-    uint8_t *src = allocateAlignedMemory(size, cmd_data.src_align);
+    uint8_t *src = allocateAlignedMemory(size, cmd_data.src_align, cmd_data.src_or_mask);
     if (!src)
         return -1;
-    uint8_t *dst = allocateAlignedMemory(size, cmd_data.dst_align);
+    uint8_t *dst = allocateAlignedMemory(size, cmd_data.dst_align, cmd_data.dst_or_mask);
     if (!dst)
         return -1;
 
+    // Initialize the source and destination to known values.
+    // If not initialized, the benchmark results are skewed.
+    memset(src, 0xffff, size);
+    memset(dst, 0, size);
+
     uint64_t time_ns;
     double avg_kb, running_avg_kb = 0.0, square_avg_kb = 0.0;
+    double max_kb = 0.0, min_kb = 0.0;
     int j;
     bool print_average = cmd_data.print_average;
     bool print_each_iter = cmd_data.print_each_iter;
@@ -232,6 +264,7 @@ int benchmarkMemcpy(const command_data_t &cmd_data) {
 
         if (print_average) {
             COMPUTE_RUNNING(avg_kb, running_avg_kb, square_avg_kb, i);
+            COMPUTE_MIN_MAX(avg_kb, min_kb, max_kb);
         }
 
         if (print_each_iter) {
@@ -240,9 +273,70 @@ int benchmarkMemcpy(const command_data_t &cmd_data) {
         }
     }
     if (print_average) {
-        printf("  memcpy %dx%d bytes average %.2f MB/s std dev %.4f\n",
+        printf("  memcpy %dx%d bytes average %.2f MB/s std dev %.4f min %.2f MB/s max %.2f MB/s\n",
                copies, size, running_avg_kb/1024.0,
-               GET_STD_DEV(running_avg_kb, square_avg_kb) / 1024.0);
+               GET_STD_DEV(running_avg_kb, square_avg_kb) / 1024.0,
+               min_kb / 1024.0, max_kb / 1024.0);
+    }
+    return 0;
+}
+
+int benchmarkStrcmp(const command_data_t &cmd_data) {
+    int size = cmd_data.args[0];
+    int iters = cmd_data.args[1];
+
+    // Allocate a large chunk of memory to hold both strings.
+    uint8_t *memory = (uint8_t*)malloc(2*size + 2048);
+    if (!memory)
+        return -1;
+
+    char *string1 = reinterpret_cast<char*>(getAlignedMemory(memory, cmd_data.src_align, cmd_data.src_or_mask));
+    char *string2 = reinterpret_cast<char*>(getAlignedMemory((uint8_t*)string1+size, cmd_data.dst_align, cmd_data.dst_or_mask));
+
+    for (int i = 0; i < size - 1; i++) {
+        string1[i] = (char)(32 + (i % 96));
+        string2[i] = string1[i];
+    }
+    string1[size-1] = '\0';
+    string2[size-1] = '\0';
+
+    uint64_t time_ns;
+    double avg_kb, running_avg_kb = 0.0, square_avg_kb = 0.0;
+    double max_kb = 0.0, min_kb = 0.0;
+    int j;
+    bool print_average = cmd_data.print_average;
+    bool print_each_iter = cmd_data.print_each_iter;
+    int copies = cmd_data.data_size / size;
+
+    int retval = 0;
+    for (int i = 0; iters == -1 || i < iters; i++) {
+        time_ns = nanoTime();
+        for (j = 0; j < copies; j++) {
+            retval = strcmp(string1, string2);
+            if (retval != 0) {
+                printf("strcmp failed, return value %d\n", retval);
+            }
+        }
+        time_ns = nanoTime() - time_ns;
+
+        // Compute in kb to avoid any overflows.
+        COMPUTE_AVERAGE_KB(avg_kb, copies * size, time_ns);
+
+        if (print_average) {
+            COMPUTE_RUNNING(avg_kb, running_avg_kb, square_avg_kb, i);
+            COMPUTE_MIN_MAX(avg_kb, min_kb, max_kb);
+        }
+
+        if (print_each_iter) {
+            printf("strcmp %dx%d bytes took %.06f seconds (%f MB/s)\n",
+                   copies, size, (double)time_ns / NS_PER_SEC, avg_kb / 1024.0);
+        }
+    }
+    if (print_average) {
+        printf("  strcmp %dx%d bytes average %.2f MB/s std dev %.4f min %.2f MB/s max %.2f MB/s\n",
+               copies, size, running_avg_kb/1024.0,
+               GET_STD_DEV(running_avg_kb, square_avg_kb) / 1024.0,
+               min_kb / 1024.0, max_kb / 1024.0);
     }
     return 0;
 }
@@ -260,6 +354,7 @@ int benchmarkMemread(const command_data_t &cmd_data) {
     uint64_t time_ns;
     int j, k;
     double avg_kb, running_avg_kb = 0.0, square_avg_kb = 0.0;
+    double max_kb = 0.0, min_kb = 0.0;
     bool print_average = cmd_data.print_average;
     bool print_each_iter = cmd_data.print_each_iter;
     int c = cmd_data.data_size / size;
@@ -275,6 +370,7 @@ int benchmarkMemread(const command_data_t &cmd_data) {
 
         if (print_average) {
             COMPUTE_RUNNING(avg_kb, running_avg_kb, square_avg_kb, i);
+            COMPUTE_MIN_MAX(avg_kb, min_kb, max_kb);
         }
 
         if (print_each_iter) {
@@ -284,9 +380,10 @@ int benchmarkMemread(const command_data_t &cmd_data) {
     }
 
     if (print_average) {
-        printf("  read %dx%d bytes average %.2f MB/s std dev %.4f\n",
+        printf("  read %dx%d bytes average %.2f MB/s std dev %.4f min %.2f MB/s max %.2f MB/s\n",
                c, size, running_avg_kb/1024.0,
-               GET_STD_DEV(running_avg_kb, square_avg_kb) / 1024.0);
+               GET_STD_DEV(running_avg_kb, square_avg_kb) / 1024.0,
+               min_kb / 1024.0, max_kb / 1024.0);
     }
 
     return 0;
@@ -299,6 +396,7 @@ function_t function_table[] = {
     { "memset", benchmarkMemset },
     { "memcpy", benchmarkMemcpy },
     { "memread", benchmarkMemread },
+    { "strcmp", benchmarkStrcmp },
     { NULL, NULL }
 };
 
@@ -344,6 +442,8 @@ function_t *processOptions(int argc, char **argv, command_data_t *cmd_data) {
     cmd_data->print_each_iter = true;
     cmd_data->dst_align = 0;
     cmd_data->src_align = 0;
+    cmd_data->src_or_mask = 0;
+    cmd_data->dst_or_mask = 0;
     cmd_data->num_args = 0;
     cmd_data->cpu_to_lock = -1;
     cmd_data->data_size = DEFAULT_DATA_SIZE;
@@ -362,6 +462,10 @@ function_t *processOptions(int argc, char **argv, command_data_t *cmd_data) {
               save_value = &cmd_data->dst_align;
             } else if (strcmp(argv[i], "--src_align") == 0) {
               save_value = &cmd_data->src_align;
+            } else if (strcmp(argv[i], "--dst_or_mask") == 0) {
+              save_value = &cmd_data->dst_or_mask;
+            } else if (strcmp(argv[i], "--src_or_mask") == 0) {
+              save_value = &cmd_data->src_or_mask;
             } else if (strcmp(argv[i], "--lock_to_cpu") == 0) {
               save_value = &cmd_data->cpu_to_lock;
             } else if (strcmp(argv[i], "--data_size") == 0) {
@@ -380,7 +484,7 @@ function_t *processOptions(int argc, char **argv, command_data_t *cmd_data) {
                            argv[i]);
                     return NULL;
                 }
-                *save_value = atoi(argv[++i]);
+                *save_value = (int)strtol(argv[++i], NULL, 0);
             }
         } else if (!command) {
             for (function_t *function = function_table; function->name != NULL; function++) {
@@ -419,6 +523,18 @@ function_t *processOptions(int argc, char **argv, command_data_t *cmd_data) {
         return NULL;
     } else if ((cmd_data->src_align & (cmd_data->src_align - 1))) {
         printf("The --src_align option must be a power of 2.\n");
+        return NULL;
+    } else if (!cmd_data->src_align && cmd_data->src_or_mask) {
+        printf("The --src_or_mask option requires that --src_align be set.\n");
+        return NULL;
+    } else if (!cmd_data->dst_align && cmd_data->dst_or_mask) {
+        printf("The --dst_or_mask option requires that --dst_align be set.\n");
+        return NULL;
+    } else if (cmd_data->src_or_mask > cmd_data->src_align) {
+        printf("The value of --src_or_mask cannot be larger that --src_align.\n");
+        return NULL;
+    } else if (cmd_data->dst_or_mask > cmd_data->dst_align) {
+        printf("The value of --src_or_mask cannot be larger that --src_align.\n");
         return NULL;
     }
 
