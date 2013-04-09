@@ -26,6 +26,9 @@ extern "C" {
 #define MAX_MEMCPY_TEST_SIZE      2048
 #define MAX_MEMCPY_BUFFER_SIZE    (3 * MAX_MEMCPY_TEST_SIZE)
 
+#define MAX_MEMSET_TEST_SIZE      2048
+#define MAX_MEMSET_BUFFER_SIZE    (3 * MAX_MEMSET_TEST_SIZE)
+
 #define MAX_STRCMP_TEST_SIZE      1024
 #define MAX_STRCMP_BUFFER_SIZE    (3 * MAX_STRCMP_TEST_SIZE)
 
@@ -461,6 +464,117 @@ bool runMemcpyTest(void* (*test_memcpy)(void *dst, const void *src, size_t n)) {
   return pass;
 }
 
+bool runMemsetTest(void* (*test_memset)(void *s, int c, size_t n)) {
+  // Allocate one large buffer to hold the dst.
+  uint8_t *buf = reinterpret_cast<uint8_t*>(malloc(MAX_MEMSET_BUFFER_SIZE));
+  if (buf == NULL) {
+    perror("Unable to allocate memory.\n");
+    return false;
+  }
+
+  bool pass = true;
+  int value;
+
+  // Loop through and do copies of various sizes and unknown alignment
+  // looking for very obvious problems.
+  printf("  Verifying variable sized copies.\n");
+  for (int len = 0; len <= MAX_MEMSET_TEST_SIZE; len++) {
+    // Set the buffer to all zero without memset since it might be the
+    // function we are testing.
+    for (int i = 0; i < len; i++) {
+      buf[i] = 0;
+    }
+    // Set fencepost values to check if the set went past the end.
+    buf[len] = 0xde;
+    buf[len+1] = 0xad;
+
+    value = (len % 255) + 1;
+    test_memset(buf, value, len);
+
+    for (int i = 0; i < len; i++) {
+      if (buf[i] != value) {
+        printf("    Failed at size %d[%d,%d!=%d], buf=%p[0,0]\n",
+               len, i, buf[i], value, buf);
+        pass = false;
+        return pass;
+        break;
+      }
+    }
+    if (buf[len] != 0xde || buf[len+1] != 0xad) {
+      printf("    memset wrote past the end of the array.\n");
+      printf("    Failed at size %d, buf=%p[0,0] [%d,%d]\n",
+             len, buf, buf[len], buf[len+1]);
+      pass = false;
+      return pass;
+    }
+  }
+
+  int aligns[][2] = {
+    // Different alignments.
+    { 1, 0 },
+    { 2, 0 },
+    { 4, 0 },
+    { 8, 0 },
+    { 16, 0 },
+    { 32, 0 },
+    { 64, 0 },
+
+    // Different alignments between src and dst.
+    { 8, 1 },
+    { 8, 2 },
+    { 8, 3 },
+    { 8, 4 },
+    { 8, 5 },
+    { 8, 6 },
+    { 8, 7 },
+  };
+
+  printf("  Verifying variable sized memsets at different alignments.\n");
+  uint8_t *buf_align;
+  for (size_t i = 0; i < sizeof(aligns)/sizeof(int[2]); i++) {
+    for (int len = 0; len <= MAX_MEMSET_TEST_SIZE; len++) {
+      buf_align = (uint8_t*)getAlignedPtr(buf, aligns[i][0], aligns[i][1]);
+
+      // Set the buffer to all zero without memset since it might be the
+      // function we are testing.
+      for (int j = 0; j < len; j++) {
+        buf_align[j] = 0;
+      }
+      // Set fencepost values to check if the set went past the end.
+      buf_align[len] = 0xde;
+      buf_align[len+1] = 0xad;
+
+      value = (len % 255) + 1;
+      test_memset(buf_align, value, len);
+
+      for (int j = 0; j < len; j++) {
+        if (buf_align[j] != value) {
+
+          printf("    Failed at size %d[%d,%d!=%d], buf_align=%p[%d,%d]\n",
+                 len, j, buf_align[j], value, buf_align, aligns[i][0],
+                 aligns[i][1]);
+          pass = false;
+          return pass;
+          break;
+        }
+      }
+      if (buf_align[len] != 0xde || buf_align[len+1] != 0xad) {
+        printf("    memset wrote past the end of the array.\n");
+        printf("    Failed at size %d, buf_align=%p[%d,%d]\n",
+               len, buf_align, aligns[i][0], aligns[i][1]);
+        pass = false;
+        return pass;
+      }
+    }
+  }
+
+  if (pass) {
+    printf("All tests pass.\n");
+  }
+
+  return pass;
+}
+
 int main(int argc, char **argv) {
   bool tests_passing = true;
 
@@ -469,6 +583,9 @@ int main(int argc, char **argv) {
 
   printf("Testing memcpy...\n");
   tests_passing = tests_passing && runMemcpyTest(memcpy);
+
+  printf("Testing memset...\n");
+  tests_passing = tests_passing && runMemsetTest(memset);
 
   return (tests_passing ? 0 : 1);
 }
