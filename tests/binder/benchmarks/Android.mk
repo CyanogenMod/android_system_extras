@@ -27,6 +27,7 @@ LOCAL_STATIC_LIBRARIES += \
 
 LOCAL_SHARED_LIBRARIES += \
     libutils \
+    liblog \
     libstlport \
     libbinder
 

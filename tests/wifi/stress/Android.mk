@@ -21,7 +21,7 @@ LOCAL_MODULE_TAGS := tests
 LOCAL_MODULE := wifiLoadScanAssoc
 LOCAL_MODULE_PATH := $(TARGET_OUT_DATA)/nativestresstest
 LOCAL_SRC_FILES := wifiLoadScanAssoc.c
-LOCAL_SHARED_LIBRARIES += libcutils libutils libhardware_legacy
+LOCAL_SHARED_LIBRARIES += libcutils libutils liblog libhardware_legacy
 LOCAL_STATIC_LIBRARIES += libtestUtil
 LOCAL_C_INCLUDES += system/extras/tests/include \
     hardware/libhardware_legacy/include
