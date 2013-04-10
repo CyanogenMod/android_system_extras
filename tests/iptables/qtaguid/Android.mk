@@ -20,7 +20,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE_TAGS := tests
 LOCAL_MODULE := socketTag
 LOCAL_SRC_FILES := socketTag.cpp
-LOCAL_SHARED_LIBRARIES += libcutils libutils
+LOCAL_SHARED_LIBRARIES += libcutils libutils liblog
 LOCAL_STATIC_LIBRARIES += libtestUtil
 LOCAL_C_INCLUDES += system/extras/tests/include
 
