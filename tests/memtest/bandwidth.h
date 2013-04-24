@@ -445,6 +445,7 @@ public:
 protected:
     // Write a given value using vst.
     void bench(size_t num_loops) {
+#if defined(__ARM_NEON__)
         asm volatile(
             "stmfd sp!, {r0,r1,r2,r3,r4}\n"
 
@@ -473,6 +474,7 @@ protected:
 
             "ldmfd sp!, {r0,r1,r2,r3,r4}\n"
         :: "r" (_buffer), "r" (_size), "r" (num_loops) : "r0", "r1", "r2");
+#endif
     }
 };
 
@@ -486,6 +488,7 @@ public:
 protected:
     // Write a given value using vstmia.
     void bench(size_t num_loops) {
+#if defined(__ARM_NEON__)
         asm volatile(
             "stmfd sp!, {r0,r1,r2,r3,r4}\n"
 
@@ -514,6 +517,7 @@ protected:
 
             "ldmfd sp!, {r0,r1,r2,r3,r4}\n"
         :: "r" (_buffer), "r" (_size), "r" (num_loops) : "r0", "r1", "r2");
+#endif
     }
 };
 
