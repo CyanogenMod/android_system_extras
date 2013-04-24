@@ -23,6 +23,8 @@
 extern "C" {
 }
 
+#define FENCEPOST_LENGTH          8
+
 #define MAX_MEMCPY_TEST_SIZE      2048
 #define MAX_MEMCPY_BUFFER_SIZE    (3 * MAX_MEMCPY_TEST_SIZE)
 
@@ -46,41 +48,73 @@ void *getAlignedPtr(void *orig_ptr, int alignment, int or_mask) {
   return reinterpret_cast<void*>(ptr);
 }
 
+void setFencepost(uint8_t *buffer) {
+  for (int i = 0; i < FENCEPOST_LENGTH; i += 2) {
+    buffer[i] = 0xde;
+    buffer[i+1] = 0xad;
+  }
+}
+
+bool verifyFencepost(uint8_t *buffer) {
+  for (int i = 0; i < FENCEPOST_LENGTH; i += 2) {
+    if (buffer[i] != 0xde || buffer[i+1] != 0xad) {
+      uint8_t expected_value;
+      if (buffer[i] == 0xde) {
+        i++;
+        expected_value = 0xad;
+      } else {
+        expected_value = 0xde;
+      }
+      printf("   mismatch at fencepost[%d], expected %d found %d\n",
+             i, expected_value, buffer[i]);
+      return false;
+    }
+  }
+  return true;
+}
+
 bool doStrcmpExpectEqual(char *string1, char *string2, int align[4],
-                         int (*test_strcmp)(const char *s1, const char *s2)) {
+                         int (*test_strcmp)(const char *s1, const char *s2),
+                         bool verbose) {
   char *align_str1 = (char*)getAlignedPtr(string1, align[0], align[1]);
   char *align_str2 = (char*)getAlignedPtr(string2, align[2], align[3]);
 
-  bool pass = true;
-  for (int i = 0; i < MAX_STRCMP_TEST_SIZE; i++) {
-    for (int j = 0; j < i; j++) {
+  for (size_t i = 0; i < MAX_STRCMP_TEST_SIZE; i++) {
+    for (size_t j = 0; j < i; j++) {
       align_str1[j] = (char)(32 + (j % 96));
       align_str2[j] = align_str1[j];
     }
     align_str1[i] = '\0';
     align_str2[i] = '\0';
+
     // Set the characters after the string terminates to different values
     // to verify that the strcmp is not over checking.
-    for (int j = i+1; j < i+64; j++) {
+    for (size_t j = i+1; j < i+64; j++) {
       align_str1[j] = (char)(32 + j);
       align_str2[j] = (char)(40 + j);
+    }
+
+    if (verbose) {
+      printf("Testing size %d, align_str1=%p[%d,%d], align_str2=%p[%d,%d]\n",
+             i, align_str1, align[0], align[1], align_str2, align[2], align[3]);
     }
 
     if (test_strcmp(align_str1, align_str2) != 0) {
       printf("    Failed at size %d, src1 %p, src2 %p\n",
              i, align_str1, align_str2);
-      pass = false;
+      return false;
     }
   }
-  return pass;
+
+  return true;
 }
 
 bool doStrcmpExpectDiff(char *string1, char *string2, int diff_align[2],
                         int align[4], char diff_char,
-                        int (*test_strcmp)(const char *s1, const char *s2)) {
+                        int (*test_strcmp)(const char *s1, const char *s2),
+                        bool verbose) {
   char *align_str1 = (char*)getAlignedPtr(string1, align[0], align[1]);
   char *align_str2 = (char*)getAlignedPtr(string2, align[2], align[3]);
-  bool pass = true;
 
   for (int i = 0; i < MAX_STRCMP_TEST_SIZE; i++) {
     // Use valid ascii characters, no unprintables characters.
@@ -104,15 +138,20 @@ bool doStrcmpExpectDiff(char *string1, char *string2, int diff_align[2],
   }
 
   // Get a pointer into the string at the specified alignment.
-  char *bad = (char*) getAlignedPtr(align_str1+MAX_STRCMP_TEST_SIZE/2,
-                                    diff_align[0], diff_align[1]);
+  char *bad = (char*)getAlignedPtr(align_str1+MAX_STRCMP_TEST_SIZE/2,
+                                   diff_align[0], diff_align[1]);
 
   char saved_char = bad[0];
   bad[0] = diff_char;
+
+  if (verbose) {
+    printf("Testing difference, align_str1=%p[%d,%d], align_str2=%p[%d,%d]\n",
+           align_str1, align[0], align[1], align_str2, align[2], align[3]);
+  }
   if (test_strcmp(align_str1, align_str2) == 0) {
     printf("   Did not miscompare at size %d, src1 %p, src2 %p, diff %p\n",
            MAX_STRCMP_TEST_SIZE, align_str1, align_str2, bad);
-    pass = false;
+    return false;
   }
   bad[0] = saved_char;
 
@@ -125,16 +164,22 @@ bool doStrcmpExpectDiff(char *string1, char *string2, int diff_align[2],
   bad = (char*)getAlignedPtr(align_str2+MAX_STRCMP_TEST_SIZE/2, diff_align[0],
                              diff_align[1]);
   bad[0] = diff_char;
+
+  if (verbose) {
+    printf("Testing reverse difference, align_str1=%p[%d,%d], align_str2=%p[%d,%d]\n",
+           align_str1, align[0], align[1], align_str2, align[2], align[3]);
+  }
   if (test_strcmp(align_str1, align_str2) == 0) {
     printf("    Did not miscompare at size %d, src1 %p, src2 %p, diff %p\n",
            MAX_STRCMP_TEST_SIZE, align_str1, align_str2, bad);
-    pass = false;
+    return false;
   }
 
-  return pass;
+  return true;
 }
 
-bool doStrcmpCheckRead(int (*test_strcmp)(const char *s1, const char *s2)) {
+bool doStrcmpCheckRead(int (*test_strcmp)(const char *s1, const char *s2),
+                       bool verbose) {
   // In order to verify that the strcmp is not reading past the end of the
   // string, create some strings that end near unreadable memory.
   long pagesize = sysconf(_SC_PAGE_SIZE);
@@ -150,9 +195,7 @@ bool doStrcmpCheckRead(int (*test_strcmp)(const char *s1, const char *s2)) {
     return false;
   }
 
-  char *string;
-  bool pass = true;
-  int max_size = pagesize < MAX_STRCMP_TEST_SIZE ? pagesize-1 : MAX_STRCMP_TEST_SIZE;
+  size_t max_size = pagesize < MAX_STRCMP_TEST_SIZE ? pagesize-1 : MAX_STRCMP_TEST_SIZE;
   // Allocate an extra byte beyond the string terminator to allow us to
   // extend the string to be larger than our protected string.
   char *other_string = (char *)malloc(max_size+2);
@@ -160,41 +203,57 @@ bool doStrcmpCheckRead(int (*test_strcmp)(const char *s1, const char *s2)) {
     perror("Unable to allocate memory.\n");
     return false;
   }
-  for (int i = 0; i <= max_size; i++) {
+  char *string;
+  for (size_t i = 0; i <= max_size; i++) {
     string = &memory[pagesize-i-1];
-    for (int j = 0; j < i; j++) {
+    for (size_t j = 0; j < i; j++) {
       other_string[j] = (char)(32 + (j % 96));
       string[j] = other_string[j];
     }
     other_string[i] = '\0';
     string[i] = '\0';
 
+    if (verbose) {
+      printf("Testing size %d, strings equal.\n", i);
+    }
     if (test_strcmp(other_string, string) != 0) {
       printf("    Failed at size %d, src1 %p, src2 %p\n", i, other_string, string);
-      pass = false;
+      return false;
+    }
+
+    if (verbose) {
+      printf("Testing size %d, strings equal reverse strings.\n", i);
     }
     if (test_strcmp(string, other_string) != 0) {
       printf("    Failed at size %d, src1 %p, src2 %p\n", i, string, other_string);
-      pass = false;
+      return false;
     }
 
     // Now make other_string longer than our protected string.
     other_string[i] = '1';
     other_string[i+1] = '\0';
 
+    if (verbose) {
+      printf("Testing size %d, strings not equal.\n", i);
+    }
     if (test_strcmp(other_string, string) == 0) {
       printf("    Failed at size %d, src1 %p, src2 %p\n", i, other_string, string);
-      pass = false;
+      return false;
+    }
+
+    if (verbose) {
+      printf("Testing size %d, strings not equal reverse the strings.\n", i);
     }
     if (test_strcmp(string, other_string) == 0) {
       printf("    Failed at size %d, src1 %p, src2 %p\n", i, string, other_string);
-      pass = false;
+      return false;
     }
   }
-  return pass;
+  return true;
 }
 
-bool runStrcmpTest(int (*test_strcmp)(const char *s1, const char *s2)) {
+bool runStrcmpTest(int (*test_strcmp)(const char *s1, const char *s2),
+                   bool verbose) {
   // Allocate two large buffers to hold the two strings.
   char *string1 = reinterpret_cast<char*>(malloc(MAX_STRCMP_BUFFER_SIZE+1));
   char *string2 = reinterpret_cast<char*>(malloc(MAX_STRCMP_BUFFER_SIZE+1));
@@ -202,7 +261,6 @@ bool runStrcmpTest(int (*test_strcmp)(const char *s1, const char *s2)) {
     perror("Unable to allocate memory.\n");
     return false;
   }
-  char saved_char;
 
   // Initialize the strings to be exactly the same.
   for (int i = 0; i < MAX_STRCMP_BUFFER_SIZE; i++) {
@@ -212,34 +270,12 @@ bool runStrcmpTest(int (*test_strcmp)(const char *s1, const char *s2)) {
   string1[MAX_STRCMP_BUFFER_SIZE] = '\0';
   string2[MAX_STRCMP_BUFFER_SIZE] = '\0';
 
-  bool pass = true;
-
-  // Loop through strings that are the same, unknown alignment looking for
-  // very obvious problems.
-  printf("  Verifying variable sized strings.\n");
-  for (int i = 0; i <= MAX_STRCMP_TEST_SIZE; i++) {
-    saved_char = string1[i];
-    string1[i] = '\0';
-    string2[i] = '\0';
-    if (test_strcmp(string1, string2) != 0) {
-      printf("   Found incorrect mismatch at size %d\n", i);
-      pass = false;
-    }
-    string1[i] = saved_char;
-    string2[i] = saved_char;
-  }
-
-  // Strings the same, all same size:
-  // - Both pointers double word aligned.
-  // - One pointer double word aligned, one pointer word aligned.
-  // - Both pointers word aligned.
-  // - One pointer double word aligned, one pointer 1 off a word alignment.
-  // - One pointer double word aligned, one pointer 2 off a word alignment.
-  // - One pointer double word aligned, one pointer 3 off a word alignment.
-  // - One pointer word aligned, one pointer 1 off a word alignment.
-  // - One pointer word aligned, one pointer 2 off a word alignment.
-  // - One pointer word aligned, one pointer 3 off a word alignment.
+  // Check different string alignments. All zeroes indicates that the
+  // unmodified malloc values should be used.
   int string_aligns[][4] = {
+    // All zeroes to use the values returned from malloc.
+    { 0, 0, 0, 0 },
+
     { 1, 0, 1, 0 },
     { 2, 0, 2, 0 },
     { 4, 0, 4, 0 },
@@ -265,23 +301,13 @@ bool runStrcmpTest(int (*test_strcmp)(const char *s1, const char *s2)) {
 
   printf("  Verifying equal sized strings at different alignments.\n");
   for (size_t i = 0; i < sizeof(string_aligns)/sizeof(int[4]); i++) {
-    pass = pass && doStrcmpExpectEqual(string1, string2, string_aligns[i],
-                                       test_strcmp);
+    if (!doStrcmpExpectEqual(string1, string2, string_aligns[i], test_strcmp,
+                             verbose)) {
+      return false;
+    }
   }
 
-  // Different strings, all same size:
-  // - Single difference at double word boundary.
-  // - Single difference at word boudary.
-  // - Single difference at 1 off a word alignment.
-  // - Single difference at 2 off a word alignment.
-  // - Single difference at 3 off a word alignment.
-
-  // Different sized strings, strings the same until the end:
-  // - Shorter string ends on a double word boundary.
-  // - Shorter string ends on word boundary.
-  // - Shorter string ends at 1 off a word boundary.
-  // - Shorter string ends at 2 off a word boundary.
-  // - Shorter string ends at 3 off a word boundary.
+  // Test the function finds strings with differences at specific locations.
   int diff_aligns[][2] = {
     { 4, 0 },
     { 4, 1 },
@@ -293,31 +319,36 @@ bool runStrcmpTest(int (*test_strcmp)(const char *s1, const char *s2)) {
     { 8, 3 },
   };
   printf("  Verifying different strings at different alignments.\n");
-  for (unsigned int i = 0; i < sizeof(diff_aligns)/sizeof(int[2]); i++) {
+  for (size_t i = 0; i < sizeof(diff_aligns)/sizeof(int[2]); i++) {
     // First loop put the string terminator at the chosen alignment.
-    for (unsigned int j = 0; j < sizeof(string_aligns)/sizeof(int[4]); j++) {
-      pass = pass && doStrcmpExpectDiff(string1, string2, diff_aligns[i],
-                                        string_aligns[j], '\0', test_strcmp);
+    for (size_t j = 0; j < sizeof(string_aligns)/sizeof(int[4]); j++) {
+      if (!doStrcmpExpectDiff(string1, string2, diff_aligns[i],
+                              string_aligns[j], '\0', test_strcmp, verbose)) {
+        return false;
+      }
     }
     // Second loop put a different character at the chosen alignment.
     // This character is guaranteed not to be in the original string.
-    for (unsigned int j = 0; j < sizeof(string_aligns)/sizeof(int[4]); j++) {
-      pass = pass && doStrcmpExpectDiff(string1, string2, diff_aligns[i],
-                                        string_aligns[j], '\0', test_strcmp);
+    for (size_t j = 0; j < sizeof(string_aligns)/sizeof(int[4]); j++) {
+      if (!doStrcmpExpectDiff(string1, string2, diff_aligns[i],
+                              string_aligns[j], '\0', test_strcmp, verbose)) {
+        return false;
+      }
     }
   }
 
   printf("  Verifying strcmp does not read too many bytes.\n");
-  pass = pass && doStrcmpCheckRead(test_strcmp);
-
-  if (pass) {
-    printf("All tests pass.\n");
+  if (!doStrcmpCheckRead(test_strcmp, verbose)) {
+    return false;
   }
 
-  return pass;
+  printf("  All tests pass.\n");
+
+  return true;
 }
 
-bool runMemcpyTest(void* (*test_memcpy)(void *dst, const void *src, size_t n)) {
+bool runMemcpyTest(void* (*test_memcpy)(void *dst, const void *src, size_t n),
+                   bool verbose) {
   // Allocate two large buffers to hold the dst and src.
   uint8_t *dst = reinterpret_cast<uint8_t*>(malloc(MAX_MEMCPY_BUFFER_SIZE));
   uint8_t *src = reinterpret_cast<uint8_t*>(malloc(MAX_MEMCPY_BUFFER_SIZE));
@@ -326,51 +357,22 @@ bool runMemcpyTest(void* (*test_memcpy)(void *dst, const void *src, size_t n)) {
     return false;
   }
 
-  // Set the source to a known pattern once. We are assuming that the
-  // memcpy isn't so broken that it's writing into the source buffer.
+  // Set the source to a known pattern once. The assumption is that the
+  // memcpy is not so broken that it will write in to the source buffer.
+  // However, do not write zeroes into the source so a very quick can be
+  // made to verify the source has not been modified.
   for (int i = 0; i < MAX_MEMCPY_BUFFER_SIZE; i++) {
     src[i] = i % 256;
     if (src[i] == 0) {
-      // Don't allow any zeroes so we can do a quick check that the source
-      // is never zero.
       src[i] = 0xaa;
     }
   }
 
-  bool pass = true;
-
-  // Loop through and do copies of various sizes and unknown alignment
-  // looking for very obvious problems.
-  printf("  Verifying variable sized copies.\n");
-  for (int len = 0; len <= MAX_MEMCPY_TEST_SIZE; len++) {
-    memset(dst, 0, len);
-    // Set fencepost values to check if the copy went past the end.
-    dst[len] = 0xde;
-    dst[len+1] = 0xad;
-
-    test_memcpy(dst, src, len);
-
-    for (int i = 0; i < len; i++) {
-      if (dst[i] != src[i] || !src[i]) {
-        if (!src[i]) {
-          printf("    src[%d] is 0, memcpy wrote into the source.\n", i);
-        }
-        printf("    Failed at size %d[%d,%d!=%d], src=%p[0,0], dst=%p[0,0] no alignment set\n",
-               len, i, src[i], dst[i], src, dst);
-        pass = false;
-        break;
-      }
-    }
-    if (dst[len] != 0xde || dst[len+1] != 0xad) {
-      printf("    memcpy wrote past the end of the array.\n");
-      printf("    Failed at size %d, src=%p[0,0], dst=%p[0,0] [%d,%d]\n",
-             len, src, dst, dst[len], dst[len+1]);
-      pass = false;
-    }
-  }
-
   int aligns[][4] = {
-    // Src and Dst at same alignment.
+    // Src and dst use pointers returned by malloc.
+    { 0, 0, 0, 0 },
+
+    // Src and dst at same alignment.
     { 1, 0, 1, 0 },
     { 2, 0, 2, 0 },
     { 4, 0, 4, 0 },
@@ -424,47 +426,71 @@ bool runMemcpyTest(void* (*test_memcpy)(void *dst, const void *src, size_t n)) {
   printf("  Verifying variable sized copies at different alignments.\n");
   uint8_t *src_align, *dst_align;
   for (size_t i = 0; i < sizeof(aligns)/sizeof(int[4]); i++) {
-    for (int len = 0; len <= MAX_MEMCPY_TEST_SIZE; len++) {
-      src_align = (uint8_t*)getAlignedPtr(src, aligns[i][0], aligns[i][1]);
-      dst_align = (uint8_t*)getAlignedPtr(dst, aligns[i][2], aligns[i][3]);
+    for (size_t len = 0; len <= MAX_MEMCPY_TEST_SIZE; len++) {
+      if (aligns[i][0]) {
+        src_align = (uint8_t*)getAlignedPtr(src+FENCEPOST_LENGTH, aligns[i][0],
+                                            aligns[i][1]);
+        dst_align = (uint8_t*)getAlignedPtr(dst+FENCEPOST_LENGTH, aligns[i][2],
+                                            aligns[i][3]);
+      } else {
+        src_align = src;
+        dst_align = dst;
+      }
+
+      if (verbose) {
+        printf("Testing size %d, src_align=%p[%d,%d], dst_align=%p[%d,%d]\n",
+               len, src_align, aligns[i][0], aligns[i][1],
+               dst_align, aligns[i][2], aligns[i][3]);
+      }
+
       memset(dst_align, 0, len);
-      // Set fencepost values to check if the copy went past the end.
-      dst_align[len] = 0xde;
-      dst_align[len+1] = 0xad;
+
+      // Don't add a pre fencepost if we are using the value from the malloc.
+      if (dst_align != dst) {
+        setFencepost(&dst_align[-FENCEPOST_LENGTH]);
+      }
+      setFencepost(&dst_align[len]);
 
       test_memcpy(dst_align, src_align, len);
 
-      for (int j = 0; j < len; j++) {
+      for (size_t j = 0; j < len; j++) {
         if (dst_align[j] != src_align[j] || !src_align[j]) {
           if (!src_align[j]) {
             printf("    src_align[%d] is 0, memcpy wrote into the source.\n", j);
+          } else {
+            printf("    mismatch at %d, expected %d found %d\n", j,
+                   src_align[j], dst_align[j]);
           }
           printf("    Failed at size %d, src_align=%p[%d,%d], dst_align=%p[%d,%d]\n",
                  len, src_align, aligns[i][0], aligns[i][1],
                  dst_align, aligns[i][2], aligns[i][3]);
-          pass = false;
-          break;
+          return false;
         }
       }
-      if (dst_align[len] != 0xde || dst_align[len+1] != 0xad) {
-        printf("    memcpy wrote past the end of the array.\n");
-        printf("    Failed at size %d, src_align=%p[%d,%d], dst_align=%p[%d,%d] [%d,%d]\n",
+      if (dst_align != dst && !verifyFencepost(&dst_align[-8])) {
+        printf("    wrote before the array.\n");
+        printf("    Failed at size %d, src_align=%p[%d,%d], dst_align=%p[%d,%d]\n",
                len, src_align, aligns[i][0], aligns[i][1],
-               dst_align, aligns[i][2], aligns[i][3],
-               dst_align[len], dst_align[len+1]);
-        pass = false;
+               dst_align, aligns[i][2], aligns[i][3]);
+        return false;
+      }
+      if (!verifyFencepost(&dst_align[len])) {
+        printf("    wrote past the end of the array.\n");
+        printf("    Failed at size %d, src_align=%p[%d,%d], dst_align=%p[%d,%d]\n",
+               len, src_align, aligns[i][0], aligns[i][1],
+               dst_align, aligns[i][2], aligns[i][3]);
+        return false;
       }
     }
   }
 
-  if (pass) {
-    printf("All tests pass.\n");
-  }
+  printf("  All tests pass.\n");
 
-  return pass;
+  return true;
 }
 
-bool runMemsetTest(void* (*test_memset)(void *s, int c, size_t n)) {
+bool runMemsetTest(void* (*test_memset)(void *s, int c, size_t n),
+                   bool verbose) {
   // Allocate one large buffer to hold the dst.
   uint8_t *buf = reinterpret_cast<uint8_t*>(malloc(MAX_MEMSET_BUFFER_SIZE));
   if (buf == NULL) {
@@ -472,44 +498,10 @@ bool runMemsetTest(void* (*test_memset)(void *s, int c, size_t n)) {
     return false;
   }
 
-  bool pass = true;
-  int value;
-
-  // Loop through and do copies of various sizes and unknown alignment
-  // looking for very obvious problems.
-  printf("  Verifying variable sized copies.\n");
-  for (int len = 0; len <= MAX_MEMSET_TEST_SIZE; len++) {
-    // Set the buffer to all zero without memset since it might be the
-    // function we are testing.
-    for (int i = 0; i < len; i++) {
-      buf[i] = 0;
-    }
-    // Set fencepost values to check if the set went past the end.
-    buf[len] = 0xde;
-    buf[len+1] = 0xad;
-
-    value = (len % 255) + 1;
-    test_memset(buf, value, len);
-
-    for (int i = 0; i < len; i++) {
-      if (buf[i] != value) {
-        printf("    Failed at size %d[%d,%d!=%d], buf=%p[0,0]\n",
-               len, i, buf[i], value, buf);
-        pass = false;
-        return pass;
-        break;
-      }
-    }
-    if (buf[len] != 0xde || buf[len+1] != 0xad) {
-      printf("    memset wrote past the end of the array.\n");
-      printf("    Failed at size %d, buf=%p[0,0] [%d,%d]\n",
-             len, buf, buf[len], buf[len+1]);
-      pass = false;
-      return pass;
-    }
-  }
-
   int aligns[][2] = {
+    // Use malloc return values unaltered.
+    { 0, 0 },
+
     // Different alignments.
     { 1, 0 },
     { 2, 0 },
@@ -532,60 +524,77 @@ bool runMemsetTest(void* (*test_memset)(void *s, int c, size_t n)) {
   printf("  Verifying variable sized memsets at different alignments.\n");
   uint8_t *buf_align;
   for (size_t i = 0; i < sizeof(aligns)/sizeof(int[2]); i++) {
-    for (int len = 0; len <= MAX_MEMSET_TEST_SIZE; len++) {
-      buf_align = (uint8_t*)getAlignedPtr(buf, aligns[i][0], aligns[i][1]);
+    for (size_t len = 0; len <= MAX_MEMSET_TEST_SIZE; len++) {
+      if (aligns[i]) {
+        buf_align = (uint8_t*)getAlignedPtr(buf+FENCEPOST_LENGTH, aligns[i][0],
+                                            aligns[i][1]);
+      } else {
+        buf_align = buf;
+      }
+
+      if (verbose) {
+        printf("Testing size %d, buf_align=%p[%d,%d]\n",
+               len, buf_align, aligns[i][0], aligns[i][1]);
+      }
 
       // Set the buffer to all zero without memset since it might be the
       // function we are testing.
-      for (int j = 0; j < len; j++) {
+      for (size_t j = 0; j < len; j++) {
         buf_align[j] = 0;
       }
-      // Set fencepost values to check if the set went past the end.
-      buf_align[len] = 0xde;
-      buf_align[len+1] = 0xad;
 
-      value = (len % 255) + 1;
+      // Don't add a pre fencepost if we are using the value from the malloc.
+      if (buf_align != buf) {
+        setFencepost(&buf_align[-FENCEPOST_LENGTH]);
+      }
+      setFencepost(&buf_align[len]);
+
+      int value = (len % 255) + 1;
       test_memset(buf_align, value, len);
 
-      for (int j = 0; j < len; j++) {
+      for (size_t j = 0; j < len; j++) {
         if (buf_align[j] != value) {
-
           printf("    Failed at size %d[%d,%d!=%d], buf_align=%p[%d,%d]\n",
                  len, j, buf_align[j], value, buf_align, aligns[i][0],
                  aligns[i][1]);
-          pass = false;
-          return pass;
-          break;
+          return false;
         }
       }
-      if (buf_align[len] != 0xde || buf_align[len+1] != 0xad) {
-        printf("    memset wrote past the end of the array.\n");
+      if (buf_align != buf && !verifyFencepost(&buf_align[-8])) {
+        printf("    wrote before the beginning of the array.\n");
         printf("    Failed at size %d, buf_align=%p[%d,%d]\n",
                len, buf_align, aligns[i][0], aligns[i][1]);
-        pass = false;
-        return pass;
+        return false;
+      }
+      if (!verifyFencepost(&buf_align[len])) {
+        printf("    wrote after the end of the array.\n");
+        printf("    Failed at size %d, buf_align=%p[%d,%d]\n",
+               len, buf_align, aligns[i][0], aligns[i][1]);
+        return false;
       }
     }
   }
 
-  if (pass) {
-    printf("All tests pass.\n");
-  }
+  printf("  All tests pass.\n");
 
-  return pass;
+  return true;
 }
 
 int main(int argc, char **argv) {
-  bool tests_passing = true;
+  bool verbose = false;
+  if (argc == 2 && strcmp(argv[1], "-v") == 0) {
+    verbose = true;
+  }
 
+  bool tests_passing = true;
   printf("Testing strcmp...\n");
-  tests_passing = tests_passing && runStrcmpTest(strcmp);
+  tests_passing = runStrcmpTest(strcmp, verbose) && tests_passing;
 
   printf("Testing memcpy...\n");
-  tests_passing = tests_passing && runMemcpyTest(memcpy);
+  tests_passing = runMemcpyTest(memcpy, verbose) && tests_passing;
 
   printf("Testing memset...\n");
-  tests_passing = tests_passing && runMemsetTest(memset);
+  tests_passing = runMemsetTest(memset, verbose) && tests_passing;
 
   return (tests_passing ? 0 : 1);
 }
