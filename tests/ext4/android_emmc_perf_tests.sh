@@ -1,6 +1,13 @@
 #!/bin/bash
 
 PERF="rand_emmc_perf"
+STATS_FILE="/data/local/tmp/stats_test"
+STATS_MODE=0
+
+if [ "$1" = "-s" ]
+then
+  STATS_MODE=1
+fi
 
 if [ ! -r "$PERF" ]
 then
@@ -54,6 +61,12 @@ case "$HARDWARE" in
     MMCDEV="mmcblk0"
     ;;
 
+  flo)
+    CPUFREQ="/sys/devices/system/cpu/cpu0/cpufreq"
+    CACHE="dev/block/platform/msm_sdcc.1/by-name/cache"
+    MMCDEV="mmcblk0"
+    ;;
+
   *)
     echo "Unknown hardware $HARDWARE.  Exiting."
     exit 1
@@ -76,9 +89,15 @@ adb shell stop p2p_supplicant
 adb shell stop wpa_supplicant
 adb shell stop mobicore
 adb shell umount /sdcard >/dev/null 2>&1
+adb shell umount /mnt/sdcard >/dev/null 2>&1
 adb shell umount /mnt/shell/sdcard0 >/dev/null 2>&1
-adb shell umount /data >/dev/null 2>&1
+adb shell umount /mnt/shell/emulated >/dev/null 2>&1
 adb shell umount /cache >/dev/null 2>&1
+if [ "$STATS_MODE" -ne 1 ]
+then
+  adb shell umount /data >/dev/null 2>&1
+fi
+
 # Add more services here that other devices need to stop.
 # So far, this list is sufficient for:
 #   Prime
@@ -90,66 +109,139 @@ adb shell "cat $CPUFREQ/cpuinfo_max_freq > $CPUFREQ/scaling_min_freq"
 
 # Start the tests
 
-# Sequential read test
-for I in 1 2 3
-do
-  adb shell "echo 3 > /proc/sys/vm/drop_caches"
-  echo "Sequential read test $I"
-  adb shell dd if="$CACHE" of=/dev/null bs=1048576 count=200
-done
+if [ "$STATS_MODE" -eq 1 ]
+then
+  # This test looks for the average and max random write times for the emmc
+  # chip.  It should be run with the emmc chip full for worst case numbers,
+  # and after fstrim for best case numbers.  So first fill the chip, twice,
+  # then run the test, then remove the large file, run fstrim, and run the
+  # test again.
 
-# Sequential write test
-for I in 1 2 3
-do
-  echo "Sequential write test $I"
-  adb shell dd if=/dev/zero of="$CACHE" bs=1048576 count=200
-done
+  # Remove the test file if it exists, then make it anew.
+  echo "Filling userdata"
+  adb shell rm  -f "$STATS_FILE"
+  adb shell dd if=/dev/zero of="$STATS_FILE" bs=1048576
+  adb shell sync
 
-# Random read tests require that we read from a much larger range of offsets
-# into the emmc chip than the write test.  If we only read though 100 Megabytes
-# (and with a read-ahead of 128K), we quickly fill the buffer cache with 100
-# Megabytes of data, and subsequent reads are nearly instantaneous.  Since
-# reading is non-destructive, and we've never shipped a device with less than
-# 8 Gbytes, for this test we read from the raw emmc device, and randomly seek
-# in the first 6 Gbytes.  That is way more memory than any device we currently
-# have and it should keep the cache from being poluted with entries from
-# previous random reads.
-#
-# Also, test with the read-ahead set very low at 4K, and at the default
+  # Do it again to make sure to fill up all the reserved blocks used for
+  # wear levelling, plus any unused blocks in the other partitions.  Yes,
+  # this is not precise, just a good heuristic.
+  echo "Filling userdata again"
+  adb shell rm "$STATS_FILE"
+  adb shell sync
+  adb shell dd if=/dev/zero of="$STATS_FILE" bs=1048576
+  adb shell sync
 
-# Random read test, 4K read-ahead
-ORIG_READAHEAD=`adb shell cat /sys/block/$MMCDEV/queue/read_ahead_kb | tr -d "\r"`
-adb shell "echo 4 > /sys/block/$MMCDEV/queue/read_ahead_kb"
-for I in 1 2 3
-do
-  adb shell "echo 3 > /proc/sys/vm/drop_caches"
-  echo "Random read (4K read-ahead) test $I"
-  adb shell /dev/"$PERF" -r 6000 "/dev/block/$MMCDEV"
-done
+  # Run the test
+  echo "Running stats test after filling emmc chip"
+  adb shell /dev/$PERF -w -o -s 20000 -f /dev/full_stats 400 "$CACHE"
 
-# Random read test, default read-ahead
-adb shell "echo $ORIG_READAHEAD > /sys/block/$MMCDEV/queue/read_ahead_kb"
-for I in 1 2 3
-do
-  adb shell "echo 3 > /proc/sys/vm/drop_caches"
-  echo "Random read (default read-ahead of ${ORIG_READAHEAD}K) test $I"
-  adb shell /dev/"$PERF" -r 6000 "/dev/block/$MMCDEV"
-done
+  # Remove the file, and have vold do fstrim
+  adb shell rm "$STATS_FILE"
+  adb shell sync
+  # Make sure fstrim knows there is work to do
+  sleep 10
 
-# Random write test
-for I in 1 2 3
-do
-  echo "Random write test $I"
-  adb shell /dev/"$PERF" -w 100 "$CACHE"
-done
+  # Get the current number of FSTRIM complete lines in thh logcat
+  ORIGCNT=`adb shell logcat -d | grep -c "Finished fstrim work"`
 
-# Random write test with O_SYNC
-for I in 1 2 3
-do
-  echo "Random write with o_sync test $I"
-  adb shell /dev/"$PERF" -w -o 100 "$CACHE"
-done
+  # Attempt to start fstrim
+  OUT=`adb shell vdc fstrim dotrim | grep "Command not recognized"`
+
+  if [ -z "$OUT" ]
+  then
+    # Wait till we see another fstrim finished line
+    sleep 10
+    let T=10
+    NEWCNT=`adb shell logcat -d |grep -c "Finished fstrim work"`
+    while [ "$NEWCNT" -eq "$ORIGCNT" ]
+    do
+      sleep 10
+      let T=T+10
+      if [ "$T" -ge 300 ]
+      then
+        echo "Error: FSTRIM did not complete in 300 seconds, continuing"
+        break
+      fi
+      NEWCNT=`adb shell logcat -d |grep -c "Finished fstrim work"`
+    done
+
+    echo "FSTRIM took "$T" seconds"
+
+    # Run the test again
+    echo "Running test after fstrim"
+    adb shell /dev/$PERF -w -o -s 20000 -f /dev/fstrimmed_stats 400 "$CACHE"
+
+    # Retrieve the full data logs
+    adb pull /dev/fstrimmed_stats $HARDWARE-fstrimmed_stats
+    adb pull /dev/full_stats $HARDWARE-full_stats
+  else
+    echo "Device doesn't support fstrim, not running test a second time"
+  fi
+
+else
+
+  # Sequential read test
+  for I in 1 2 3
+  do
+    adb shell "echo 3 > /proc/sys/vm/drop_caches"
+    echo "Sequential read test $I"
+    adb shell dd if="$CACHE" of=/dev/null bs=1048576 count=200
+  done
+
+  # Sequential write test
+  for I in 1 2 3
+  do
+    echo "Sequential write test $I"
+    adb shell dd if=/dev/zero of="$CACHE" bs=1048576 count=200
+  done
+
+  # Random read tests require that we read from a much larger range of offsets
+  # into the emmc chip than the write test.  If we only read though 100 Megabytes
+  # (and with a read-ahead of 128K), we quickly fill the buffer cache with 100
+  # Megabytes of data, and subsequent reads are nearly instantaneous.  Since
+  # reading is non-destructive, and we've never shipped a device with less than
+  # 8 Gbytes, for this test we read from the raw emmc device, and randomly seek
+  # in the first 6 Gbytes.  That is way more memory than any device we currently
+  # have and it should keep the cache from being poluted with entries from
+  # previous random reads.
+  #
+  # Also, test with the read-ahead set very low at 4K, and at the default
+
+  # Random read test, 4K read-ahead
+  ORIG_READAHEAD=`adb shell cat /sys/block/$MMCDEV/queue/read_ahead_kb | tr -d "\r"`
+  adb shell "echo 4 > /sys/block/$MMCDEV/queue/read_ahead_kb"
+  for I in 1 2 3
+  do
+    adb shell "echo 3 > /proc/sys/vm/drop_caches"
+    echo "Random read (4K read-ahead) test $I"
+    adb shell /dev/"$PERF" -r 6000 "/dev/block/$MMCDEV"
+  done
+
+  # Random read test, default read-ahead
+  adb shell "echo $ORIG_READAHEAD > /sys/block/$MMCDEV/queue/read_ahead_kb"
+  for I in 1 2 3
+  do
+    adb shell "echo 3 > /proc/sys/vm/drop_caches"
+    echo "Random read (default read-ahead of ${ORIG_READAHEAD}K) test $I"
+    adb shell /dev/"$PERF" -r 6000 "/dev/block/$MMCDEV"
+  done
+
+  # Random write test
+  for I in 1 2 3
+  do
+    echo "Random write test $I"
+    adb shell /dev/"$PERF" -w 100 "$CACHE"
+  done
+
+  # Random write test with O_SYNC
+  for I in 1 2 3
+  do
+    echo "Random write with o_sync test $I"
+    adb shell /dev/"$PERF" -w -o 100 "$CACHE"
+  done
+fi
 
 # Make a new empty /cache filesystem
-adb shell make_ext4fs "$CACHE"
+adb shell make_ext4fs -w "$CACHE"
 
