@@ -238,7 +238,7 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < num_maps; i++) {
         mi = mis[i];
 
-        if (hide_zeros && !mi->usage.rss)
+        if ((!mi) || (hide_zeros && !mi->usage.rss))
             continue;
 
         if (ws == WS_ONLY) {
