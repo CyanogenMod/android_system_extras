@@ -41,14 +41,17 @@ static void usage(char* p) {
            "<test> is one of the following:\n"
            "  copy_bandwidth [--size BYTES_TO_COPY]\n"
            "  write_bandwidth [--size BYTES_TO_WRITE]\n"
+           "  read_bandwidth [--size BYTES_TO_COPY]\n"
            "  per_core_bandwidth [--size BYTES]\n"
            "    --type copy_ldrd_strd | copy_ldmia_stmia | copy_vld_vst |\n"
            "           copy_vldmia_vstmia | memcpy | write_strd | write_stmia |\n"
-           "           write_vst | write_vstmia | memset\n"
+           "           write_vst | write_vstmia | memset | read_ldrd |\n"
+           "           read_ldmia | read_vld | read_vldmia\n"
            "  multithread_bandwidth [--size BYTES]\n"
            "    --type copy_ldrd_strd | copy_ldmia_stmia | copy_vld_vst |\n"
            "           copy_vldmia_vstmia | memcpy | write_strd | write_stmia |\n"
-           "           write_vst | write_vstmia | memset\n"
+           "           write_vst | write_vstmia | memset | read_ldrd |\n"
+           "           read_ldmia | read_vld | read_vldmia\n"
            "    --num_threads NUM_THREADS_TO_RUN\n"
            "  malloc [fill]\n"
            "  madvise\n"
@@ -61,6 +64,7 @@ static void usage(char* p) {
 
 int copy_bandwidth(int argc, char** argv);
 int write_bandwidth(int argc, char** argv);
+int read_bandwidth(int argc, char** argv);
 int per_core_bandwidth(int argc, char** argv);
 int multithread_bandwidth(int argc, char** argv);
 int malloc_test(int argc, char** argv);
@@ -83,7 +87,8 @@ function_t function_table[] = {
     { "crawl", crawl_test },
     { "fp", fp_test },
     { "copy_bandwidth", copy_bandwidth },
-    { "write_bandwidth", write_bandwidth},
+    { "write_bandwidth", write_bandwidth },
+    { "read_bandwidth", read_bandwidth },
     { "per_core_bandwidth", per_core_bandwidth },
     { "multithread_bandwidth", multithread_bandwidth },
 };
