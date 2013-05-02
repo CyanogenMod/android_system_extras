@@ -447,7 +447,7 @@ bool runMemcpyTest(void* (*test_memcpy)(void *dst, const void *src, size_t n),
 
       // Don't add a pre fencepost if we are using the value from the malloc.
       if (dst_align != dst) {
-        setFencepost(&dst_align[-FENCEPOST_LENGTH]);
+        setFencepost(&dst_align[-8]);
       }
       setFencepost(&dst_align[len]);
 
@@ -545,7 +545,7 @@ bool runMemsetTest(void* (*test_memset)(void *s, int c, size_t n),
 
       // Don't add a pre fencepost if we are using the value from the malloc.
       if (buf_align != buf) {
-        setFencepost(&buf_align[-FENCEPOST_LENGTH]);
+        setFencepost(&buf_align[-8]);
       }
       setFencepost(&buf_align[len]);
 
