@@ -306,7 +306,7 @@ int per_core_bandwidth(int argc, char** argv) {
         args[i].core = *it;
         args[i].bench = createBandwidthBenchmarkObject(values);
         if (!args[i].bench) {
-            return 0;
+            return -1;
         }
     }
 
@@ -342,7 +342,7 @@ int multithread_bandwidth(int argc, char** argv) {
         args[i].core = -1;
         args[i].bench = createBandwidthBenchmarkObject(values);
         if (!args[i].bench) {
-            return 0;
+            return -1;
         }
     }
 
@@ -367,18 +367,18 @@ bool run_bandwidth_benchmark(int argc, char** argv, const char *name,
     values["num_warm_loops"].int_value = 0;
     values["num_loops"].int_value = 0;
     if (!processBandwidthOptions(argc, argv, bandwidth_opts, &values)) {
-        return -1;
+        return false;
     }
 
     size_t size = values["size"].int_value;
     if ((size % 64) != 0) {
         printf("The size value must be a multiple of 64.\n");
-        return 1;
+        return false;
     }
 
     if (setpriority(PRIO_PROCESS, 0, -20)) {
         perror("Unable to raise priority of process.");
-        return -1;
+        return false;
     }
 
     bool preamble_printed = false;
