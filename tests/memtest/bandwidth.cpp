@@ -98,34 +98,48 @@ BandwidthBenchmark *createBandwidthBenchmarkObject(arg_t values) {
         size = values["size"].int_value;
     }
     if (strcmp(name, "copy_ldrd_strd") == 0) {
-        bench = new CopyLdrdStrdBenchmark(size);
+        bench = new CopyLdrdStrdBenchmark();
     } else if (strcmp(name, "copy_ldmia_stmia") == 0) {
-        bench = new CopyLdmiaStmiaBenchmark(size);
+        bench = new CopyLdmiaStmiaBenchmark();
     } else if (strcmp(name, "copy_vld_vst") == 0) {
-        bench = new CopyVldVstBenchmark(size);
+        bench = new CopyVldVstBenchmark();
     } else if (strcmp(name, "copy_vldmia_vstmia") == 0) {
-        bench = new CopyVldmiaVstmiaBenchmark(size);
+        bench = new CopyVldmiaVstmiaBenchmark();
     } else if (strcmp(name, "memcpy") == 0) {
-        bench = new MemcpyBenchmark(size);
+        bench = new MemcpyBenchmark();
     } else if (strcmp(name, "write_strd") == 0) {
-        bench = new WriteStrdBenchmark(size);
+        bench = new WriteStrdBenchmark();
     } else if (strcmp(name, "write_stmia") == 0) {
-        bench = new WriteStmiaBenchmark(size);
+        bench = new WriteStmiaBenchmark();
     } else if (strcmp(name, "write_vst") == 0) {
-        bench = new WriteVstBenchmark(size);
+        bench = new WriteVstBenchmark();
     } else if (strcmp(name, "write_vstmia") == 0) {
-        bench = new WriteVstmiaBenchmark(size);
+        bench = new WriteVstmiaBenchmark();
     } else if (strcmp(name, "memset") == 0) {
-        bench = new MemsetBenchmark(size);
+        bench = new MemsetBenchmark();
+    } else if (strcmp(name, "read_ldrd") == 0) {
+        bench = new ReadLdrdBenchmark();
+    } else if (strcmp(name, "read_ldmia") == 0) {
+        bench = new ReadLdmiaBenchmark();
+    } else if (strcmp(name, "read_vld") == 0) {
+        bench = new ReadVldBenchmark();
+    } else if (strcmp(name, "read_vldmia") == 0) {
+        bench = new ReadVldmiaBenchmark();
+    } else {
+        printf("Unknown type name %s\n", name);
+        return NULL;
     }
 
-    if (bench) {
-        if (values.count("num_warm_loops") > 0) {
-            bench->set_num_loops(values["num_warm_loops"].int_value);
-        }
-        if (values.count("num_loops") > 0) {
-            bench->set_num_loops(values["num_loops"].int_value);
-        }
+    if (!bench->setSize(values["size"].int_value)) {
+        printf("Failed to allocate buffers for benchmark.\n");
+        return NULL;
+    }
+
+    if (values.count("num_warm_loops") > 0) {
+        bench->set_num_loops(values["num_warm_loops"].int_value);
+    }
+    if (values.count("num_loops") > 0) {
+        bench->set_num_loops(values["num_loops"].int_value);
     }
 
     return bench;
@@ -208,7 +222,6 @@ bool processThreadArgs(int argc, char** argv, option_t options[],
 
     BandwidthBenchmark *bench = createBandwidthBenchmarkObject(*values);
     if (!bench) {
-        printf("Unknown type %s\n", (*values)["type"].char_value);
         return false;
     }
 
@@ -292,6 +305,9 @@ int per_core_bandwidth(int argc, char** argv) {
          it != cpu_list.end(); ++it, ++i) {
         args[i].core = *it;
         args[i].bench = createBandwidthBenchmarkObject(values);
+        if (!args[i].bench) {
+            return 0;
+        }
     }
 
     printf("Running on %d cores\n", cpu_list.size());
@@ -325,6 +341,9 @@ int multithread_bandwidth(int argc, char** argv) {
     for (int i = 0; i < num_threads; i++) {
         args[i].core = -1;
         args[i].bench = createBandwidthBenchmarkObject(values);
+        if (!args[i].bench) {
+            return 0;
+        }
     }
 
     printf("Running %d threads\n", num_threads);
@@ -341,53 +360,12 @@ int multithread_bandwidth(int argc, char** argv) {
     return 0;
 }
 
-int copy_bandwidth(int argc, char** argv) {
+bool run_bandwidth_benchmark(int argc, char** argv, const char *name,
+                             std::vector<BandwidthBenchmark*> bench_objs) {
     arg_t values;
     values["size"].int_value = 0;
-    values["num_loops"].int_value = BandwidthBenchmark::DEFAULT_NUM_LOOPS;
-    values["num_warm_loops"].int_value = BandwidthBenchmark::DEFAULT_NUM_WARM_LOOPS;
-    if (!processBandwidthOptions(argc, argv, bandwidth_opts, &values)) {
-        return -1;
-    }
-    size_t size = values["size"].int_value;
-    if ((size % 64) != 0) {
-        printf("The size value must be a multiple of 64.\n");
-        return -1;
-    }
-
-    if (setpriority(PRIO_PROCESS, 0, -20)) {
-        perror("Unable to raise priority of process.");
-        return -1;
-    }
-
-    std::vector<BandwidthBenchmark*> bench_objs;
-    bench_objs.push_back(new CopyLdrdStrdBenchmark(size));
-    bench_objs.push_back(new CopyLdmiaStmiaBenchmark(size));
-    bench_objs.push_back(new CopyVldVstBenchmark(size));
-    bench_objs.push_back(new CopyVldmiaVstmiaBenchmark(size));
-    bench_objs.push_back(new MemcpyBenchmark(size));
-
-    printf("Benchmarking copy bandwidth\n");
-    printf("  size = %d\n", bench_objs[0]->size());
-    printf("  num_warm_loops = %d\n", values["num_warm_loops"].int_value);
-    printf("  num_loops = %d\n\n", values["num_loops"].int_value);
-    for (std::vector<BandwidthBenchmark*>::iterator it = bench_objs.begin();
-         it != bench_objs.end(); ++it) {
-        (*it)->set_num_warm_loops(values["num_warm_loops"].int_value);
-        (*it)->set_num_loops(values["num_loops"].int_value);
-        (*it)->run();
-        printf("  Copy bandwidth with %s: %0.2f MB/s\n", (*it)->getName(),
-               (*it)->mb_per_sec());
-    }
-
-    return 0;
-}
-
-int write_bandwidth(int argc, char** argv) {
-    arg_t values;
-    values["size"].int_value = 0;
-    values["num_loops"].int_value = BandwidthBenchmark::DEFAULT_NUM_LOOPS;
-    values["num_warm_loops"].int_value = BandwidthBenchmark::DEFAULT_NUM_WARM_LOOPS;
+    values["num_warm_loops"].int_value = 0;
+    values["num_loops"].int_value = 0;
     if (!processBandwidthOptions(argc, argv, bandwidth_opts, &values)) {
         return -1;
     }
@@ -403,25 +381,77 @@ int write_bandwidth(int argc, char** argv) {
         return -1;
     }
 
-    std::vector<BandwidthBenchmark*> bench_objs;
-    bench_objs.push_back(new WriteStrdBenchmark(size));
-    bench_objs.push_back(new WriteStmiaBenchmark(size));
-    bench_objs.push_back(new WriteVstBenchmark(size));
-    bench_objs.push_back(new WriteVstmiaBenchmark(size));
-    bench_objs.push_back(new MemsetBenchmark(size));
-
-    printf("Benchmarking write bandwidth\n");
-    printf("  size = %d\n", bench_objs[0]->size());
-    printf("  num_warm_loops = %d\n", values["num_warm_loops"].int_value);
-    printf("  num_loops = %d\n\n", values["num_loops"].int_value);
+    bool preamble_printed = false;
+    size_t num_warm_loops = values["num_warm_loops"].int_value;
+    size_t num_loops = values["num_loops"].int_value;
     for (std::vector<BandwidthBenchmark*>::iterator it = bench_objs.begin();
          it != bench_objs.end(); ++it) {
-        (*it)->set_num_warm_loops(values["num_warm_loops"].int_value);
-        (*it)->set_num_loops(values["num_loops"].int_value);
+        if (!(*it)->canRun()) {
+            continue;
+        }
+        if (!(*it)->setSize(values["num_warm_loops"].int_value)) {
+            printf("Failed creating buffer for bandwidth test.\n");
+            return false;
+        }
+        if (num_warm_loops) {
+            (*it)->set_num_warm_loops(num_warm_loops);
+        }
+        if (num_loops) {
+            (*it)->set_num_loops(num_loops);
+        }
+        if (!preamble_printed) {
+            preamble_printed = true;
+            printf("Benchmarking %s bandwidth\n", name);
+            printf("  size = %d\n", (*it)->size());
+            printf("  num_warm_loops = %d\n", (*it)->num_warm_loops());
+            printf("  num_loops = %d\n\n", (*it)->num_loops());
+        }
         (*it)->run();
-        printf("  Write bandwidth with %s: %0.2f MB/s\n", (*it)->getName(),
+        printf("  %s bandwidth with %s: %0.2f MB/s\n", name, (*it)->getName(),
                (*it)->mb_per_sec());
     }
 
+    return true;
+}
+
+int copy_bandwidth(int argc, char** argv) {
+    std::vector<BandwidthBenchmark*> bench_objs;
+    bench_objs.push_back(new CopyLdrdStrdBenchmark());
+    bench_objs.push_back(new CopyLdmiaStmiaBenchmark());
+    bench_objs.push_back(new CopyVldVstBenchmark());
+    bench_objs.push_back(new CopyVldmiaVstmiaBenchmark());
+    bench_objs.push_back(new MemcpyBenchmark());
+
+    if (!run_bandwidth_benchmark(argc, argv, "copy", bench_objs)) {
+        return -1;
+    }
+    return 0;
+}
+
+int write_bandwidth(int argc, char** argv) {
+    std::vector<BandwidthBenchmark*> bench_objs;
+    bench_objs.push_back(new WriteStrdBenchmark());
+    bench_objs.push_back(new WriteStmiaBenchmark());
+    bench_objs.push_back(new WriteVstBenchmark());
+    bench_objs.push_back(new WriteVstmiaBenchmark());
+    bench_objs.push_back(new MemsetBenchmark());
+
+    if (!run_bandwidth_benchmark(argc, argv, "write", bench_objs)) {
+        return -1;
+    }
+
+    return 0;
+}
+
+int read_bandwidth(int argc, char** argv) {
+    std::vector<BandwidthBenchmark*> bench_objs;
+    bench_objs.push_back(new ReadLdrdBenchmark());
+    bench_objs.push_back(new ReadLdmiaBenchmark());
+    bench_objs.push_back(new ReadVldBenchmark());
+    bench_objs.push_back(new ReadVldmiaBenchmark());
+
+    if (!run_bandwidth_benchmark(argc, argv, "read", bench_objs)) {
+        return -1;
+    }
     return 0;
 }

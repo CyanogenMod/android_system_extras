@@ -22,13 +22,20 @@
 // Bandwidth Class definitions.
 class BandwidthBenchmark {
 public:
-    BandwidthBenchmark(size_t size)
-        : _size(size),
+    BandwidthBenchmark()
+        : _size(0),
           _num_warm_loops(DEFAULT_NUM_WARM_LOOPS),
           _num_loops(DEFAULT_NUM_LOOPS) {}
     virtual ~BandwidthBenchmark() {}
 
-    void run() {
+    bool run() {
+        if (_size == 0) {
+            return false;
+        }
+        if (!canRun()) {
+            return false;
+        }
+
         bench(_num_warm_loops);
 
         nsecs_t t = system_time();
@@ -36,11 +43,27 @@ public:
         t = system_time() - t;
 
         _mb_per_sec = (_size*(_num_loops/_BYTES_PER_MB))/(t/_NUM_NS_PER_SEC);
+
+        return true;
     }
+
+    bool canRun() { return !usesNeon() || isNeonSupported(); }
+
+    virtual bool setSize(size_t size) = 0;
 
     virtual const char *getName() = 0;
 
     virtual bool verify() = 0;
+
+    virtual bool usesNeon() { return false; }
+
+    bool isNeonSupported() {
+#if defined(__ARM_NEON__)
+        return true;
+#else
+        return false;
+#endif
+    }
 
     // Accessors/mutators.
     double mb_per_sec() { return _mb_per_sec; }
@@ -73,22 +96,45 @@ private:
 
 class CopyBandwidthBenchmark : public BandwidthBenchmark {
 public:
-    CopyBandwidthBenchmark(size_t size) : BandwidthBenchmark(size) {
-        if (_size == 0) {
-            _size = DEFAULT_COPY_SIZE;
+    CopyBandwidthBenchmark() : BandwidthBenchmark(), _src(NULL), _dst(NULL) { }
+
+    bool setSize(size_t size) {
+        if (_src) {
+           free(_src);
         }
+        if (_dst) {
+            free(_dst);
+        }
+
+        if (size == 0) {
+            _size = DEFAULT_COPY_SIZE;
+        } else {
+            _size = size;
+        }
+
         _src = reinterpret_cast<char*>(memalign(64, _size));
         if (!_src) {
-          perror("Failed to allocate memory for test.");
-          exit(1);
+            perror("Failed to allocate memory for test.");
+            return false;
         }
         _dst = reinterpret_cast<char*>(memalign(64, _size));
         if (!_dst) {
-          perror("Failed to allocate memory for test.");
-          exit(1);
+            perror("Failed to allocate memory for test.");
+            return false;
+        }
+
+        return true;
+    }
+    virtual ~CopyBandwidthBenchmark() {
+        if (_src) {
+            free(_src);
+            _src = NULL;
+        }
+        if (_dst) {
+            free(_dst);
+            _dst = NULL;
         }
     }
-    virtual ~CopyBandwidthBenchmark() { free(_src); free(_dst); }
 
     bool verify() {
         memset(_src, 0x23, _size);
@@ -120,7 +166,7 @@ protected:
 
 class CopyLdrdStrdBenchmark : public CopyBandwidthBenchmark {
 public:
-    CopyLdrdStrdBenchmark(size_t size) : CopyBandwidthBenchmark(size) { }
+    CopyLdrdStrdBenchmark() : CopyBandwidthBenchmark() { }
     virtual ~CopyLdrdStrdBenchmark() {}
 
     const char *getName() { return "ldrd/strd"; }
@@ -174,7 +220,7 @@ protected:
 
 class CopyLdmiaStmiaBenchmark : public CopyBandwidthBenchmark {
 public:
-    CopyLdmiaStmiaBenchmark(size_t size) : CopyBandwidthBenchmark(size) { }
+    CopyLdmiaStmiaBenchmark() : CopyBandwidthBenchmark() { }
     virtual ~CopyLdmiaStmiaBenchmark() {}
 
     const char *getName() { return "ldmia/stmia"; }
@@ -213,7 +259,7 @@ protected:
 
 class CopyVldVstBenchmark : public CopyBandwidthBenchmark {
 public:
-    CopyVldVstBenchmark(size_t size) : CopyBandwidthBenchmark(size) { }
+    CopyVldVstBenchmark() : CopyBandwidthBenchmark() { }
     virtual ~CopyVldVstBenchmark() {}
 
     const char *getName() { return "vld/vst"; }
@@ -252,7 +298,7 @@ protected:
 
 class CopyVldmiaVstmiaBenchmark : public CopyBandwidthBenchmark {
 public:
-    CopyVldmiaVstmiaBenchmark(size_t size) : CopyBandwidthBenchmark(size) { }
+    CopyVldmiaVstmiaBenchmark() : CopyBandwidthBenchmark() { }
     virtual ~CopyVldmiaVstmiaBenchmark() {}
 
     const char *getName() { return "vldmia/vstmia"; }
@@ -289,7 +335,7 @@ protected:
 
 class MemcpyBenchmark : public CopyBandwidthBenchmark {
 public:
-    MemcpyBenchmark(size_t size) : CopyBandwidthBenchmark(size) { }
+    MemcpyBenchmark() : CopyBandwidthBenchmark() { }
     virtual ~MemcpyBenchmark() {}
 
     const char *getName() { return "memcpy"; }
@@ -302,21 +348,50 @@ protected:
     }
 };
 
-class WriteBandwidthBenchmark : public BandwidthBenchmark {
+class SingleBufferBandwidthBenchmark : public BandwidthBenchmark {
 public:
-    WriteBandwidthBenchmark(size_t size) : BandwidthBenchmark(size) {
+    SingleBufferBandwidthBenchmark() : BandwidthBenchmark(), _buffer(NULL) { }
+    virtual ~SingleBufferBandwidthBenchmark() {
+        if (_buffer) {
+            free(_buffer);
+            _buffer = NULL;
+        }
+    }
+
+    bool setSize(size_t size) {
+        if (_buffer) {
+            free(_buffer);
+            _buffer = NULL;
+        }
+
         if (_size == 0) {
-            _size = DEFAULT_WRITE_SIZE;
+            _size = DEFAULT_SINGLE_BUFFER_SIZE;
+        } else {
+            _size = size;
         }
 
         _buffer = reinterpret_cast<char*>(memalign(64, _size));
         if (!_buffer) {
-          perror("Failed to allocate memory for test.");
-          exit(1);
+            perror("Failed to allocate memory for test.");
+            return false;
         }
         memset(_buffer, 0, _size);
+
+        return true;
     }
-    virtual ~WriteBandwidthBenchmark() { free(_buffer); }
+
+    bool verify() { return true; }
+
+protected:
+    char *_buffer;
+
+    static const unsigned int DEFAULT_SINGLE_BUFFER_SIZE = 16000;
+};
+
+class WriteBandwidthBenchmark : public SingleBufferBandwidthBenchmark {
+public:
+    WriteBandwidthBenchmark() : SingleBufferBandwidthBenchmark() { }
+    virtual ~WriteBandwidthBenchmark() { }
 
     bool verify() {
         memset(_buffer, 0, _size);
@@ -339,16 +414,11 @@ public:
 
         return true;
     }
-
-protected:
-    char *_buffer;
-
-    static const unsigned int DEFAULT_WRITE_SIZE = 16000;
 };
 
 class WriteStrdBenchmark : public WriteBandwidthBenchmark {
 public:
-    WriteStrdBenchmark(size_t size) : WriteBandwidthBenchmark(size) { }
+    WriteStrdBenchmark() : WriteBandwidthBenchmark() { }
     virtual ~WriteStrdBenchmark() {}
 
     const char *getName() { return "strd"; }
@@ -392,7 +462,7 @@ protected:
 
 class WriteStmiaBenchmark : public WriteBandwidthBenchmark {
 public:
-    WriteStmiaBenchmark(size_t size) : WriteBandwidthBenchmark(size) { }
+    WriteStmiaBenchmark() : WriteBandwidthBenchmark() { }
     virtual ~WriteStmiaBenchmark() {}
 
     const char *getName() { return "stmia"; }
@@ -437,10 +507,12 @@ protected:
 
 class WriteVstBenchmark : public WriteBandwidthBenchmark {
 public:
-    WriteVstBenchmark(size_t size) : WriteBandwidthBenchmark(size) { }
+    WriteVstBenchmark() : WriteBandwidthBenchmark() { }
     virtual ~WriteVstBenchmark() {}
 
     const char *getName() { return "vst"; }
+
+    bool usesNeon() { return true; }
 
 protected:
     // Write a given value using vst.
@@ -480,10 +552,12 @@ protected:
 
 class WriteVstmiaBenchmark : public WriteBandwidthBenchmark {
 public:
-    WriteVstmiaBenchmark(size_t size) : WriteBandwidthBenchmark(size) { }
+    WriteVstmiaBenchmark() : WriteBandwidthBenchmark() { }
     virtual ~WriteVstmiaBenchmark() {}
 
     const char *getName() { return "vstmia"; }
+
+    bool usesNeon() { return true; }
 
 protected:
     // Write a given value using vstmia.
@@ -523,7 +597,7 @@ protected:
 
 class MemsetBenchmark : public WriteBandwidthBenchmark {
 public:
-    MemsetBenchmark(size_t size) : WriteBandwidthBenchmark(size) { }
+    MemsetBenchmark() : WriteBandwidthBenchmark() { }
     virtual ~MemsetBenchmark() {}
 
     const char *getName() { return "memset"; }
@@ -533,6 +607,154 @@ protected:
         for (size_t i = 0; i < num_loops; i++) {
             memset(_buffer, (i % 255) + 1, _size);
         }
+    }
+};
+
+class ReadLdrdBenchmark : public SingleBufferBandwidthBenchmark {
+public:
+    ReadLdrdBenchmark() : SingleBufferBandwidthBenchmark() { }
+    virtual ~ReadLdrdBenchmark() {}
+
+    const char *getName() { return "ldrd"; }
+
+protected:
+    // Write a given value using strd.
+    void bench(size_t num_loops) {
+        asm volatile(
+            "stmfd sp!, {r0,r1,r2,r3,r4,r5}\n"
+
+            "mov r0, %0\n"
+            "mov r1, %1\n"
+            "mov r2, %2\n"
+
+            "0:\n"
+            "mov r3, r1, lsr #5\n"
+
+            "1:\n"
+            "subs r3, r3, #1\n"
+            "ldrd r4, r5, [r0]\n"
+            "ldrd r4, r5, [r0, #8]\n"
+            "ldrd r4, r5, [r0, #16]\n"
+            "ldrd r4, r5, [r0, #24]\n"
+            "add  r0, r0, #32\n"
+            "bgt 1b\n"
+
+            "sub r0, r0, r1\n"
+            "subs r2, r2, #1\n"
+            "bgt 0b\n"
+
+            "ldmfd sp!, {r0,r1,r2,r3,r4,r5}\n"
+          :: "r" (_buffer), "r" (_size), "r" (num_loops) : "r0", "r1", "r2");
+    }
+};
+
+class ReadLdmiaBenchmark : public SingleBufferBandwidthBenchmark {
+public:
+    ReadLdmiaBenchmark() : SingleBufferBandwidthBenchmark() { }
+    virtual ~ReadLdmiaBenchmark() {}
+
+    const char *getName() { return "ldmia"; }
+
+protected:
+      // Write a given value using stmia.
+      void bench(size_t num_loops) {
+          asm volatile(
+              "stmfd sp!, {r0,r1,r2,r3,r4,r5,r6,r7,r8,r9,r10,r11}\n"
+
+              "mov r0, %0\n"
+              "mov r1, %1\n"
+              "mov r2, %2\n"
+
+              "0:\n"
+              "mov r3, r1, lsr #5\n"
+
+              "1:\n"
+              "subs r3, r3, #1\n"
+              "ldmia r0!, {r4, r5, r6, r7, r8, r9, r10, r11}\n"
+              "bgt 1b\n"
+
+              "sub r0, r0, r1\n"
+              "subs r2, r2, #1\n"
+              "bgt 0b\n"
+
+              "ldmfd sp!, {r0,r1,r2,r3,r4,r5,r6,r7,r8,r9,r10,r11}\n"
+        :: "r" (_buffer), "r" (_size), "r" (num_loops) : "r0", "r1", "r2");
+    }
+};
+
+class ReadVldBenchmark : public SingleBufferBandwidthBenchmark {
+public:
+    ReadVldBenchmark() : SingleBufferBandwidthBenchmark() { }
+    virtual ~ReadVldBenchmark() {}
+
+    const char *getName() { return "vld"; }
+
+    bool usesNeon() { return true; }
+
+protected:
+    // Write a given value using vst.
+    void bench(size_t num_loops) {
+#if defined(__ARM_NEON__)
+        asm volatile(
+            "stmfd sp!, {r0,r1,r2,r3}\n"
+
+            "mov r0, %0\n"
+            "mov r1, %1\n"
+            "mov r2, %2\n"
+
+            "0:\n"
+            "mov r3, r1, lsr #5\n"
+
+            "1:\n"
+            "subs r3, r3, #1\n"
+            "vld1.8 {d0-d3}, [r0:128]!\n"
+            "bgt 1b\n"
+
+            "sub r0, r0, r1\n"
+            "subs r2, r2, #1\n"
+            "bgt 0b\n"
+
+            "ldmfd sp!, {r0,r1,r2,r3}\n"
+        :: "r" (_buffer), "r" (_size), "r" (num_loops) : "r0", "r1", "r2");
+#endif
+    }
+};
+
+class ReadVldmiaBenchmark : public SingleBufferBandwidthBenchmark {
+public:
+    ReadVldmiaBenchmark() : SingleBufferBandwidthBenchmark() { }
+    virtual ~ReadVldmiaBenchmark() {}
+
+    const char *getName() { return "vldmia"; }
+
+    bool usesNeon() { return true; }
+
+protected:
+    // Write a given value using vstmia.
+    void bench(size_t num_loops) {
+#if defined(__ARM_NEON__)
+        asm volatile(
+            "stmfd sp!, {r0,r1,r2,r3}\n"
+
+            "mov r0, %0\n"
+            "mov r1, %1\n"
+            "mov r2, %2\n"
+
+            "0:\n"
+            "mov r3, r1, lsr #5\n"
+
+            "1:\n"
+            "subs r3, r3, #1\n"
+            "vldmia r0!, {d0-d3}\n"
+            "bgt 1b\n"
+
+            "sub r0, r0, r1\n"
+            "subs r2, r2, #1\n"
+            "bgt 0b\n"
+
+            "ldmfd sp!, {r0,r1,r2,r3}\n"
+        :: "r" (_buffer), "r" (_size), "r" (num_loops) : "r0", "r1", "r2");
+#endif
     }
 };
 
