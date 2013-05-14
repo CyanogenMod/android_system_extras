@@ -264,9 +264,12 @@ public:
 
     const char *getName() { return "vld/vst"; }
 
+    bool usesNeon() { return true; }
+
 protected:
     // Copy using vld/vst instructions.
     void bench(size_t num_loops) {
+#if defined(__ARM_NEON__)
         asm volatile(
             "stmfd sp!, {r0,r1,r2,r3,r4}\n"
 
@@ -293,6 +296,7 @@ protected:
 
             "ldmfd sp!, {r0,r1,r2,r3,r4}\n"
         :: "r" (_src), "r" (_dst), "r" (_size), "r" (num_loops) : "r0", "r1", "r2", "r3");
+#endif
     }
 };
 
@@ -303,9 +307,12 @@ public:
 
     const char *getName() { return "vldmia/vstmia"; }
 
+    bool usesNeon() { return true; }
+
 protected:
     // Copy using vld/vst instructions.
     void bench(size_t num_loops) {
+#if defined(__ARM_NEON__)
         asm volatile(
             "stmfd sp!, {r0,r1,r2,r3,r4}\n"
 
@@ -330,6 +337,7 @@ protected:
 
             "ldmfd sp!, {r0,r1,r2,r3,r4}\n"
         :: "r" (_src), "r" (_dst), "r" (_size), "r" (num_loops) : "r0", "r1", "r2", "r3");
+#endif
     }
 };
 
