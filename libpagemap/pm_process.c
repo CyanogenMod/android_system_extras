@@ -261,6 +261,7 @@ static int read_maps(pm_process_t *proc) {
 
         map->proc = proc;
 
+        name[0] = '\0';
         sscanf(line, "%lx-%lx %s %lx %*s %*d %" S(MAX_LINE) "s",
                &map->start, &map->end, perms, &map->offset, name);
 
