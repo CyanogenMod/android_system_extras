@@ -163,6 +163,30 @@ struct process_info *get_process(pid_t pid) {
     return process;
 }
 
+static int parse_perm(const char *perm)
+{
+    int ret = 0;
+
+    while (*perm) {
+        switch(*perm) {
+        case 'r':
+            ret |= PM_MAP_READ;
+            break;
+        case 'w':
+            ret |= PM_MAP_WRITE;
+            break;
+        case 'x':
+            ret |= PM_MAP_EXEC;
+            break;
+        default:
+            fprintf(stderr, "Unknown permission '%c'\n", *perm);
+            exit(EXIT_FAILURE);
+        }
+        perm++;
+    }
+    return ret;
+}
+
 int main(int argc, char *argv[]) {
     char cmdline[256];
     char *prefix;
@@ -184,6 +208,7 @@ int main(int argc, char *argv[]) {
     struct process_info *pi;
 
     int i, j, error;
+    int perm;
 
     signal(SIGPIPE, SIG_IGN);
     compfn = &sort_by_pss;
@@ -191,6 +216,7 @@ int main(int argc, char *argv[]) {
     prefix = NULL;
     prefix_len = 0;
     opterr = 0;
+    perm = 0;
 
     while (1) {
         int c;
@@ -202,9 +228,10 @@ int main(int argc, char *argv[]) {
             {"rss", 0, 0, 'r'},
             {"reverse", 0, 0, 'R'},
             {"path", required_argument, 0, 'P'},
+            {"perm", required_argument, 0, 'm'},
             {0, 0, 0, 0}
         };
-        c = getopt_long(argc, argv, "hpP:uvrR", longopts, NULL);
+        c = getopt_long(argc, argv, "hm:pP:uvrR", longopts, NULL);
         if (c < 0) {
             break;
         }
@@ -213,6 +240,9 @@ int main(int argc, char *argv[]) {
         case 'h':
             usage(argv[0]);
             exit(EXIT_SUCCESS);
+        case 'm':
+            perm = parse_perm(optarg);
+            break;
         case 'p':
             compfn = &sort_by_pss;
             break;
@@ -279,6 +309,9 @@ int main(int argc, char *argv[]) {
             if (prefix && (strncmp(pm_map_name(maps[j]), prefix, prefix_len)))
                 continue;
 
+            if (perm && (pm_map_flags(maps[j]) & PM_MAP_PERMISSIONS) != perm)
+                continue;
+
             li = get_library(pm_map_name(maps[j]));
             if (!li)
                 continue;
@@ -339,6 +372,7 @@ static void usage(char *myname) {
                     "        (Default sort order is PSS.)\n"
                     "    -P /path  Limit libraries displayed to those in path.\n"
                     "    -R  Reverse sort order (default is descending).\n"
+                    "    -m [r][w][x] Only list pages that exactly match permissions\n"
                     "    -h  Display this help screen.\n",
     myname);
 }
