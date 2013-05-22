@@ -153,6 +153,7 @@ int pm_process_destroy(pm_process_t *proc);
 #define PM_MAP_READ  1
 #define PM_MAP_WRITE 2
 #define PM_MAP_EXEC  4
+#define PM_MAP_PERMISSIONS (PM_MAP_READ | PM_MAP_WRITE | PM_MAP_EXEC)
 #define pm_map_start(map)  ((map)->start)
 #define pm_map_end(map)    ((map)->end)
 #define pm_map_offset(map) ((map)->offset)
