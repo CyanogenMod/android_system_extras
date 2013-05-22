@@ -105,6 +105,24 @@ int pm_kernel_flags(pm_kernel_t *ker, unsigned long pfn, uint64_t *flags_out);
 #define PM_PAGE_RECLAIM    (1 <<  9)
 #define PM_PAGE_BUDDY      (1 << 10)
 
+/* for kernels >= 2.6.31 */
+#define PM_PAGE_MMAP          (1 << 11)
+#define PM_PAGE_ANON          (1 << 12)
+#define PM_PAGE_SWAPCACHE     (1 << 13)
+#define PM_PAGE_SWAPBACKED    (1 << 14)
+#define PM_PAGE_COMPOUND_HEAD (1 << 15)
+#define PM_PAGE_COMPOUND_TAIL (1 << 16)
+#define PM_PAGE_HUGE          (1 << 17)
+#define PM_PAGE_UNEVICTABLE   (1 << 18)
+#define PM_PAGE_HWPOISON      (1 << 19)
+#define PM_PAGE_NOPAGE        (1 << 20)
+
+/* for kernels >= 2.6.32 */
+#define KPF_KSM               (1 << 21)
+
+/* for kernels >= 3.4 */
+#define KPF_THP               (1 << 22)
+
 /* Destroy a pm_kernel_t. */
 int pm_kernel_destroy(pm_kernel_t *ker);
 
