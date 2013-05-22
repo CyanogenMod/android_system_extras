@@ -43,6 +43,8 @@ int pm_map_usage(pm_map_t *map, pm_memusage_t *usage_out) {
     pm_memusage_zero(&usage);
 
     for (i = 0; i < len; i++) {
+        usage.vss += map->proc->ker->pagesize;
+
         if (!PM_PAGEMAP_PRESENT(pagemap[i]) ||
             PM_PAGEMAP_SWAPPED(pagemap[i]))
             continue;
@@ -51,7 +53,6 @@ int pm_map_usage(pm_map_t *map, pm_memusage_t *usage_out) {
                                 &count);
         if (error) goto out;
 
-        usage.vss += map->proc->ker->pagesize;
         usage.rss += (count >= 1) ? (map->proc->ker->pagesize) : (0);
         usage.pss += (count >= 1) ? (map->proc->ker->pagesize / count) : (0);
         usage.uss += (count == 1) ? (map->proc->ker->pagesize) : (0);
