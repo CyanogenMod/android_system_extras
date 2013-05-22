@@ -17,6 +17,7 @@
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
+#include <getopt.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
@@ -189,28 +190,59 @@ int main(int argc, char *argv[]) {
     order = -1;
     prefix = NULL;
     prefix_len = 0;
+    opterr = 0;
 
-    for (i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "-P")) {
-            if (i + 1 >= argc) {
-                fprintf(stderr, "Option -P requires an argument.\n");
-                usage(argv[0]);
-                exit(EXIT_FAILURE);
-            }
-            prefix = argv[++i];
-            prefix_len = strlen(prefix);
-            continue;
+    while (1) {
+        int c;
+        const struct option longopts[] = {
+            {"help", 0, 0, 'h'},
+            {"pss", 0, 0, 'p'},
+            {"uss", 0, 0, 'u'},
+            {"vss", 0, 0, 'v'},
+            {"rss", 0, 0, 'r'},
+            {"reverse", 0, 0, 'R'},
+            {"path", required_argument, 0, 'P'},
+            {0, 0, 0, 0}
+        };
+        c = getopt_long(argc, argv, "hpP:uvrR", longopts, NULL);
+        if (c < 0) {
+            break;
         }
-        if (!strcmp(argv[i], "-v")) { compfn = &sort_by_vss; continue; }
-        if (!strcmp(argv[i], "-r")) { compfn = &sort_by_rss; continue; }
-        if (!strcmp(argv[i], "-p")) { compfn = &sort_by_pss; continue; }
-        if (!strcmp(argv[i], "-u")) { compfn = &sort_by_uss; continue; }
-        if (!strcmp(argv[i], "-R")) { order *= -1; continue; }
-        if (!strcmp(argv[i], "-h")) { usage(argv[0]); exit(0); }
-        fprintf(stderr, "Invalid argument \"%s\".\n", argv[i]);
-        usage(argv[0]);
-        exit(EXIT_FAILURE);
+        /* Alphabetical cases */
+        switch (c) {
+        case 'h':
+            usage(argv[0]);
+            exit(EXIT_SUCCESS);
+        case 'p':
+            compfn = &sort_by_pss;
+            break;
+        case 'P':
+            prefix = optarg;
+            prefix_len = strlen(prefix);
+            break;
+        case 'u':
+            compfn = &sort_by_uss;
+            break;
+        case 'v':
+            compfn = &sort_by_vss;
+            break;
+        case 'r':
+            compfn = &sort_by_rss;
+            break;
+        case 'R':
+            order *= -1;
+            break;
+        case '?':
+            fprintf(stderr, "Invalid argument \"%s\".\n", argv[optind - 1]);
+            usage(argv[0]);
+            exit(EXIT_FAILURE);
+        default:
+            abort();
+        }
     }
+
+    argc -= optind;
+    argv += optind;
 
     libraries = malloc(INIT_LIBRARIES * sizeof(struct library_info *));
     libraries_count = 0; libraries_size = INIT_LIBRARIES;
