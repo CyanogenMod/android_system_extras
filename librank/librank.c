@@ -217,6 +217,8 @@ int main(int argc, char *argv[]) {
     int i, j, error;
     int perm;
     bool all;
+    uint64_t required_flags;
+    uint64_t flags_mask;
 
     signal(SIGPIPE, SIG_IGN);
     compfn = &sort_by_pss;
@@ -226,11 +228,15 @@ int main(int argc, char *argv[]) {
     opterr = 0;
     perm = 0;
     all = false;
+    required_flags = 0;
+    flags_mask = 0;
 
     while (1) {
         int c;
         const struct option longopts[] = {
             {"all", 0, 0, 'a'},
+            {"cached", 0, 0, 'c'},
+            {"nocached", 0, 0, 'C'},
             {"help", 0, 0, 'h'},
             {"pss", 0, 0, 'p'},
             {"uss", 0, 0, 'u'},
@@ -241,7 +247,7 @@ int main(int argc, char *argv[]) {
             {"perm", required_argument, 0, 'm'},
             {0, 0, 0, 0}
         };
-        c = getopt_long(argc, argv, "ahm:pP:uvrR", longopts, NULL);
+        c = getopt_long(argc, argv, "acChm:pP:uvrR", longopts, NULL);
         if (c < 0) {
             break;
         }
@@ -249,6 +255,14 @@ int main(int argc, char *argv[]) {
         switch (c) {
         case 'a':
             all = true;
+            break;
+        case 'c':
+            required_flags = 0;
+            flags_mask = PM_PAGE_SWAPBACKED;
+            break;
+        case 'C':
+            required_flags = PM_PAGE_SWAPBACKED;
+            flags_mask = PM_PAGE_SWAPBACKED;
             break;
         case 'h':
             usage(argv[0]);
@@ -331,7 +345,8 @@ int main(int argc, char *argv[]) {
 
             mi = get_mapping(li, pi);
             
-            error = pm_map_usage(maps[j], &map_usage);
+            error = pm_map_usage_flags(maps[j], &map_usage, flags_mask,
+                                       required_flags);
             if (error) {
                 fprintf(stderr, "Error getting map memory usage of "
                                 "map %s in process %d.\n",
@@ -387,6 +402,8 @@ static void usage(char *myname) {
                     "    -P /path  Limit libraries displayed to those in path.\n"
                     "    -R  Reverse sort order (default is descending).\n"
                     "    -m [r][w][x] Only list pages that exactly match permissions\n"
+                    "    -c  Only show cached (storage backed) pages\n"
+                    "    -C  Only show non-cached (ram/swap backed) pages\n"
                     "    -h  Display this help screen.\n",
     myname);
 }
