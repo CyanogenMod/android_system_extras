@@ -184,6 +184,11 @@ int pm_map_pagemap(pm_map_t *map, uint64_t **pagemap_out, size_t *len);
 /* Get the memory usage of this map alone. */
 int pm_map_usage(pm_map_t *map, pm_memusage_t *usage_out);
 
+/* Get the memory usage of this map alone, only counting pages with specified
+ * flags. */
+int pm_map_usage_flags(pm_map_t *map, pm_memusage_t *usage_out,
+                        uint64_t flags_mask, uint64_t required_flags);
+
 /* Get the working set of this map alone. */
 int pm_map_workingset(pm_map_t *map, pm_memusage_t *ws_out);
 

@@ -27,7 +27,8 @@ int pm_map_pagemap(pm_map_t *map, uint64_t **pagemap_out, size_t *len) {
                                     pagemap_out, len);
 }
 
-int pm_map_usage(pm_map_t *map, pm_memusage_t *usage_out) {
+int pm_map_usage_flags(pm_map_t *map, pm_memusage_t *usage_out,
+                        uint64_t flags_mask, uint64_t required_flags) {
     uint64_t *pagemap;
     size_t len, i;
     uint64_t count;
@@ -49,6 +50,16 @@ int pm_map_usage(pm_map_t *map, pm_memusage_t *usage_out) {
             PM_PAGEMAP_SWAPPED(pagemap[i]))
             continue;
 
+        if (flags_mask) {
+            uint64_t flags;
+            error = pm_kernel_flags(map->proc->ker, PM_PAGEMAP_PFN(pagemap[i]),
+                                    &flags);
+            if (error) goto out;
+
+            if ((flags & flags_mask) != required_flags)
+                continue;
+        }
+
         error = pm_kernel_count(map->proc->ker, PM_PAGEMAP_PFN(pagemap[i]),
                                 &count);
         if (error) goto out;
@@ -66,6 +77,10 @@ out:
     free(pagemap);
 
     return error;
+}
+
+int pm_map_usage(pm_map_t *map, pm_memusage_t *usage_out) {
+    return pm_map_usage_flags(map, usage_out, 0, 0);
 }
 
 int pm_map_workingset(pm_map_t *map, pm_memusage_t *ws_out) {
