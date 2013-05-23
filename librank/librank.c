@@ -18,6 +18,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <getopt.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
@@ -70,13 +71,19 @@ struct library_info **libraries;
 int libraries_count;
 int libraries_size;
 
-struct library_info *get_library(char *name) {
+struct library_info *get_library(const char *name, bool all) {
     int i;
     struct library_info *library;
 
-    for (i = 0; library_name_blacklist[i]; i++)
-        if (!strcmp(name, library_name_blacklist[i]))
-            return NULL;
+    if (!all) {
+        for (i = 0; library_name_blacklist[i]; i++)
+            if (!strcmp(name, library_name_blacklist[i]))
+                return NULL;
+    } else {
+        if (name[0] == 0) {
+            name = "[anon]";
+        }
+    }
 
     for (i = 0; i < libraries_count; i++) {
         if (!strcmp(libraries[i]->name, name))
@@ -209,6 +216,7 @@ int main(int argc, char *argv[]) {
 
     int i, j, error;
     int perm;
+    bool all;
 
     signal(SIGPIPE, SIG_IGN);
     compfn = &sort_by_pss;
@@ -217,10 +225,12 @@ int main(int argc, char *argv[]) {
     prefix_len = 0;
     opterr = 0;
     perm = 0;
+    all = false;
 
     while (1) {
         int c;
         const struct option longopts[] = {
+            {"all", 0, 0, 'a'},
             {"help", 0, 0, 'h'},
             {"pss", 0, 0, 'p'},
             {"uss", 0, 0, 'u'},
@@ -231,12 +241,15 @@ int main(int argc, char *argv[]) {
             {"perm", required_argument, 0, 'm'},
             {0, 0, 0, 0}
         };
-        c = getopt_long(argc, argv, "hm:pP:uvrR", longopts, NULL);
+        c = getopt_long(argc, argv, "ahm:pP:uvrR", longopts, NULL);
         if (c < 0) {
             break;
         }
         /* Alphabetical cases */
         switch (c) {
+        case 'a':
+            all = true;
+            break;
         case 'h':
             usage(argv[0]);
             exit(EXIT_SUCCESS);
@@ -312,7 +325,7 @@ int main(int argc, char *argv[]) {
             if (perm && (pm_map_flags(maps[j]) & PM_MAP_PERMISSIONS) != perm)
                 continue;
 
-            li = get_library(pm_map_name(maps[j]));
+            li = get_library(pm_map_name(maps[j]), all);
             if (!li)
                 continue;
 
@@ -370,6 +383,7 @@ static void usage(char *myname) {
                     "    -p  Sort processes by PSS.\n"
                     "    -u  Sort processes by USS.\n"
                     "        (Default sort order is PSS.)\n"
+                    "    -a  Show all mappings, including stack, heap and anon.\n"
                     "    -P /path  Limit libraries displayed to those in path.\n"
                     "    -R  Reverse sort order (default is descending).\n"
                     "    -m [r][w][x] Only list pages that exactly match permissions\n"
