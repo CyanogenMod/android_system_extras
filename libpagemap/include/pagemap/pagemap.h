@@ -119,10 +119,10 @@ int pm_kernel_flags(pm_kernel_t *ker, unsigned long pfn, uint64_t *flags_out);
 #define PM_PAGE_NOPAGE        (1 << 20)
 
 /* for kernels >= 2.6.32 */
-#define KPF_KSM               (1 << 21)
+#define PM_PAGE_KSM           (1 << 21)
 
 /* for kernels >= 3.4 */
-#define KPF_THP               (1 << 22)
+#define PM_PAGE_THP           (1 << 22)
 
 /* Destroy a pm_kernel_t. */
 int pm_kernel_destroy(pm_kernel_t *ker);
