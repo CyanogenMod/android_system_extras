@@ -17,7 +17,7 @@
 #include <pagemap/pagemap.h>
 
 void pm_memusage_zero(pm_memusage_t *mu) {
-    mu->vss = mu->rss = mu->pss = mu->uss = 0;
+    mu->vss = mu->rss = mu->pss = mu->uss = mu->swap = 0;
 }
 
 void pm_memusage_add(pm_memusage_t *a, pm_memusage_t *b) {
@@ -25,4 +25,5 @@ void pm_memusage_add(pm_memusage_t *a, pm_memusage_t *b) {
     a->rss += b->rss;
     a->pss += b->pss;
     a->uss += b->uss;
+    a->swap += b->swap;
 }

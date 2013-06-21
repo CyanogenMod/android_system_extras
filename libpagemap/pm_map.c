@@ -46,27 +46,30 @@ int pm_map_usage_flags(pm_map_t *map, pm_memusage_t *usage_out,
     for (i = 0; i < len; i++) {
         usage.vss += map->proc->ker->pagesize;
 
-        if (!PM_PAGEMAP_PRESENT(pagemap[i]) ||
-            PM_PAGEMAP_SWAPPED(pagemap[i]))
+        if (!PM_PAGEMAP_PRESENT(pagemap[i]))
             continue;
 
-        if (flags_mask) {
-            uint64_t flags;
-            error = pm_kernel_flags(map->proc->ker, PM_PAGEMAP_PFN(pagemap[i]),
-                                    &flags);
+        if (!PM_PAGEMAP_SWAPPED(pagemap[i])) {
+            if (flags_mask) {
+                uint64_t flags;
+                error = pm_kernel_flags(map->proc->ker, PM_PAGEMAP_PFN(pagemap[i]),
+                                        &flags);
+                if (error) goto out;
+
+                if ((flags & flags_mask) != required_flags)
+                    continue;
+            }
+
+            error = pm_kernel_count(map->proc->ker, PM_PAGEMAP_PFN(pagemap[i]),
+                                    &count);
             if (error) goto out;
 
-            if ((flags & flags_mask) != required_flags)
-                continue;
+            usage.rss += (count >= 1) ? map->proc->ker->pagesize : (0);
+            usage.pss += (count >= 1) ? (map->proc->ker->pagesize / count) : (0);
+            usage.uss += (count == 1) ? (map->proc->ker->pagesize) : (0);
+        } else {
+            usage.swap += map->proc->ker->pagesize;
         }
-
-        error = pm_kernel_count(map->proc->ker, PM_PAGEMAP_PFN(pagemap[i]),
-                                &count);
-        if (error) goto out;
-
-        usage.rss += (count >= 1) ? (map->proc->ker->pagesize) : (0);
-        usage.pss += (count >= 1) ? (map->proc->ker->pagesize / count) : (0);
-        usage.uss += (count == 1) ? (map->proc->ker->pagesize) : (0);
     }
 
     memcpy(usage_out, &usage, sizeof(usage));
