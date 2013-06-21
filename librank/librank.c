@@ -240,6 +240,7 @@ int main(int argc, char *argv[]) {
             {"all", 0, 0, 'a'},
             {"cached", 0, 0, 'c'},
             {"nocached", 0, 0, 'C'},
+            {"ksm", 0, 0, 'k'},
             {"help", 0, 0, 'h'},
             {"pss", 0, 0, 'p'},
             {"uss", 0, 0, 'u'},
@@ -251,7 +252,7 @@ int main(int argc, char *argv[]) {
             {"perm", required_argument, 0, 'm'},
             {0, 0, 0, 0}
         };
-        c = getopt_long(argc, argv, "acChm:pP:uvrsR", longopts, NULL);
+        c = getopt_long(argc, argv, "acChkm:pP:uvrsR", longopts, NULL);
         if (c < 0) {
             break;
         }
@@ -267,6 +268,10 @@ int main(int argc, char *argv[]) {
         case 'C':
             required_flags = PM_PAGE_SWAPBACKED;
             flags_mask = PM_PAGE_SWAPBACKED;
+            break;
+        case 'k':
+            required_flags = PM_PAGE_KSM;
+            flags_mask = PM_PAGE_KSM;
             break;
         case 'h':
             usage(argv[0]);
@@ -431,6 +436,7 @@ static void usage(char *myname) {
                     "    -m [r][w][x] Only list pages that exactly match permissions\n"
                     "    -c  Only show cached (storage backed) pages\n"
                     "    -C  Only show non-cached (ram/swap backed) pages\n"
+                    "    -k  Only show pages collapsed by KSM\n"
                     "    -h  Display this help screen.\n",
     myname);
 }
