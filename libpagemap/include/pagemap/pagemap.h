@@ -29,6 +29,7 @@ struct pm_memusage {
     size_t rss;
     size_t pss;
     size_t uss;
+    size_t swap;
 };
 
 /* Clears a memusage. */
