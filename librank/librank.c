@@ -61,6 +61,7 @@ declare_sort(vss);
 declare_sort(rss);
 declare_sort(pss);
 declare_sort(uss);
+declare_sort(swap);
 
 #define INIT_LIBRARIES 16
 #define INIT_MAPPINGS 4
@@ -220,6 +221,8 @@ int main(int argc, char *argv[]) {
     uint64_t required_flags;
     uint64_t flags_mask;
 
+    bool has_swap = false;
+
     signal(SIGPIPE, SIG_IGN);
     compfn = &sort_by_pss;
     order = -1;
@@ -242,12 +245,13 @@ int main(int argc, char *argv[]) {
             {"uss", 0, 0, 'u'},
             {"vss", 0, 0, 'v'},
             {"rss", 0, 0, 'r'},
+            {"swap", 0, 0, 's'},
             {"reverse", 0, 0, 'R'},
             {"path", required_argument, 0, 'P'},
             {"perm", required_argument, 0, 'm'},
             {0, 0, 0, 0}
         };
-        c = getopt_long(argc, argv, "acChm:pP:uvrR", longopts, NULL);
+        c = getopt_long(argc, argv, "acChm:pP:uvrsR", longopts, NULL);
         if (c < 0) {
             break;
         }
@@ -285,6 +289,9 @@ int main(int argc, char *argv[]) {
             break;
         case 'r':
             compfn = &sort_by_rss;
+            break;
+        case 's':
+            compfn = &sort_by_swap;
             break;
         case 'R':
             order *= -1;
@@ -353,12 +360,23 @@ int main(int argc, char *argv[]) {
                         pm_map_name(maps[j]), proc->pid);
                 exit(EXIT_FAILURE);
             }
+
+            if (map_usage.swap) {
+                has_swap = true;
+            }
+
             pm_memusage_add(&mi->usage, &map_usage);
             pm_memusage_add(&li->total_usage, &map_usage);
         }
     }
 
-    printf(          " %6s   %6s   %6s   %6s   %6s  %s\n", "RSStot", "VSS", "RSS", "PSS", "USS", "Name/PID");
+    printf(" %6s   %6s   %6s   %6s   %6s  ", "RSStot", "VSS", "RSS", "PSS", "USS");
+
+    if (has_swap) {
+        printf(" %6s  ", "Swap");
+    }
+
+    printf("Name/PID\n");
     fflush(stdout);
 
     qsort(libraries, libraries_count, sizeof(libraries[0]), &licmp);
@@ -366,7 +384,11 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < libraries_count; i++) {
         li = libraries[i];
 
-        printf("%6dK   %6s   %6s   %6s   %6s  %s\n", li->total_usage.pss / 1024, "", "", "", "", li->name);
+        printf("%6dK   %6s   %6s   %6s   %6s  ", li->total_usage.pss / 1024, "", "", "", "");
+        if (has_swap) {
+            printf(" %6s  ", "");
+        }
+        printf("%s\n", li->name);
         fflush(stdout);
 
         qsort(li->mappings, li->mappings_count, sizeof(li->mappings[0]), compfn);
@@ -374,11 +396,15 @@ int main(int argc, char *argv[]) {
         for (j = 0; j < li->mappings_count; j++) {
             mi = li->mappings[j];
             pi = mi->proc;
-            printf(   " %6s  %6dK  %6dK  %6dK  %6dK    %s [%d]\n", "",
+            printf(   " %6s  %6dK  %6dK  %6dK  %6dK  ", "",
                 mi->usage.vss / 1024,
                 mi->usage.rss / 1024,
                 mi->usage.pss / 1024,
-                mi->usage.uss / 1024,
+                mi->usage.uss / 1024);
+            if (has_swap) {
+                printf("%6dK  ", mi->usage.swap / 1024);
+            }
+            printf("  %s [%d]\n",
                 pi->cmdline,
                 pi->pid);
         }
@@ -390,13 +416,14 @@ int main(int argc, char *argv[]) {
 }
 
 static void usage(char *myname) {
-    fprintf(stderr, "Usage: %s [ -P | -L ] [ -v | -r | -p | -u | -h ]\n"
+    fprintf(stderr, "Usage: %s [ -P | -L ] [ -v | -r | -p | -u | -s | -h ]\n"
                     "\n"
                     "Sort options:\n"
                     "    -v  Sort processes by VSS.\n"
                     "    -r  Sort processes by RSS.\n"
                     "    -p  Sort processes by PSS.\n"
                     "    -u  Sort processes by USS.\n"
+                    "    -s  Sort processes by swap.\n"
                     "        (Default sort order is PSS.)\n"
                     "    -a  Show all mappings, including stack, heap and anon.\n"
                     "    -P /path  Limit libraries displayed to those in path.\n"
@@ -445,3 +472,4 @@ create_sort(vss, numcmp)
 create_sort(rss, numcmp)
 create_sort(pss, numcmp)
 create_sort(uss, numcmp)
+create_sort(swap, numcmp)
