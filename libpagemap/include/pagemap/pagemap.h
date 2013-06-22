@@ -137,6 +137,11 @@ int pm_process_create(pm_kernel_t *ker, pid_t pid, pm_process_t **proc_out);
 /* Get the total memory usage of a process and store in *usage_out. */
 int pm_process_usage(pm_process_t *proc, pm_memusage_t *usage_out);
 
+/* Get the total memory usage of a process and store in *usage_out, only
+ * counting pages with specified flags. */
+int pm_process_usage_flags(pm_process_t *proc, pm_memusage_t *usage_out,
+                        uint64_t flags_mask, uint64_t required_flags);
+
 /* Get the working set of a process (if ws_out != NULL), and reset it
  * (if reset != 0). */
 int pm_process_workingset(pm_process_t *proc, pm_memusage_t *ws_out, int reset);
