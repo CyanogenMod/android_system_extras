@@ -128,6 +128,8 @@ int main(int argc, char *argv[]) {
     char cmdline[256]; // this must be within the range of int
     int error;
     bool has_swap = false;
+    uint64_t required_flags = 0;
+    uint64_t flags_mask = 0;
 
     #define WS_OFF   0
     #define WS_ONLY  1
@@ -148,6 +150,9 @@ int main(int argc, char *argv[]) {
         if (!strcmp(argv[arg], "-p")) { compfn = &sort_by_pss; continue; }
         if (!strcmp(argv[arg], "-u")) { compfn = &sort_by_uss; continue; }
         if (!strcmp(argv[arg], "-s")) { compfn = &sort_by_swap; continue; }
+        if (!strcmp(argv[arg], "-c")) { required_flags = 0; flags_mask = PM_PAGE_SWAPBACKED; continue; }
+        if (!strcmp(argv[arg], "-C")) { required_flags = flags_mask = PM_PAGE_SWAPBACKED; continue; }
+        if (!strcmp(argv[arg], "-k")) { required_flags = flags_mask = PM_PAGE_KSM; continue; }
         if (!strcmp(argv[arg], "-w")) { ws = WS_ONLY; continue; }
         if (!strcmp(argv[arg], "-W")) { ws = WS_RESET; continue; }
         if (!strcmp(argv[arg], "-R")) { order *= -1; continue; }
@@ -192,7 +197,8 @@ int main(int argc, char *argv[]) {
 
         switch (ws) {
         case WS_OFF:
-            error = pm_process_usage(proc, &procs[i]->usage);
+            error = pm_process_usage_flags(proc, &procs[i]->usage, flags_mask,
+                                           required_flags);
             break;
         case WS_ONLY:
             error = pm_process_workingset(proc, &procs[i]->usage, 0);
@@ -336,6 +342,9 @@ static void usage(char *myname) {
                     "    -s  Sort by swap.\n"
                     "        (Default sort order is PSS.)\n"
                     "    -R  Reverse sort order (default is descending).\n"
+                    "    -c  Only show cached (storage backed) pages\n"
+                    "    -C  Only show non-cached (ram/swap backed) pages\n"
+                    "    -k  Only show pages collapsed by KSM\n"
                     "    -w  Display statistics for working set only.\n"
                     "    -W  Reset working set of all processes.\n"
                     "    -h  Display this help screen.\n",
