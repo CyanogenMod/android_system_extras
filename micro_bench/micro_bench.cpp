@@ -37,25 +37,6 @@
 // The maximum number of arguments that a benchmark will accept.
 #define MAX_ARGS    2
 
-// Use macros to compute values to try and avoid disturbing memory as much
-// as possible after each iteration.
-#define COMPUTE_AVERAGE_KB(avg_kb, bytes, time_ns) \
-        avg_kb = ((bytes) / 1024.0) / ((double)(time_ns) / NS_PER_SEC);
-
-#define COMPUTE_RUNNING(avg, running_avg, square_avg, cur_idx) \
-    running_avg = ((running_avg) / ((cur_idx) + 1)) * (cur_idx) + (avg) / ((cur_idx) + 1); \
-    square_avg = ((square_avg) / ((cur_idx) + 1)) * (cur_idx) + ((avg) / ((cur_idx) + 1)) * (avg);
-#define COMPUTE_MIN_MAX(avg, min, max) \
-    if (avg < min || min == 0.0) { \
-        min = avg; \
-    } \
-    if (avg > max) { \
-        max = avg; \
-    }
-
-#define GET_STD_DEV(running_avg, square_avg) \
-    sqrt((square_avg) - (running_avg) * (running_avg))
-
 // Contains information about benchmark options.
 typedef struct {
     bool print_average;
@@ -74,10 +55,17 @@ typedef struct {
     int num_args;
 } command_data_t;
 
+typedef void *(*void_func_t)();
+typedef void *(*memcpy_func_t)(void *, const void *, size_t);
+typedef void *(*memset_func_t)(void *, int, size_t);
+typedef int (*strcmp_func_t)(const char *, const char *);
+typedef char *(*strcpy_func_t)(char *, const char *);
+
 // Struct that contains a mapping of benchmark name to benchmark function.
 typedef struct {
     const char *name;
-    int (*ptr)(const command_data_t &cmd_data);
+    int (*ptr)(const char *, const command_data_t &, void_func_t func);
+    void_func_t func;
 } function_t;
 
 // Get the current time in nanoseconds.
@@ -115,124 +103,118 @@ uint8_t *allocateAlignedMemory(size_t size, int alignment, int or_mask) {
   return getAlignedMemory((uint8_t*)ptr, alignment, or_mask);
 }
 
-int benchmarkSleep(const command_data_t &cmd_data) {
-    uint64_t time_ns;
+static inline double computeAverage(uint64_t time_ns, int size, int copies) {
+    return ((size/1024.0) * copies) / ((double)time_ns/NS_PER_SEC);
+}
 
+static inline double computeRunningAvg(double avg, double running_avg, size_t cur_idx) {
+    return (running_avg / (cur_idx + 1)) * cur_idx + (avg / (cur_idx + 1));
+}
+
+static inline double computeRunningSquareAvg(double avg, double square_avg, size_t cur_idx) {
+    return (square_avg / (cur_idx + 1)) * cur_idx + (avg / (cur_idx + 1)) * avg;
+}
+
+static inline double computeStdDev(double square_avg, double running_avg) {
+    return sqrt(square_avg - running_avg * running_avg);
+}
+
+static inline void printIter(uint64_t time_ns, const char *name, int size, int copies, double avg) {
+    printf("%s %dx%d bytes took %.06f seconds (%f MB/s)\n",
+           name, copies, size, (double)time_ns/NS_PER_SEC, avg/1024.0);
+}
+
+static inline void printSummary(uint64_t time_ns, const char *name, int size, int copies, double running_avg, double std_dev, double min, double max) {
+    printf("  %s %dx%d bytes average %.2f MB/s std dev %.4f min %.2f MB/s max %.2f MB/s\n",
+           name, copies, size, running_avg/1024.0, std_dev/1024.0, min/1024.0,
+           max/1024.0);
+}
+
+#define MAINLOOP(cmd_data, BENCH, COMPUTE_AVG, PRINT_ITER, PRINT_AVG) \
+    uint64_t time_ns;                                                 \
+    int iters = cmd_data.args[1];                                     \
+    bool print_average = cmd_data.print_average;                      \
+    bool print_each_iter = cmd_data.print_each_iter;                  \
+    double min = 0.0, max = 0.0, running_avg = 0.0, square_avg = 0.0; \
+    double avg;                                                       \
+    for (int i = 0; iters == -1 || i < iters; i++) {                  \
+        time_ns = nanoTime();                                         \
+        BENCH;                                                        \
+        time_ns = nanoTime() - time_ns;                               \
+        avg = COMPUTE_AVG;                                            \
+        if (print_average) {                                          \
+            running_avg = computeRunningAvg(avg, running_avg, i);     \
+            square_avg = computeRunningSquareAvg(avg, square_avg, i); \
+            if (min == 0.0 || avg < min) {                            \
+                min = avg;                                            \
+            }                                                         \
+            if (avg > max) {                                          \
+                max = avg;                                            \
+            }                                                         \
+        }                                                             \
+        if (print_each_iter) {                                        \
+            PRINT_ITER;                                               \
+        }                                                             \
+    }                                                                 \
+    if (print_average) {                                              \
+        PRINT_AVG;                                                    \
+    }
+
+#define MAINLOOP_DATA(name, cmd_data, size, BENCH)                    \
+    int copies = cmd_data.data_size/size;                             \
+    int j;                                                            \
+    MAINLOOP(cmd_data,                                                \
+             for (j = 0; j < copies; j++) {                           \
+                 BENCH;                                               \
+             },                                                       \
+             computeAverage(time_ns, size, copies),                   \
+             printIter(time_ns, name, size, copies, avg),             \
+             double std_dev = computeStdDev(square_avg, running_avg); \
+             printSummary(time_ns, name, size, copies, running_avg,   \
+                          std_dev, min, max));
+
+int benchmarkSleep(const char *name, const command_data_t &cmd_data, void_func_t func) {
     int delay = cmd_data.args[0];
-    int iters = cmd_data.args[1];
-    bool print_each_iter = cmd_data.print_each_iter;
-    bool print_average = cmd_data.print_average;
-    double avg, running_avg = 0.0, square_avg = 0.0;
-    double max = 0.0, min = 0.0;
-    for (int i = 0; iters == -1 || i < iters; i++) {
-        time_ns = nanoTime();
-        sleep(delay);
-        time_ns = nanoTime() - time_ns;
-
-        avg = (double)time_ns / NS_PER_SEC;
-
-        if (print_average) {
-            COMPUTE_RUNNING(avg, running_avg, square_avg, i);
-            COMPUTE_MIN_MAX(avg, min, max);
-        }
-
-        if (print_each_iter) {
-            printf("sleep(%d) took %.06f seconds\n", delay, avg);
-        }
-    }
-
-    if (print_average) {
-        printf("  sleep(%d) average %.06f seconds std dev %f min %.06f seconds max %0.6f seconds\n", delay,
-               running_avg, GET_STD_DEV(running_avg, square_avg),
-               min, max);
-    }
+    MAINLOOP(cmd_data, sleep(delay),
+             (double)time_ns/NS_PER_SEC,
+             printf("sleep(%d) took %.06f seconds\n", delay, avg);,
+             printf("  sleep(%d) average %.06f seconds std dev %f min %.06f seconds max %0.6f seconds\n", \
+                    delay, running_avg, computeStdDev(square_avg, running_avg), \
+                    min, max));
 
     return 0;
 }
 
-int benchmarkCpu(const command_data_t &cmd_data) {
+int benchmarkCpu(const char *name, const command_data_t &cmd_data, void_func_t func) {
     // Use volatile so that the loop is not optimized away by the compiler.
     volatile int cpu_foo;
 
-    uint64_t time_ns;
-    int iters = cmd_data.args[1];
-    bool print_each_iter = cmd_data.print_each_iter;
-    bool print_average = cmd_data.print_average;
-    double avg, running_avg = 0.0, square_avg = 0.0;
-    double max = 0.0, min = 0.0;
-    for (int i = 0; iters == -1 || i < iters; i++) {
-        time_ns = nanoTime();
-        for (cpu_foo = 0; cpu_foo < 100000000; cpu_foo++);
-        time_ns = nanoTime() - time_ns;
-
-        avg = (double)time_ns / NS_PER_SEC;
-
-        if (print_average) {
-            COMPUTE_RUNNING(avg, running_avg, square_avg, i);
-            COMPUTE_MIN_MAX(avg, min, max);
-        }
-
-        if (print_each_iter) {
-            printf("cpu took %.06f seconds\n", avg);
-        }
-    }
-
-    if (print_average) {
-        printf("  cpu average %.06f seconds std dev %f min %0.6f seconds max %0.6f seconds\n",
-               running_avg, GET_STD_DEV(running_avg, square_avg),
-               min, max);
-    }
+    MAINLOOP(cmd_data,
+             for (cpu_foo = 0; cpu_foo < 100000000; cpu_foo++),
+             (double)time_ns/NS_PER_SEC,
+             printf("cpu took %.06f seconds\n", avg),
+             printf("  cpu average %.06f seconds std dev %f min %0.6f seconds max %0.6f seconds\n", \
+                    running_avg, computeStdDev(square_avg, running_avg), min, max));
 
     return 0;
 }
 
-int benchmarkMemset(const command_data_t &cmd_data) {
+int benchmarkMemset(const char *name, const command_data_t &cmd_data, void_func_t func) {
     int size = cmd_data.args[0];
-    int iters = cmd_data.args[1];
+    memset_func_t memset_func = reinterpret_cast<memset_func_t>(func);
 
     uint8_t *dst = allocateAlignedMemory(size, cmd_data.dst_align, cmd_data.dst_or_mask);
     if (!dst)
         return -1;
 
-    double avg_kb, running_avg_kb = 0.0, square_avg_kb = 0.0;
-    double max_kb = 0.0, min_kb = 0.0;
-    uint64_t time_ns;
-    int j;
-    bool print_average = cmd_data.print_average;
-    bool print_each_iter = cmd_data.print_each_iter;
-    int copies = cmd_data.data_size/size;
-    for (int i = 0; iters == -1 || i < iters; i++) {
-        time_ns = nanoTime();
-        for (j = 0; j < copies; j++)
-            memset(dst, 0, size);
-        time_ns = nanoTime() - time_ns;
+    MAINLOOP_DATA(name, cmd_data, size, memset_func(dst, 0, size));
 
-        // Compute in kb to avoid any overflows.
-        COMPUTE_AVERAGE_KB(avg_kb, copies * size, time_ns);
-
-        if (print_average) {
-            COMPUTE_RUNNING(avg_kb, running_avg_kb, square_avg_kb, i);
-            COMPUTE_MIN_MAX(avg_kb, min_kb, max_kb);
-        }
-
-        if (print_each_iter) {
-            printf("memset %dx%d bytes took %.06f seconds (%f MB/s)\n",
-                   copies, size, (double)time_ns / NS_PER_SEC, avg_kb / 1024.0);
-        }
-    }
-
-    if (print_average) {
-        printf("  memset %dx%d bytes average %.2f MB/s std dev %.4f min %.2f MB/s max %.2f MB/s\n",
-               copies, size, running_avg_kb / 1024.0,
-               GET_STD_DEV(running_avg_kb, square_avg_kb) / 1024.0,
-               min_kb / 1024.0, max_kb / 1024.0);
-    }
     return 0;
 }
 
-int benchmarkMemcpy(const command_data_t &cmd_data) {
+int benchmarkMemcpy(const char *name, const command_data_t &cmd_data, void_func_t func) {
     int size = cmd_data.args[0];
-    int iters = cmd_data.args[1];
+    memcpy_func_t memcpy_func = reinterpret_cast<memcpy_func_t>(func);
 
     uint8_t *src = allocateAlignedMemory(size, cmd_data.src_align, cmd_data.src_or_mask);
     if (!src)
@@ -243,55 +225,41 @@ int benchmarkMemcpy(const command_data_t &cmd_data) {
 
     // Initialize the source and destination to known values.
     // If not initialized, the benchmark results are skewed.
-    memset(src, 0xffff, size);
+    memset(src, 0xff, size);
     memset(dst, 0, size);
 
-    uint64_t time_ns;
-    double avg_kb, running_avg_kb = 0.0, square_avg_kb = 0.0;
-    double max_kb = 0.0, min_kb = 0.0;
-    int j;
-    bool print_average = cmd_data.print_average;
-    bool print_each_iter = cmd_data.print_each_iter;
-    int copies = cmd_data.data_size / size;
-    for (int i = 0; iters == -1 || i < iters; i++) {
-        time_ns = nanoTime();
-        for (j = 0; j < copies; j++)
-            memcpy(dst, src, size);
-        time_ns = nanoTime() - time_ns;
+    MAINLOOP_DATA(name, cmd_data, size, memcpy_func(dst, src, size));
 
-        // Compute in kb to avoid any overflows.
-        COMPUTE_AVERAGE_KB(avg_kb, copies * size, time_ns);
-
-        if (print_average) {
-            COMPUTE_RUNNING(avg_kb, running_avg_kb, square_avg_kb, i);
-            COMPUTE_MIN_MAX(avg_kb, min_kb, max_kb);
-        }
-
-        if (print_each_iter) {
-            printf("memcpy %dx%d bytes took %.06f seconds (%f MB/s)\n",
-                   copies, size, (double)time_ns / NS_PER_SEC, avg_kb / 1024.0);
-        }
-    }
-    if (print_average) {
-        printf("  memcpy %dx%d bytes average %.2f MB/s std dev %.4f min %.2f MB/s max %.2f MB/s\n",
-               copies, size, running_avg_kb/1024.0,
-               GET_STD_DEV(running_avg_kb, square_avg_kb) / 1024.0,
-               min_kb / 1024.0, max_kb / 1024.0);
-    }
     return 0;
 }
 
-int benchmarkStrcmp(const command_data_t &cmd_data) {
+int benchmarkMemread(const char *name, const command_data_t &cmd_data, void_func_t func) {
     int size = cmd_data.args[0];
-    int iters = cmd_data.args[1];
 
-    // Allocate a large chunk of memory to hold both strings.
-    uint8_t *memory = (uint8_t*)malloc(2*size + 2048);
-    if (!memory)
+    uint32_t *src = reinterpret_cast<uint32_t*>(malloc(size));
+    if (!src)
         return -1;
+    memset(src, 0xff, size);
 
-    char *string1 = reinterpret_cast<char*>(getAlignedMemory(memory, cmd_data.src_align, cmd_data.src_or_mask));
-    char *string2 = reinterpret_cast<char*>(getAlignedMemory((uint8_t*)string1+size, cmd_data.dst_align, cmd_data.dst_or_mask));
+    // Use volatile so the compiler does not optimize away the reads.
+    volatile int foo;
+    size_t k;
+    MAINLOOP_DATA(name, cmd_data, size,
+                  for (k = 0; k < size/sizeof(uint32_t); k++) foo = src[k]);
+
+    return 0;
+}
+
+int benchmarkStrcmp(const char *name, const command_data_t &cmd_data, void_func_t func) {
+    int size = cmd_data.args[0];
+    strcmp_func_t strcmp_func = reinterpret_cast<strcmp_func_t>(func);
+
+    char *string1 = reinterpret_cast<char*>(allocateAlignedMemory(size, cmd_data.src_align, cmd_data.src_or_mask));
+    if (!string1)
+        return -1;
+    char *string2 = reinterpret_cast<char*>(allocateAlignedMemory(size, cmd_data.dst_align, cmd_data.dst_or_mask));
+    if (!string2)
+        return -1;
 
     for (int i = 0; i < size - 1; i++) {
         string1[i] = (char)(32 + (i % 96));
@@ -300,104 +268,46 @@ int benchmarkStrcmp(const command_data_t &cmd_data) {
     string1[size-1] = '\0';
     string2[size-1] = '\0';
 
-    uint64_t time_ns;
-    double avg_kb, running_avg_kb = 0.0, square_avg_kb = 0.0;
-    double max_kb = 0.0, min_kb = 0.0;
-    int j;
-    bool print_average = cmd_data.print_average;
-    bool print_each_iter = cmd_data.print_each_iter;
-    int copies = cmd_data.data_size / size;
+    int retval;
+    MAINLOOP_DATA(name, cmd_data, size,
+                  retval = strcmp_func(string1, string2); \
+                  if (retval != 0) printf("%s failed, return value %d\n", name, retval));
 
-    int retval = 0;
-    for (int i = 0; iters == -1 || i < iters; i++) {
-        time_ns = nanoTime();
-        for (j = 0; j < copies; j++) {
-            retval = strcmp(string1, string2);
-            if (retval != 0) {
-                printf("strcmp failed, return value %d\n", retval);
-            }
-        }
-        time_ns = nanoTime() - time_ns;
-
-        // Compute in kb to avoid any overflows.
-        COMPUTE_AVERAGE_KB(avg_kb, copies * size, time_ns);
-
-        if (print_average) {
-            COMPUTE_RUNNING(avg_kb, running_avg_kb, square_avg_kb, i);
-            COMPUTE_MIN_MAX(avg_kb, min_kb, max_kb);
-        }
-
-        if (print_each_iter) {
-            printf("strcmp %dx%d bytes took %.06f seconds (%f MB/s)\n",
-                   copies, size, (double)time_ns / NS_PER_SEC, avg_kb / 1024.0);
-        }
-    }
-    if (print_average) {
-        printf("  strcmp %dx%d bytes average %.2f MB/s std dev %.4f min %.2f MB/s max %.2f MB/s\n",
-               copies, size, running_avg_kb/1024.0,
-               GET_STD_DEV(running_avg_kb, square_avg_kb) / 1024.0,
-               min_kb / 1024.0, max_kb / 1024.0);
-    }
     return 0;
 }
 
-int benchmarkMemread(const command_data_t &cmd_data) {
+int benchmarkStrcpy(const char *name, const command_data_t &cmd_data, void_func_t func) {
     int size = cmd_data.args[0];
-    int iters = cmd_data.args[1];
+    strcpy_func_t strcpy_func = reinterpret_cast<strcpy_func_t>(func);
 
-    int *src = reinterpret_cast<int*>(malloc(size));
+    char *src = reinterpret_cast<char*>(allocateAlignedMemory(size, cmd_data.src_align, cmd_data.src_or_mask));
     if (!src)
         return -1;
+    char *dst = reinterpret_cast<char*>(allocateAlignedMemory(size, cmd_data.dst_align, cmd_data.dst_or_mask));
+    if (!dst)
+        return -1;
 
-    // Use volatile so the compiler does not optimize away the reads.
-    volatile int foo;
-    uint64_t time_ns;
-    int j, k;
-    double avg_kb, running_avg_kb = 0.0, square_avg_kb = 0.0;
-    double max_kb = 0.0, min_kb = 0.0;
-    bool print_average = cmd_data.print_average;
-    bool print_each_iter = cmd_data.print_each_iter;
-    int c = cmd_data.data_size / size;
-    for (int i = 0; iters == -1 || i < iters; i++) {
-        time_ns = nanoTime();
-        for (j = 0; j < c; j++)
-            for (k = 0; k < size/4; k++)
-                foo = src[k];
-        time_ns = nanoTime() - time_ns;
-
-        // Compute in kb to avoid any overflows.
-        COMPUTE_AVERAGE_KB(avg_kb, c * size, time_ns);
-
-        if (print_average) {
-            COMPUTE_RUNNING(avg_kb, running_avg_kb, square_avg_kb, i);
-            COMPUTE_MIN_MAX(avg_kb, min_kb, max_kb);
-        }
-
-        if (print_each_iter) {
-            printf("read %dx%d bytes took %.06f seconds (%f MB/s)\n",
-                   c, size, (double)time_ns / NS_PER_SEC, avg_kb / 1024.0);
-        }
+    for (int i = 0; i < size - 1; i++) {
+        src[i] = (char)(32 + (i % 96));
     }
+    src[size-1] = '\0';
+    memset(dst, 0, size);
 
-    if (print_average) {
-        printf("  read %dx%d bytes average %.2f MB/s std dev %.4f min %.2f MB/s max %.2f MB/s\n",
-               c, size, running_avg_kb/1024.0,
-               GET_STD_DEV(running_avg_kb, square_avg_kb) / 1024.0,
-               min_kb / 1024.0, max_kb / 1024.0);
-    }
+    MAINLOOP_DATA(name, cmd_data, size, strcpy_func(dst, src));
 
     return 0;
 }
+
 
 // Create the mapping structure.
 function_t function_table[] = {
-    { "sleep", benchmarkSleep },
-    { "cpu", benchmarkCpu },
-    { "memset", benchmarkMemset },
-    { "memcpy", benchmarkMemcpy },
-    { "memread", benchmarkMemread },
-    { "strcmp", benchmarkStrcmp },
-    { NULL, NULL }
+    { "sleep", benchmarkSleep, NULL },
+    { "cpu", benchmarkCpu, NULL },
+    { "memread", benchmarkMemread, NULL },
+    { "memset", benchmarkMemset, reinterpret_cast<void_func_t>(memset) },
+    { "memcpy", benchmarkMemcpy, reinterpret_cast<void_func_t>(memcpy) },
+    { "strcmp", benchmarkStrcmp, reinterpret_cast<void_func_t>(strcmp) },
+    { "strcpy", benchmarkStrcpy, reinterpret_cast<void_func_t>(strcpy) },
 };
 
 void usage() {
@@ -424,12 +334,19 @@ void usage() {
     printf("    --dst_align ALIGN\n");
     printf("      Align the memset destination pointer to ALIGN. The default is to use the\n");
     printf("      value returned by malloc.\n");
-    printf("  micro_bench [--src_align ALIGN] [--dst_align ALIGN] memcpy NUM_BYTES [ITERS]\n");
+    printf("  micro_bench [--src_align ALIGN] [--dst_align ALIGN] strcpy NUM_BYTES [ITERS]\n");
     printf("    --src_align ALIGN\n");
-    printf("      Align the memcpy source pointer to ALIGN. The default is to use the\n");
+    printf("      Align the strcpy source string to ALIGN. The default is to use the\n");
     printf("      value returned by malloc.\n");
     printf("    --dst_align ALIGN\n");
-    printf("      Align the memcpy destination pointer to ALIGN. The default is to use the\n");
+    printf("      Align the strcpy destination string to ALIGN. The default is to use the\n");
+    printf("      value returned by malloc.\n");
+    printf("  micro_bench [--src_align ALIGN] [--dst_align ALIGN] strcmp NUM_BYTES [ITERS]\n");
+    printf("    --src_align ALIGN\n");
+    printf("      Align the first strcmp string to ALIGN. The default is to use the\n");
+    printf("      value returned by malloc.\n");
+    printf("    --dst_align ALIGN\n");
+    printf("      Align the second strcmp string to ALIGN. The default is to use the\n");
     printf("      value returned by malloc.\n");
     printf("  micro_bench memread NUM_BYTES [ITERS]\n");
 }
@@ -487,9 +404,9 @@ function_t *processOptions(int argc, char **argv, command_data_t *cmd_data) {
                 *save_value = (int)strtol(argv[++i], NULL, 0);
             }
         } else if (!command) {
-            for (function_t *function = function_table; function->name != NULL; function++) {
-                if (strcmp(argv[i], function->name) == 0) {
-                    command = function;
+            for (size_t j = 0; j < sizeof(function_table)/sizeof(function_t); j++) {
+                if (strcmp(argv[i], function_table[j].name) == 0) {
+                    command = &function_table[j];
                     break;
                 }
             }
@@ -596,5 +513,5 @@ int main(int argc, char **argv) {
     }
 
     printf("%s\n", command->name);
-    return (*command->ptr)(cmd_data);
+    return (*command->ptr)(command->name, cmd_data, command->func);
 }
