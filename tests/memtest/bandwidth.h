@@ -141,7 +141,7 @@ public:
         memset(_dst, 0, _size);
         bench(1);
         if (memcmp(_src, _dst, _size) != 0) {
-            printf("Strings failed to compare after one loop.\n");
+            printf("Buffers failed to compare after one loop.\n");
             return false;
         }
 
@@ -150,7 +150,7 @@ public:
         _num_loops = 2;
         bench(2);
         if (memcmp(_src, _dst, _size) != 0) {
-            printf("Strings failed to compare after two loops.\n");
+            printf("Buffers failed to compare after two loops.\n");
             return false;
         }
 
@@ -257,17 +257,17 @@ protected:
     }
 };
 
-class CopyVldVstBenchmark : public CopyBandwidthBenchmark {
+class CopyVld1Vst1Benchmark : public CopyBandwidthBenchmark {
 public:
-    CopyVldVstBenchmark() : CopyBandwidthBenchmark() { }
-    virtual ~CopyVldVstBenchmark() {}
+    CopyVld1Vst1Benchmark() : CopyBandwidthBenchmark() { }
+    virtual ~CopyVld1Vst1Benchmark() {}
 
-    const char *getName() { return "vld/vst"; }
+    const char *getName() { return "vld1/vst1"; }
 
     bool usesNeon() { return true; }
 
 protected:
-    // Copy using vld/vst instructions.
+    // Copy using vld1/vst1 instructions.
     void bench(size_t num_loops) {
 #if defined(__ARM_NEON__)
         asm volatile(
@@ -300,6 +300,63 @@ protected:
     }
 };
 
+class CopyVldrVstrBenchmark : public CopyBandwidthBenchmark {
+public:
+    CopyVldrVstrBenchmark() : CopyBandwidthBenchmark() { }
+    virtual ~CopyVldrVstrBenchmark() {}
+
+    const char *getName() { return "vldr/vstr"; }
+
+    bool usesNeon() { return true; }
+
+protected:
+    // Copy using vldr/vstr instructions.
+    void bench(size_t num_loops) {
+#if defined(__ARM_NEON__)
+        asm volatile(
+            "stmfd sp!, {r0,r1,r2,r3,r4}\n"
+
+            "mov r0, %0\n"
+            "mov r1, %1\n"
+            "mov r2, %2\n"
+            "mov r3, %3\n"
+
+            "0:\n"
+            "mov r4, r2, lsr #6\n"
+
+            "1:\n"
+            "vldr d0, [r0, #0]\n"
+            "subs r4, r4, #1\n"
+            "vldr d1, [r0, #8]\n"
+            "vstr d0, [r1, #0]\n"
+            "vldr d0, [r0, #16]\n"
+            "vstr d1, [r1, #8]\n"
+            "vldr d1, [r0, #24]\n"
+            "vstr d0, [r1, #16]\n"
+            "vldr d0, [r0, #32]\n"
+            "vstr d1, [r1, #24]\n"
+            "vldr d1, [r0, #40]\n"
+            "vstr d0, [r1, #32]\n"
+            "vldr d0, [r0, #48]\n"
+            "vstr d1, [r1, #40]\n"
+            "vldr d1, [r0, #56]\n"
+            "vstr d0, [r1, #48]\n"
+            "add r0, r0, #64\n"
+            "vstr d1, [r1, #56]\n"
+            "add r1, r1, #64\n"
+            "bgt 1b\n"
+
+            "sub r0, r0, r2\n"
+            "sub r1, r1, r2\n"
+            "subs r3, r3, #1\n"
+            "bgt 0b\n"
+
+            "ldmfd sp!, {r0,r1,r2,r3,r4}\n"
+        :: "r" (_src), "r" (_dst), "r" (_size), "r" (num_loops) : "r0", "r1", "r2", "r3");
+#endif
+    }
+};
+
 class CopyVldmiaVstmiaBenchmark : public CopyBandwidthBenchmark {
 public:
     CopyVldmiaVstmiaBenchmark() : CopyBandwidthBenchmark() { }
@@ -310,7 +367,7 @@ public:
     bool usesNeon() { return true; }
 
 protected:
-    // Copy using vld/vst instructions.
+    // Copy using vldmia/vstmia instructions.
     void bench(size_t num_loops) {
 #if defined(__ARM_NEON__)
         asm volatile(
@@ -406,7 +463,7 @@ public:
         bench(1);
         for (size_t i = 0; i < _size; i++) {
             if (_buffer[i] != 1) {
-                printf("Strings failed to compare after one loop.\n");
+                printf("Buffer failed to compare after one loop.\n");
                 return false;
             }
         }
@@ -415,7 +472,7 @@ public:
         bench(2);
         for (size_t i = 0; i < _size; i++) {
             if (_buffer[i] != 2) {
-                printf("Strings failed to compare after two loops.\n");
+                printf("Buffer failed to compare after two loops.\n");
                 return false;
             }
         }
@@ -513,12 +570,12 @@ protected:
     }
 };
 
-class WriteVstBenchmark : public WriteBandwidthBenchmark {
+class WriteVst1Benchmark : public WriteBandwidthBenchmark {
 public:
-    WriteVstBenchmark() : WriteBandwidthBenchmark() { }
-    virtual ~WriteVstBenchmark() {}
+    WriteVst1Benchmark() : WriteBandwidthBenchmark() { }
+    virtual ~WriteVst1Benchmark() {}
 
-    const char *getName() { return "vst"; }
+    const char *getName() { return "vst1"; }
 
     bool usesNeon() { return true; }
 
@@ -546,6 +603,55 @@ protected:
             "1:\n"
             "subs r3, r3, #1\n"
             "vst1.8 {d0-d3}, [r0:128]!\n"
+            "bgt 1b\n"
+
+            "sub r0, r0, r1\n"
+            "subs r2, r2, #1\n"
+            "bgt 0b\n"
+
+            "ldmfd sp!, {r0,r1,r2,r3,r4}\n"
+        :: "r" (_buffer), "r" (_size), "r" (num_loops) : "r0", "r1", "r2");
+#endif
+    }
+};
+
+class WriteVstrBenchmark : public WriteBandwidthBenchmark {
+public:
+    WriteVstrBenchmark() : WriteBandwidthBenchmark() { }
+    virtual ~WriteVstrBenchmark() {}
+
+    const char *getName() { return "vstr"; }
+
+    bool usesNeon() { return true; }
+
+protected:
+    // Write a given value using vst.
+    void bench(size_t num_loops) {
+#if defined(__ARM_NEON__)
+        asm volatile(
+            "stmfd sp!, {r0,r1,r2,r3,r4}\n"
+
+            "mov r0, %0\n"
+            "mov r1, %1\n"
+            "mov r2, %2\n"
+            "mov r4, #0\n"
+
+            "0:\n"
+            "mov r3, r1, lsr #5\n"
+
+            "add r4, r4, #1\n"
+            "vdup.8 d0, r4\n"
+            "vmov d1, d0\n"
+            "vmov d2, d0\n"
+            "vmov d3, d0\n"
+
+            "1:\n"
+            "vstr d0, [r0, #0]\n"
+            "subs r3, r3, #1\n"
+            "vstr d1, [r0, #8]\n"
+            "vstr d0, [r0, #16]\n"
+            "vstr d1, [r0, #24]\n"
+            "add r0, r0, #32\n"
             "bgt 1b\n"
 
             "sub r0, r0, r1\n"
@@ -690,12 +796,12 @@ protected:
     }
 };
 
-class ReadVldBenchmark : public SingleBufferBandwidthBenchmark {
+class ReadVld1Benchmark : public SingleBufferBandwidthBenchmark {
 public:
-    ReadVldBenchmark() : SingleBufferBandwidthBenchmark() { }
-    virtual ~ReadVldBenchmark() {}
+    ReadVld1Benchmark() : SingleBufferBandwidthBenchmark() { }
+    virtual ~ReadVld1Benchmark() {}
 
-    const char *getName() { return "vld"; }
+    const char *getName() { return "vld1"; }
 
     bool usesNeon() { return true; }
 
@@ -727,6 +833,49 @@ protected:
 #endif
     }
 };
+
+class ReadVldrBenchmark : public SingleBufferBandwidthBenchmark {
+public:
+    ReadVldrBenchmark() : SingleBufferBandwidthBenchmark() { }
+    virtual ~ReadVldrBenchmark() {}
+
+    const char *getName() { return "vldr"; }
+
+    bool usesNeon() { return true; }
+
+protected:
+    // Write a given value using vst.
+    void bench(size_t num_loops) {
+#if defined(__ARM_NEON__)
+        asm volatile(
+            "stmfd sp!, {r0,r1,r2,r3}\n"
+
+            "mov r0, %0\n"
+            "mov r1, %1\n"
+            "mov r2, %2\n"
+
+            "0:\n"
+            "mov r3, r1, lsr #5\n"
+
+            "1:\n"
+            "vldr d0, [r0, #0]\n"
+            "subs r3, r3, #1\n"
+            "vldr d1, [r0, #8]\n"
+            "vldr d0, [r0, #16]\n"
+            "vldr d1, [r0, #24]\n"
+            "add r0, r0, #32\n"
+            "bgt 1b\n"
+
+            "sub r0, r0, r1\n"
+            "subs r2, r2, #1\n"
+            "bgt 0b\n"
+
+            "ldmfd sp!, {r0,r1,r2,r3}\n"
+        :: "r" (_buffer), "r" (_size), "r" (num_loops) : "r0", "r1", "r2");
+#endif
+    }
+};
+
 
 class ReadVldmiaBenchmark : public SingleBufferBandwidthBenchmark {
 public:

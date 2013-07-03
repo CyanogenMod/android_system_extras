@@ -101,8 +101,10 @@ BandwidthBenchmark *createBandwidthBenchmarkObject(arg_t values) {
         bench = new CopyLdrdStrdBenchmark();
     } else if (strcmp(name, "copy_ldmia_stmia") == 0) {
         bench = new CopyLdmiaStmiaBenchmark();
-    } else if (strcmp(name, "copy_vld_vst") == 0) {
-        bench = new CopyVldVstBenchmark();
+    } else if (strcmp(name, "copy_vld1_vst1") == 0) {
+        bench = new CopyVld1Vst1Benchmark();
+    } else if (strcmp(name, "copy_vldr_vstr") == 0) {
+        bench = new CopyVldrVstrBenchmark();
     } else if (strcmp(name, "copy_vldmia_vstmia") == 0) {
         bench = new CopyVldmiaVstmiaBenchmark();
     } else if (strcmp(name, "memcpy") == 0) {
@@ -111,8 +113,10 @@ BandwidthBenchmark *createBandwidthBenchmarkObject(arg_t values) {
         bench = new WriteStrdBenchmark();
     } else if (strcmp(name, "write_stmia") == 0) {
         bench = new WriteStmiaBenchmark();
-    } else if (strcmp(name, "write_vst") == 0) {
-        bench = new WriteVstBenchmark();
+    } else if (strcmp(name, "write_vst1") == 0) {
+        bench = new WriteVst1Benchmark();
+    } else if (strcmp(name, "write_vstr") == 0) {
+        bench = new WriteVstrBenchmark();
     } else if (strcmp(name, "write_vstmia") == 0) {
         bench = new WriteVstmiaBenchmark();
     } else if (strcmp(name, "memset") == 0) {
@@ -121,8 +125,10 @@ BandwidthBenchmark *createBandwidthBenchmarkObject(arg_t values) {
         bench = new ReadLdrdBenchmark();
     } else if (strcmp(name, "read_ldmia") == 0) {
         bench = new ReadLdmiaBenchmark();
-    } else if (strcmp(name, "read_vld") == 0) {
-        bench = new ReadVldBenchmark();
+    } else if (strcmp(name, "read_vld1") == 0) {
+        bench = new ReadVld1Benchmark();
+    } else if (strcmp(name, "read_vldr") == 0) {
+        bench = new ReadVldrBenchmark();
     } else if (strcmp(name, "read_vldmia") == 0) {
         bench = new ReadVldmiaBenchmark();
     } else {
@@ -418,7 +424,8 @@ int copy_bandwidth(int argc, char** argv) {
     std::vector<BandwidthBenchmark*> bench_objs;
     bench_objs.push_back(new CopyLdrdStrdBenchmark());
     bench_objs.push_back(new CopyLdmiaStmiaBenchmark());
-    bench_objs.push_back(new CopyVldVstBenchmark());
+    bench_objs.push_back(new CopyVld1Vst1Benchmark());
+    bench_objs.push_back(new CopyVldrVstrBenchmark());
     bench_objs.push_back(new CopyVldmiaVstmiaBenchmark());
     bench_objs.push_back(new MemcpyBenchmark());
 
@@ -432,7 +439,8 @@ int write_bandwidth(int argc, char** argv) {
     std::vector<BandwidthBenchmark*> bench_objs;
     bench_objs.push_back(new WriteStrdBenchmark());
     bench_objs.push_back(new WriteStmiaBenchmark());
-    bench_objs.push_back(new WriteVstBenchmark());
+    bench_objs.push_back(new WriteVst1Benchmark());
+    bench_objs.push_back(new WriteVstrBenchmark());
     bench_objs.push_back(new WriteVstmiaBenchmark());
     bench_objs.push_back(new MemsetBenchmark());
 
@@ -447,7 +455,8 @@ int read_bandwidth(int argc, char** argv) {
     std::vector<BandwidthBenchmark*> bench_objs;
     bench_objs.push_back(new ReadLdrdBenchmark());
     bench_objs.push_back(new ReadLdmiaBenchmark());
-    bench_objs.push_back(new ReadVldBenchmark());
+    bench_objs.push_back(new ReadVld1Benchmark());
+    bench_objs.push_back(new ReadVldrBenchmark());
     bench_objs.push_back(new ReadVldmiaBenchmark());
 
     if (!run_bandwidth_benchmark(argc, argv, "read", bench_objs)) {
