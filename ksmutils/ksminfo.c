@@ -42,10 +42,16 @@ static bool is_pattern(uint8_t *data, size_t len);
 static int cmp_pages(const void *a, const void *b);
 extern uint32_t hashword(const uint32_t *, size_t, int32_t);
 
+struct vaddr {
+    unsigned long addr;
+    size_t num_pages;
+};
+
 struct ksm_page {
     uint32_t hash;
-    unsigned long *vaddr;
+    struct vaddr *vaddr;
     size_t vaddr_len, vaddr_size;
+    size_t vaddr_count;
     uint16_t pattern;
 };
 
@@ -224,21 +230,29 @@ static void print_ksm_pages(pm_map_t **maps, size_t num_maps, uint8_t pr_flags) 
             }
 
             if (pr_flags & PR_VERBOSE) {
-                if (pages[k].vaddr_len == pages[k].vaddr_size) {
-                    unsigned long *tmp = realloc(pages[k].vaddr,
-                            (pages[k].vaddr_size + GROWTH_FACTOR) * sizeof(*(pages[k].vaddr)));
-                    if (tmp == NULL) {
-                        fprintf(stderr, "warning: not enough memory to realloc vaddr array\n");
-                        free(pagemap);
-                        goto err_realloc;
+                if (pages[k].vaddr_len > 0 && pages[k].vaddr[pages[k].vaddr_len - 1].addr ==
+                        vaddr - (pages[k].vaddr[pages[k].vaddr_len - 1].num_pages *
+                        pm_kernel_pagesize(ker))) {
+                    pages[k].vaddr[pages[k].vaddr_len - 1].num_pages++;
+                } else {
+                    if (pages[k].vaddr_len == pages[k].vaddr_size) {
+                        struct vaddr *tmp = realloc(pages[k].vaddr,
+                                (pages[k].vaddr_size + GROWTH_FACTOR) * sizeof(*(pages[k].vaddr)));
+                        if (tmp == NULL) {
+                            fprintf(stderr, "warning: not enough memory to realloc vaddr array\n");
+                            free(pagemap);
+                            goto err_realloc;
+                        }
+                        memset(&tmp[pages[k].vaddr_len], 0, sizeof(tmp[pages[k].vaddr_len]) * GROWTH_FACTOR);
+                        pages[k].vaddr = tmp;
+                        pages[k].vaddr_size += GROWTH_FACTOR;
                     }
-                    memset(&tmp[pages[k].vaddr_len], 0, sizeof(tmp[pages[k].vaddr_len]) * GROWTH_FACTOR);
-                    pages[k].vaddr = tmp;
-                    pages[k].vaddr_size += GROWTH_FACTOR;
+                    pages[k].vaddr[pages[k].vaddr_len].addr = vaddr;
+                    pages[k].vaddr[pages[k].vaddr_len].num_pages = 1;
+                    pages[k].vaddr_len++;
                 }
-                pages[k].vaddr[pages[k].vaddr_len] = vaddr;
             }
-            pages[k].vaddr_len++;
+            pages[k].vaddr_count++;
         }
         free(pagemap);
     }
@@ -253,8 +267,8 @@ static void print_ksm_pages(pm_map_t **maps, size_t num_maps, uint8_t pr_flags) 
         } else {
             printf("KSM CRC 0x%08x:", pages[i].hash);
         }
-        printf(" %4d page", pages[i].vaddr_len);
-        if (pages[i].vaddr_len > 1) {
+        printf(" %4d page", pages[i].vaddr_count);
+        if (pages[i].vaddr_count > 1) {
             printf("s");
         }
         printf("\n");
@@ -264,7 +278,12 @@ static void print_ksm_pages(pm_map_t **maps, size_t num_maps, uint8_t pr_flags) 
             while (j < pages[i].vaddr_len) {
                 printf("                   ");
                 for (k = 0; k < 8 && j < pages[i].vaddr_len; k++, j++) {
-                    printf(" 0x%08lx", pages[i].vaddr[j]);
+                    printf(" 0x%08lx", pages[i].vaddr[j].addr);
+                    if (pages[i].vaddr[j].num_pages > 1) {
+                        printf(":%-4d", pages[i].vaddr[j].num_pages);
+                    } else {
+                        printf("     ");
+                    }
                 }
                 printf("\n");
             }
@@ -296,7 +315,7 @@ static int cmp_pages(const void *a, const void *b) {
     const struct ksm_page *pg_a = a;
     const struct ksm_page *pg_b = b;
 
-    return pg_b->vaddr_len - pg_a->vaddr_len;
+    return pg_b->vaddr_count - pg_a->vaddr_count;
 }
 
 static bool is_pattern(uint8_t *data, size_t len) {
