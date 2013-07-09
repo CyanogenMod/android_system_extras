@@ -32,10 +32,14 @@
 
 #define NO_PATTERN    0x100
 
+#define PR_SORTED       1
+#define PR_VERBOSE      2
+
 static void usage(char *myname);
 static int getprocname(pid_t pid, char *buf, int len);
-static void print_ksm_pages(pm_map_t **maps, size_t num_maps, bool verbose);
+static void print_ksm_pages(pm_map_t **maps, size_t num_maps, uint8_t pr_flags);
 static bool is_pattern(uint8_t *data, size_t len);
+static int cmp_pages(const void *a, const void *b);
 extern uint32_t hashword(const uint32_t *, size_t, int32_t);
 
 struct ksm_page {
@@ -54,17 +58,20 @@ int main(int argc, char *argv[]) {
     char cmdline[256]; // this must be within the range of int
     int error;
     int rc = EXIT_SUCCESS;
-    bool verbose = false;
+    uint8_t pr_flags = 0;
 
     opterr = 0;
     do {
-        int c = getopt(argc, argv, "hv");
+        int c = getopt(argc, argv, "hvs");
         if (c == -1)
             break;
 
         switch (c) {
+            case 's':
+                pr_flags |= PR_SORTED;
+                break;
             case 'v':
-                verbose = true;
+                pr_flags |= PR_VERBOSE;
                 break;
             case 'h':
                 usage(argv[0]);
@@ -113,7 +120,7 @@ int main(int argc, char *argv[]) {
     printf("%s (%u):\n", cmdline, pid);
     printf("Warning: this tool only compares the KSM CRCs of pages, there is a chance of "
             "collisions\n");
-    print_ksm_pages(maps, num_maps, verbose);
+    print_ksm_pages(maps, num_maps, pr_flags);
 
     free(maps);
 destroy_proc:
@@ -121,7 +128,7 @@ destroy_proc:
     return rc;
 }
 
-static void print_ksm_pages(pm_map_t **maps, size_t num_maps, bool verbose) {
+static void print_ksm_pages(pm_map_t **maps, size_t num_maps, uint8_t pr_flags) {
     size_t i, j, k;
     size_t len;
     uint64_t *pagemap;
@@ -216,7 +223,7 @@ static void print_ksm_pages(pm_map_t **maps, size_t num_maps, bool verbose) {
                 pages_len++;
             }
 
-            if (verbose) {
+            if (pr_flags & PR_VERBOSE) {
                 if (pages[k].vaddr_len == pages[k].vaddr_size) {
                     unsigned long *tmp = realloc(pages[k].vaddr,
                             (pages[k].vaddr_size + GROWTH_FACTOR) * sizeof(*(pages[k].vaddr)));
@@ -236,6 +243,10 @@ static void print_ksm_pages(pm_map_t **maps, size_t num_maps, bool verbose) {
         free(pagemap);
     }
 
+    if (pr_flags & PR_SORTED) {
+        qsort(pages, pages_len, sizeof(*pages), cmp_pages);
+    }
+
     for (i = 0; i < pages_len; i++) {
         if (pages[i].pattern != NO_PATTERN) {
             printf("0x%02x byte pattern: ", pages[i].pattern);
@@ -248,7 +259,7 @@ static void print_ksm_pages(pm_map_t **maps, size_t num_maps, bool verbose) {
         }
         printf("\n");
 
-        if (verbose) {
+        if (pr_flags & PR_VERBOSE) {
             j = 0;
             while (j < pages[i].vaddr_len) {
                 printf("                   ");
@@ -261,7 +272,7 @@ static void print_ksm_pages(pm_map_t **maps, size_t num_maps, bool verbose) {
     }
 
 err_realloc:
-    if (verbose) {
+    if (pr_flags & PR_VERBOSE) {
         for (i = 0; i < pages_len; i++) {
             free(pages[i].vaddr);
         }
@@ -274,10 +285,18 @@ err_open:
 }
 
 static void usage(char *myname) {
-    fprintf(stderr, "Usage: %s [ -v | -h ] <pid>\n"
+    fprintf(stderr, "Usage: %s [-s | -v | -h ] <pid>\n"
+                    "    -s  Sort pages by usage count.\n"
                     "    -v  Verbose: print virtual addresses.\n"
                     "    -h  Display this help screen.\n",
     myname);
+}
+
+static int cmp_pages(const void *a, const void *b) {
+    const struct ksm_page *pg_a = a;
+    const struct ksm_page *pg_b = b;
+
+    return pg_b->vaddr_len - pg_a->vaddr_len;
 }
 
 static bool is_pattern(uint8_t *data, size_t len) {
