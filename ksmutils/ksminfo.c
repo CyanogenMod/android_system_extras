@@ -34,17 +34,12 @@
 
 #define PR_SORTED       1
 #define PR_VERBOSE      2
-
-static void usage(char *myname);
-static int getprocname(pid_t pid, char *buf, int len);
-static void print_ksm_pages(pm_map_t **maps, size_t num_maps, uint8_t pr_flags);
-static bool is_pattern(uint8_t *data, size_t len);
-static int cmp_pages(const void *a, const void *b);
-extern uint32_t hashword(const uint32_t *, size_t, int32_t);
+#define PR_ALL          4
 
 struct vaddr {
     unsigned long addr;
     size_t num_pages;
+    pid_t pid;
 };
 
 struct ksm_page {
@@ -55,24 +50,46 @@ struct ksm_page {
     uint16_t pattern;
 };
 
+struct ksm_pages {
+    struct ksm_page *pages;
+    size_t len, size;
+};
+
+static void usage(char *myname);
+static int getprocname(pid_t pid, char *buf, int len);
+static int read_pages(struct ksm_pages *kp, pm_map_t **maps, size_t num_maps, uint8_t pr_flags);
+static void print_pages(struct ksm_pages *kp, uint8_t pr_flags);
+static void free_pages(struct ksm_pages *kp, uint8_t pr_flags);
+static bool is_pattern(uint8_t *data, size_t len);
+static int cmp_pages(const void *a, const void *b);
+extern uint32_t hashword(const uint32_t *, size_t, int32_t);
+
 int main(int argc, char *argv[]) {
     pm_kernel_t *ker;
     pm_process_t *proc;
-    pid_t pid;
+    pid_t *pids;
+    size_t num_procs;
+    size_t i;
     pm_map_t **maps;
     size_t num_maps;
     char cmdline[256]; // this must be within the range of int
     int error;
     int rc = EXIT_SUCCESS;
     uint8_t pr_flags = 0;
+    struct ksm_pages kp;
+
+    memset(&kp, 0, sizeof(kp));
 
     opterr = 0;
     do {
-        int c = getopt(argc, argv, "hvs");
+        int c = getopt(argc, argv, "hvsa");
         if (c == -1)
             break;
 
         switch (c) {
+            case 'a':
+                pr_flags |= PR_ALL;
+                break;
             case 's':
                 pr_flags |= PR_SORTED;
                 break;
@@ -89,17 +106,6 @@ int main(int argc, char *argv[]) {
         }
     } while (1);
 
-    if (optind != argc - 1) {
-        usage(argv[0]);
-        exit(EXIT_FAILURE);
-    }
-
-    pid = strtoul(argv[optind], NULL, 10);
-    if (pid == 0) {
-        fprintf(stderr, "Invalid PID\n");
-        exit(EXIT_FAILURE);
-    }
-
     error = pm_kernel_create(&ker);
     if (error) {
         fprintf(stderr, "Error creating kernel interface -- "
@@ -107,34 +113,79 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    error = pm_process_create(ker, pid, &proc);
-    if (error) {
-        fprintf(stderr, "warning: could not create process interface for %d\n", pid);
-        exit(EXIT_FAILURE);
+    if (pr_flags & PR_ALL) {
+        error = pm_kernel_pids(ker, &pids, &num_procs);
+        if (error) {
+            fprintf(stderr, "Error listing processes.\n");
+            exit(EXIT_FAILURE);
+        }
+    } else {
+        if (optind != argc - 1) {
+            usage(argv[0]);
+            exit(EXIT_FAILURE);
+        }
+
+        pids = malloc(sizeof(*pids));
+        if (pids == NULL) {
+           fprintf(stderr, "Error allocating pid memory\n");
+           exit(EXIT_FAILURE);
+        }
+
+        *pids = strtoul(argv[optind], NULL, 10);
+        if (*pids == 0) {
+            fprintf(stderr, "Invalid PID\n");
+            rc = EXIT_FAILURE;
+            goto exit;
+        }
+        num_procs = 1;
+        if (getprocname(*pids, cmdline, sizeof(cmdline)) < 0) {
+            cmdline[0] = '\0';
+        }
+        printf("%s (%u):\n", cmdline, *pids);
     }
 
-    error = pm_process_maps(proc, &maps, &num_maps);
-    if (error) {
-        fprintf(stderr, "warning: could not read process map for %d\n", pid);
-        rc = EXIT_FAILURE;
-        goto destroy_proc;
-    }
-
-    if (getprocname(pid, cmdline, sizeof(cmdline)) < 0) {
-        cmdline[0] = '\0';
-    }
-    printf("%s (%u):\n", cmdline, pid);
     printf("Warning: this tool only compares the KSM CRCs of pages, there is a chance of "
             "collisions\n");
-    print_ksm_pages(maps, num_maps, pr_flags);
 
-    free(maps);
-destroy_proc:
-    pm_process_destroy(proc);
+    for (i = 0; i < num_procs; i++) {
+        error = pm_process_create(ker, pids[i], &proc);
+        if (error) {
+            fprintf(stderr, "warning: could not create process interface for %d\n", pids[i]);
+            rc = EXIT_FAILURE;
+            goto exit;
+        }
+
+        error = pm_process_maps(proc, &maps, &num_maps);
+        if (error) {
+            pm_process_destroy(proc);
+            fprintf(stderr, "warning: could not read process map for %d\n", pids[i]);
+            rc = EXIT_FAILURE;
+            goto exit;
+        }
+
+        if (read_pages(&kp, maps, num_maps, pr_flags) < 0) {
+            free(maps);
+            pm_process_destroy(proc);
+            rc = EXIT_FAILURE;
+            goto exit;
+        }
+
+        free(maps);
+        pm_process_destroy(proc);
+    }
+
+    if (pr_flags & PR_SORTED) {
+        qsort(kp.pages, kp.len, sizeof(*kp.pages), cmp_pages);
+    }
+    print_pages(&kp, pr_flags);
+
+exit:
+    free_pages(&kp, pr_flags);
+    free(pids);
     return rc;
 }
 
-static void print_ksm_pages(pm_map_t **maps, size_t num_maps, uint8_t pr_flags) {
+static int read_pages(struct ksm_pages *kp, pm_map_t **maps, size_t num_maps, uint8_t pr_flags) {
     size_t i, j, k;
     size_t len;
     uint64_t *pagemap;
@@ -148,39 +199,39 @@ static void print_ksm_pages(pm_map_t **maps, size_t num_maps, uint8_t pr_flags) 
     char filename[MAX_FILENAME];
     uint32_t *data;
     uint32_t hash;
-    struct ksm_page *pages;
-    size_t pages_len, pages_size;
+    int rc = 0;
+    struct ksm_page *cur_page;
+    pid_t pid;
 
-    if (num_maps <= 0)
-        return;
+    if (num_maps == 0)
+        return 0;
 
+    pid = pm_process_pid(maps[0]->proc);
     ker = maps[0]->proc->ker;
-    error = snprintf(filename, MAX_FILENAME, "/proc/%d/mem", pm_process_pid(maps[0]->proc));
+    error = snprintf(filename, MAX_FILENAME, "/proc/%d/mem", pid);
     if (error < 0 || error >= MAX_FILENAME) {
-        return;
+        return -1;
     }
 
     data = malloc(pm_kernel_pagesize(ker));
     if (data == NULL) {
         fprintf(stderr, "warning: not enough memory to malloc data buffer\n");
-        return;
+        return -1;
     }
 
     fd = open(filename, O_RDONLY);
     if (fd < 0) {
         fprintf(stderr, "warning: could not open %s\n", filename);
+        rc = -1;
         goto err_open;
     }
-
-    pages = NULL;
-    pages_size = 0;
-    pages_len = 0;
 
     for (i = 0; i < num_maps; i++) {
         error = pm_map_pagemap(maps[i], &pagemap, &map_len);
         if (error) {
             fprintf(stderr, "warning: could not read the pagemap of %d\n",
                     pm_process_pid(maps[i]->proc));
+            continue;
         }
         for (j = 0; j < map_len; j++) {
             error = pm_kernel_flags(ker, pagemap[j], &flags);
@@ -206,107 +257,135 @@ static void print_ksm_pages(pm_map_t **maps, size_t num_maps, uint8_t pr_flags) 
 
             hash = hashword(data, pm_kernel_pagesize(ker) / sizeof(*data), 17);
 
-            for (k = 0; k < pages_len; k++) {
-                if (pages[k].hash == hash) break;
+            for (k = 0; k < kp->len; k++) {
+                if (kp->pages[k].hash == hash) break;
             }
 
-            if (k == pages_len) {
-                if (pages_len == pages_size) {
-                    struct ksm_page *tmp = realloc(pages,
-                            (pages_size + GROWTH_FACTOR) * sizeof(*pages));
+            if (k == kp->len) {
+                if (kp->len == kp->size) {
+                    struct ksm_page *tmp = realloc(kp->pages,
+                            (kp->size + GROWTH_FACTOR) * sizeof(*kp->pages));
                     if (tmp == NULL) {
                         fprintf(stderr, "warning: not enough memory to realloc pages struct\n");
                         free(pagemap);
+                        rc = -1;
                         goto err_realloc;
                     }
                     memset(&tmp[k], 0, sizeof(tmp[k]) * GROWTH_FACTOR);
-                    pages = tmp;
-                    pages_size += GROWTH_FACTOR;
+                    kp->pages = tmp;
+                    kp->size += GROWTH_FACTOR;
                 }
-                pages[pages_len].hash = hash;
-                pages[pages_len].pattern = is_pattern((uint8_t *)data, pm_kernel_pagesize(ker)) ?
+                kp->pages[kp->len].hash = hash;
+                kp->pages[kp->len].pattern =
+                        is_pattern((uint8_t *)data, pm_kernel_pagesize(ker)) ?
                         (data[0] & 0xFF) : NO_PATTERN;
-                pages_len++;
+                kp->len++;
             }
 
+            cur_page = &kp->pages[k];
+
             if (pr_flags & PR_VERBOSE) {
-                if (pages[k].vaddr_len > 0 && pages[k].vaddr[pages[k].vaddr_len - 1].addr ==
-                        vaddr - (pages[k].vaddr[pages[k].vaddr_len - 1].num_pages *
+                if (cur_page->vaddr_len > 0 &&
+                        cur_page->vaddr[cur_page->vaddr_len - 1].pid == pid &&
+                        cur_page->vaddr[cur_page->vaddr_len - 1].addr ==
+                        vaddr - (cur_page->vaddr[cur_page->vaddr_len - 1].num_pages *
                         pm_kernel_pagesize(ker))) {
-                    pages[k].vaddr[pages[k].vaddr_len - 1].num_pages++;
+                    cur_page->vaddr[cur_page->vaddr_len - 1].num_pages++;
                 } else {
-                    if (pages[k].vaddr_len == pages[k].vaddr_size) {
-                        struct vaddr *tmp = realloc(pages[k].vaddr,
-                                (pages[k].vaddr_size + GROWTH_FACTOR) * sizeof(*(pages[k].vaddr)));
+                    if (cur_page->vaddr_len == cur_page->vaddr_size) {
+                        struct vaddr *tmp = realloc(cur_page->vaddr,
+                                (cur_page->vaddr_size + GROWTH_FACTOR) * sizeof(*(cur_page->vaddr)));
                         if (tmp == NULL) {
                             fprintf(stderr, "warning: not enough memory to realloc vaddr array\n");
                             free(pagemap);
+                            rc = -1;
                             goto err_realloc;
                         }
-                        memset(&tmp[pages[k].vaddr_len], 0, sizeof(tmp[pages[k].vaddr_len]) * GROWTH_FACTOR);
-                        pages[k].vaddr = tmp;
-                        pages[k].vaddr_size += GROWTH_FACTOR;
+                        memset(&tmp[cur_page->vaddr_len], 0, sizeof(tmp[cur_page->vaddr_len]) * GROWTH_FACTOR);
+                        cur_page->vaddr = tmp;
+                        cur_page->vaddr_size += GROWTH_FACTOR;
                     }
-                    pages[k].vaddr[pages[k].vaddr_len].addr = vaddr;
-                    pages[k].vaddr[pages[k].vaddr_len].num_pages = 1;
-                    pages[k].vaddr_len++;
+                    cur_page->vaddr[cur_page->vaddr_len].addr = vaddr;
+                    cur_page->vaddr[cur_page->vaddr_len].num_pages = 1;
+                    cur_page->vaddr[cur_page->vaddr_len].pid = pid;
+                    cur_page->vaddr_len++;
                 }
             }
-            pages[k].vaddr_count++;
+            cur_page->vaddr_count++;
         }
         free(pagemap);
     }
+    goto no_err;
 
-    if (pr_flags & PR_SORTED) {
-        qsort(pages, pages_len, sizeof(*pages), cmp_pages);
-    }
-
-    for (i = 0; i < pages_len; i++) {
-        if (pages[i].pattern != NO_PATTERN) {
-            printf("0x%02x byte pattern: ", pages[i].pattern);
-        } else {
-            printf("KSM CRC 0x%08x:", pages[i].hash);
+err_realloc:
+    if (pr_flags & PR_VERBOSE) {
+        for (i = 0; i < kp->len; i++) {
+            free(kp->pages[i].vaddr);
         }
-        printf(" %4d page", pages[i].vaddr_count);
-        if (pages[i].vaddr_count > 1) {
+    }
+    free(kp->pages);
+
+no_err:
+    close(fd);
+err_open:
+    free(data);
+    return rc;
+}
+
+static void print_pages(struct ksm_pages *kp, uint8_t pr_flags) {
+    size_t i, j, k;
+    char suffix[13];
+    int index;
+
+    for (i = 0; i < kp->len; i++) {
+        if (kp->pages[i].pattern != NO_PATTERN) {
+            printf("0x%02x byte pattern: ", kp->pages[i].pattern);
+        } else {
+            printf("KSM CRC 0x%08x:", kp->pages[i].hash);
+        }
+        printf(" %4d page", kp->pages[i].vaddr_count);
+        if (kp->pages[i].vaddr_count > 1) {
             printf("s");
         }
         printf("\n");
 
         if (pr_flags & PR_VERBOSE) {
             j = 0;
-            while (j < pages[i].vaddr_len) {
+            while (j < kp->pages[i].vaddr_len) {
                 printf("                   ");
-                for (k = 0; k < 8 && j < pages[i].vaddr_len; k++, j++) {
-                    printf(" 0x%08lx", pages[i].vaddr[j].addr);
-                    if (pages[i].vaddr[j].num_pages > 1) {
-                        printf(":%-4d", pages[i].vaddr[j].num_pages);
-                    } else {
-                        printf("     ");
+                for (k = 0; k < 8 && j < kp->pages[i].vaddr_len; k++, j++) {
+                    printf(" 0x%08lx", kp->pages[i].vaddr[j].addr);
+
+                    index = snprintf(suffix, sizeof(suffix), ":%d",
+                            kp->pages[i].vaddr[j].num_pages);
+                    if (pr_flags & PR_ALL) {
+                        index += snprintf(suffix + index, sizeof(suffix) - index, "[%d]",
+                                kp->pages[i].vaddr[j].pid);
                     }
+                    printf("%-12s", suffix);
                 }
                 printf("\n");
             }
         }
     }
+}
 
-err_realloc:
+static void free_pages(struct ksm_pages *kp, uint8_t pr_flags) {
+    size_t i;
+
     if (pr_flags & PR_VERBOSE) {
-        for (i = 0; i < pages_len; i++) {
-            free(pages[i].vaddr);
+        for (i = 0; i < kp->len; i++) {
+            free(kp->pages[i].vaddr);
         }
     }
-    free(pages);
-err_pages:
-    close(fd);
-err_open:
-    free(data);
+    free(kp->pages);
 }
 
 static void usage(char *myname) {
-    fprintf(stderr, "Usage: %s [-s | -v | -h ] <pid>\n"
+    fprintf(stderr, "Usage: %s [-s | -v | -a | -h ] <pid>\n"
                     "    -s  Sort pages by usage count.\n"
                     "    -v  Verbose: print virtual addresses.\n"
+                    "    -a  Display all the KSM pages in the system. Ignore the pid argument.\n"
                     "    -h  Display this help screen.\n",
     myname);
 }
