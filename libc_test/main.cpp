@@ -34,6 +34,9 @@ extern "C" {
 #define MAX_STRCMP_TEST_SIZE      1024
 #define MAX_STRCMP_BUFFER_SIZE    (3 * MAX_STRCMP_TEST_SIZE)
 
+#define MAX_STRLEN_TEST_SIZE      1024
+#define MAX_STRLEN_BUFFER_SIZE    (3 * MAX_STRLEN_TEST_SIZE)
+
 // Return a pointer into the current string with the specified alignment.
 void *getAlignedPtr(void *orig_ptr, int alignment, int or_mask) {
   uint64_t ptr = reinterpret_cast<uint64_t>(orig_ptr);
@@ -347,6 +350,137 @@ bool runStrcmpTest(int (*test_strcmp)(const char *s1, const char *s2),
   return true;
 }
 
+bool doStrlenCheck(size_t size, char *string, int align, int or_mask,
+                   size_t (*test_strlen)(const char *), bool verbose) {
+  char *aligned_string = reinterpret_cast<char*>(getAlignedPtr(string, align, or_mask));
+  size_t len;
+  if (verbose) {
+    printf("Testing size %d, align=%p[%d,%d]\n", size, aligned_string, align, or_mask);
+  }
+
+  aligned_string[size] = '\0';
+  len = test_strlen(aligned_string);
+  if (len != size) {
+    printf("Failed at size %d, length returned %u, align=%p[%d,%d]\n",
+           size, len, aligned_string, align, or_mask);
+    return false;
+  }
+
+  if (verbose) {
+    printf("Testing size %d with extra zeros after string, align=%p[%d,%d]\n",
+           size, aligned_string, align, or_mask);
+  }
+
+  for (size_t j = size+1; j <= size+16; j++) {
+    aligned_string[j] = '\0';
+  }
+
+  len = test_strlen(aligned_string);
+  if (len != size) {
+    printf("Failed at size %d, length returned %u with zeroes after string, align=%p[%d,%d]\n",
+           size, len, aligned_string, align, or_mask);
+    return false;
+  }
+
+  for (size_t j = size; j <= size+16; j++) {
+    aligned_string[j] = (char)(32 + (j % 96));
+  }
+  return true;
+}
+
+bool runStrlenTest(size_t (*test_strlen)(const char *),
+                   bool verbose) {
+  // Allocate two large buffers to hold the two strings.
+  char *string = reinterpret_cast<char*>(malloc(MAX_STRLEN_BUFFER_SIZE+1));
+  if (string == NULL) {
+    perror("Unable to allocate memory.\n");
+    return false;
+  }
+
+  // Initialize the strings to be exactly the same.
+  for (int i = 0; i < MAX_STRLEN_BUFFER_SIZE; i++) {
+    string[i] = (char)(32 + (i % 96));
+  }
+  string[MAX_STRLEN_BUFFER_SIZE] = '\0';
+
+  // Check different string alignments. All zeroes indicates that the
+  // unmodified malloc values should be used.
+  int aligns[][2] = {
+    // All zeroes to use the values returned from malloc.
+    { 0, 0 },
+
+    { 1, 0 },
+    { 2, 0 },
+    { 4, 0 },
+    { 8, 0 },
+    { 16, 0 },
+    { 32, 0 },
+
+    { 8, 1 },
+    { 8, 2 },
+    { 8, 3 },
+
+    { 4, 1 },
+    { 4, 2 },
+    { 4, 3 },
+  };
+
+  printf("  Verifying string lengths at different alignments.\n");
+  for (size_t i = 0; i < sizeof(aligns)/sizeof(int[2]); i++) {
+    for (size_t j = 0; j <= MAX_STRLEN_TEST_SIZE; j++) {
+      if (!doStrlenCheck(j, string, aligns[i][0], aligns[i][1], test_strlen, verbose)) {
+        return false;
+      }
+    }
+  }
+
+  printf("  Verifying strlen does not read past end of string.\n");
+
+  // In order to verify that strlen is not reading past the end of the
+  // string, create strings that end near unreadable memory.
+  long pagesize = sysconf(_SC_PAGE_SIZE);
+  char *memory = (char*)memalign(pagesize, 2 * pagesize);
+  if (memory == NULL) {
+    perror("Unable to allocate memory.\n");
+    return false;
+  }
+
+  // Make the second page unreadable and unwritable.
+  if (mprotect(&memory[pagesize], pagesize, PROT_NONE) != 0) {
+    perror("Unable to set protection of page.\n");
+    return false;
+  }
+
+  size_t max_size = pagesize < MAX_STRLEN_TEST_SIZE ? pagesize-1 : MAX_STRLEN_TEST_SIZE;
+  for (long i = 0; i < pagesize; i++) {
+    memory[i] = (char)(32 + (i % 96));
+  }
+
+  size_t len;
+  for (size_t i = 0; i < sizeof(aligns)/sizeof(int[2]); i++) {
+    for (size_t j = 0; j <= max_size; j++) {
+      string = &memory[pagesize-j-1];
+      string[j] = '\0';
+
+      if (verbose) {
+        printf("Testing size %d overread, align=%p[%d,%d]\n",
+               j, string, aligns[i][0], aligns[i][1]);
+      }
+      len = test_strlen(string);
+      if (len != j) {
+        printf("    Failed at size %u, returned %u, align=%p[%d,%d]\n",
+               j, len, string, aligns[i][0], aligns[i][1]);
+        return false;
+      }
+      string[j] = (char)(32 + (j % 96));
+    }
+  }
+
+  printf("  All tests pass.\n");
+
+  return true;
+}
+
 bool runMemcpyTest(void* (*test_memcpy)(void *dst, const void *src, size_t n),
                    bool verbose) {
   // Allocate two large buffers to hold the dst and src.
@@ -587,6 +721,7 @@ int main(int argc, char **argv) {
   }
 
   bool tests_passing = true;
+
   printf("Testing strcmp...\n");
   tests_passing = runStrcmpTest(strcmp, verbose) && tests_passing;
 
@@ -595,6 +730,9 @@ int main(int argc, char **argv) {
 
   printf("Testing memset...\n");
   tests_passing = runMemsetTest(memset, verbose) && tests_passing;
+
+  printf("Testing strlen...\n");
+  tests_passing = runStrlenTest(strlen, verbose) && tests_passing;
 
   return (tests_passing ? 0 : 1);
 }
