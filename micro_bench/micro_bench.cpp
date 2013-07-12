@@ -50,6 +50,7 @@ typedef struct {
     int cpu_to_lock;
 
     int data_size;
+    int dst_str_size;
 
     int args[MAX_ARGS];
     int num_args;
@@ -59,7 +60,8 @@ typedef void *(*void_func_t)();
 typedef void *(*memcpy_func_t)(void *, const void *, size_t);
 typedef void *(*memset_func_t)(void *, int, size_t);
 typedef int (*strcmp_func_t)(const char *, const char *);
-typedef char *(*strcpy_func_t)(char *, const char *);
+typedef char *(*str_func_t)(char *, const char *);
+typedef size_t (*strlen_func_t)(const char *);
 
 // Struct that contains a mapping of benchmark name to benchmark function.
 typedef struct {
@@ -103,6 +105,24 @@ uint8_t *allocateAlignedMemory(size_t size, int alignment, int or_mask) {
   return getAlignedMemory((uint8_t*)ptr, alignment, or_mask);
 }
 
+char *allocateAlignedString(int size, int align, int or_mask, bool init = true) {
+    char *buf = reinterpret_cast<char*>(allocateAlignedMemory(size, align, or_mask));
+    if (!buf) {
+        return NULL;
+    }
+
+    if (init) {
+        for (int i = 0; i < size - 1; i++) {
+            buf[i] = (char)(32 + (i % 96));
+        }
+        buf[size-1] = '\0';
+    } else {
+        memset(buf, 0, size);
+    }
+
+    return buf;
+}
+
 static inline double computeAverage(uint64_t time_ns, int size, int copies) {
     return ((size/1024.0) * copies) / ((double)time_ns/NS_PER_SEC);
 }
@@ -130,7 +150,7 @@ static inline void printSummary(uint64_t time_ns, const char *name, int size, in
            max/1024.0);
 }
 
-#define MAINLOOP(cmd_data, BENCH, COMPUTE_AVG, PRINT_ITER, PRINT_AVG) \
+#define MAINLOOP(cmd_data, BENCH, AFTER_BENCH, COMPUTE_AVG, PRINT_ITER, PRINT_AVG) \
     uint64_t time_ns;                                                 \
     int iters = cmd_data.args[1];                                     \
     bool print_average = cmd_data.print_average;                      \
@@ -141,6 +161,7 @@ static inline void printSummary(uint64_t time_ns, const char *name, int size, in
         time_ns = nanoTime();                                         \
         BENCH;                                                        \
         time_ns = nanoTime() - time_ns;                               \
+        AFTER_BENCH;                                                  \
         avg = COMPUTE_AVG;                                            \
         if (print_average) {                                          \
             running_avg = computeRunningAvg(avg, running_avg, i);     \
@@ -160,13 +181,14 @@ static inline void printSummary(uint64_t time_ns, const char *name, int size, in
         PRINT_AVG;                                                    \
     }
 
-#define MAINLOOP_DATA(name, cmd_data, size, BENCH)                    \
+#define MAINLOOP_DATA(name, cmd_data, size, BENCH, AFTER_BENCH)       \
     int copies = cmd_data.data_size/size;                             \
     int j;                                                            \
     MAINLOOP(cmd_data,                                                \
              for (j = 0; j < copies; j++) {                           \
                  BENCH;                                               \
              },                                                       \
+             AFTER_BENCH,                                             \
              computeAverage(time_ns, size, copies),                   \
              printIter(time_ns, name, size, copies, avg),             \
              double std_dev = computeStdDev(square_avg, running_avg); \
@@ -176,6 +198,7 @@ static inline void printSummary(uint64_t time_ns, const char *name, int size, in
 int benchmarkSleep(const char *name, const command_data_t &cmd_data, void_func_t func) {
     int delay = cmd_data.args[0];
     MAINLOOP(cmd_data, sleep(delay),
+             ;,
              (double)time_ns/NS_PER_SEC,
              printf("sleep(%d) took %.06f seconds\n", delay, avg);,
              printf("  sleep(%d) average %.06f seconds std dev %f min %.06f seconds max %0.6f seconds\n", \
@@ -191,6 +214,7 @@ int benchmarkCpu(const char *name, const command_data_t &cmd_data, void_func_t f
 
     MAINLOOP(cmd_data,
              for (cpu_foo = 0; cpu_foo < 100000000; cpu_foo++),
+             ;,
              (double)time_ns/NS_PER_SEC,
              printf("cpu took %.06f seconds\n", avg),
              printf("  cpu average %.06f seconds std dev %f min %0.6f seconds max %0.6f seconds\n", \
@@ -207,7 +231,7 @@ int benchmarkMemset(const char *name, const command_data_t &cmd_data, void_func_
     if (!dst)
         return -1;
 
-    MAINLOOP_DATA(name, cmd_data, size, memset_func(dst, 0, size));
+    MAINLOOP_DATA(name, cmd_data, size, memset_func(dst, 0, size), ;);
 
     return 0;
 }
@@ -228,7 +252,7 @@ int benchmarkMemcpy(const char *name, const command_data_t &cmd_data, void_func_
     memset(src, 0xff, size);
     memset(dst, 0, size);
 
-    MAINLOOP_DATA(name, cmd_data, size, memcpy_func(dst, src, size));
+    MAINLOOP_DATA(name, cmd_data, size, memcpy_func(dst, src, size), ;);
 
     return 0;
 }
@@ -245,7 +269,7 @@ int benchmarkMemread(const char *name, const command_data_t &cmd_data, void_func
     volatile int foo;
     size_t k;
     MAINLOOP_DATA(name, cmd_data, size,
-                  for (k = 0; k < size/sizeof(uint32_t); k++) foo = src[k]);
+                  for (k = 0; k < size/sizeof(uint32_t); k++) foo = src[k], ;);
 
     return 0;
 }
@@ -254,50 +278,79 @@ int benchmarkStrcmp(const char *name, const command_data_t &cmd_data, void_func_
     int size = cmd_data.args[0];
     strcmp_func_t strcmp_func = reinterpret_cast<strcmp_func_t>(func);
 
-    char *string1 = reinterpret_cast<char*>(allocateAlignedMemory(size, cmd_data.src_align, cmd_data.src_or_mask));
+    char *string1 = allocateAlignedString(size, cmd_data.src_align, cmd_data.src_or_mask);
     if (!string1)
         return -1;
-    char *string2 = reinterpret_cast<char*>(allocateAlignedMemory(size, cmd_data.dst_align, cmd_data.dst_or_mask));
+    char *string2 = allocateAlignedString(size, cmd_data.dst_align, cmd_data.dst_or_mask);
     if (!string2)
         return -1;
-
-    for (int i = 0; i < size - 1; i++) {
-        string1[i] = (char)(32 + (i % 96));
-        string2[i] = string1[i];
-    }
-    string1[size-1] = '\0';
-    string2[size-1] = '\0';
 
     int retval;
     MAINLOOP_DATA(name, cmd_data, size,
                   retval = strcmp_func(string1, string2); \
-                  if (retval != 0) printf("%s failed, return value %d\n", name, retval));
+                  if (retval != 0) printf("%s failed, return value %d\n", name, retval), ;);
+
+    return 0;
+}
+
+int benchmarkStrlen(const char *name, const command_data_t &cmd_data, void_func_t func) {
+    size_t size = cmd_data.args[0];
+    strlen_func_t strlen_func = reinterpret_cast<strlen_func_t>(func);
+
+    char *buf = allocateAlignedString(size, cmd_data.dst_align, cmd_data.dst_or_mask);
+
+    size_t real_size;
+    MAINLOOP_DATA(name, cmd_data, size,
+                  real_size = strlen_func(buf); \
+                  if (real_size + 1 != size) { \
+                      printf("%s failed, expected %u, got %u\n", name, size, real_size); \
+                      return -1; \
+                  }, ;);
+
+    return 0;
+}
+
+int benchmarkStrcat(const char *name, const command_data_t &cmd_data, void_func_t func) {
+    int size = cmd_data.args[0];
+    str_func_t str_func = reinterpret_cast<str_func_t>(func);
+
+    int dst_str_size = cmd_data.dst_str_size;
+    if (dst_str_size <= 0) {
+        printf("%s requires --dst_str_size to be set to a non-zero value.\n",
+               name);
+        return -1;
+    }
+
+    char *src = allocateAlignedString(size, cmd_data.src_align, cmd_data.src_or_mask);
+    if (!src)
+        return -1;
+    char *dst = allocateAlignedString(size + dst_str_size, cmd_data.dst_align, cmd_data.dst_or_mask);
+    if (!dst)
+        return -1;
+    dst[dst_str_size-1] = '\0';
+
+    MAINLOOP_DATA(name, cmd_data, size,
+                  str_func(dst, src); dst[dst_str_size-1] = '\0';,
+                  ;);
 
     return 0;
 }
 
 int benchmarkStrcpy(const char *name, const command_data_t &cmd_data, void_func_t func) {
     int size = cmd_data.args[0];
-    strcpy_func_t strcpy_func = reinterpret_cast<strcpy_func_t>(func);
+    str_func_t str_func = reinterpret_cast<str_func_t>(func);
 
-    char *src = reinterpret_cast<char*>(allocateAlignedMemory(size, cmd_data.src_align, cmd_data.src_or_mask));
+    char *src = allocateAlignedString(size, cmd_data.src_align, cmd_data.src_or_mask);
     if (!src)
         return -1;
-    char *dst = reinterpret_cast<char*>(allocateAlignedMemory(size, cmd_data.dst_align, cmd_data.dst_or_mask));
+    char *dst = allocateAlignedString(size, cmd_data.dst_align, cmd_data.dst_or_mask);
     if (!dst)
         return -1;
 
-    for (int i = 0; i < size - 1; i++) {
-        src[i] = (char)(32 + (i % 96));
-    }
-    src[size-1] = '\0';
-    memset(dst, 0, size);
-
-    MAINLOOP_DATA(name, cmd_data, size, strcpy_func(dst, src));
+    MAINLOOP_DATA(name, cmd_data, size, str_func(dst, src), ;);
 
     return 0;
 }
-
 
 // Create the mapping structure.
 function_t function_table[] = {
@@ -307,13 +360,18 @@ function_t function_table[] = {
     { "memset", benchmarkMemset, reinterpret_cast<void_func_t>(memset) },
     { "memcpy", benchmarkMemcpy, reinterpret_cast<void_func_t>(memcpy) },
     { "strcmp", benchmarkStrcmp, reinterpret_cast<void_func_t>(strcmp) },
+    { "strlen", benchmarkStrlen, reinterpret_cast<void_func_t>(strlen) },
     { "strcpy", benchmarkStrcpy, reinterpret_cast<void_func_t>(strcpy) },
+    { "strcat", benchmarkStrcat, reinterpret_cast<void_func_t>(strcat) },
 };
 
 void usage() {
     printf("Usage:\n");
     printf("  micro_bench [--data_size DATA_BYTES] [--print_average]\n");
     printf("              [--no_print_each_iter] [--lock_to_cpu CORE]\n");
+    printf("              [--src_align ALIGN] [--src_or_mask OR_MASK]\n");
+    printf("              [--dst_align ALIGN] [--dst_or_mask OR_MASK]\n");
+    printf("              [--dst_str_size SIZE]\n");
     printf("    --data_size DATA_BYTES\n");
     printf("      For the data benchmarks (memcpy/memset/memread) the approximate\n");
     printf("      size of data, in bytes, that will be manipulated in each iteration.\n");
@@ -323,6 +381,24 @@ void usage() {
     printf("      Do not print any values in each iteration.\n");
     printf("    --lock_to_cpu CORE\n");
     printf("      Lock to the specified CORE. The default is to use the last core found.\n");
+    printf("    --dst_align ALIGN\n");
+    printf("      If the command supports it, align the destination pointer to ALIGN.\n");
+    printf("      The default is to use the value returned by malloc.\n");
+    printf("    --dst_or_mask OR_MASK\n");
+    printf("      If the command supports it, or in the OR_MASK on to the destination pointer.\n");
+    printf("      The OR_MASK must be smaller than the dst_align value.\n");
+    printf("      The default value is 0.\n");
+
+    printf("    --src_align ALIGN\n");
+    printf("      If the command supports it, align the source pointer to ALIGN. The default is to use the\n");
+    printf("      value returned by malloc.\n");
+    printf("    --src_or_mask OR_MASK\n");
+    printf("      If the command supports it, or in the OR_MASK on to the source pointer.\n");
+    printf("      The OR_MASK must be smaller than the src_align value.\n");
+    printf("      The default value is 0.\n");
+    printf("    --dst_str_size SIZE\n");
+    printf("      If the command supports it, create a destination string of this length.\n");
+    printf("      The default is to not update the destination string.\n");
     printf("    ITERS\n");
     printf("      The number of iterations to execute each benchmark. If not\n");
     printf("      passed in then run forever.\n");
@@ -330,25 +406,13 @@ void usage() {
     printf("    TIME_TO_SLEEP\n");
     printf("      The time in seconds to sleep.\n");
     printf("  micro_bench cpu UNUSED [ITERS]\n");
-    printf("  micro_bench [--dst_align ALIGN] memset NUM_BYTES [ITERS]\n");
-    printf("    --dst_align ALIGN\n");
-    printf("      Align the memset destination pointer to ALIGN. The default is to use the\n");
-    printf("      value returned by malloc.\n");
-    printf("  micro_bench [--src_align ALIGN] [--dst_align ALIGN] strcpy NUM_BYTES [ITERS]\n");
-    printf("    --src_align ALIGN\n");
-    printf("      Align the strcpy source string to ALIGN. The default is to use the\n");
-    printf("      value returned by malloc.\n");
-    printf("    --dst_align ALIGN\n");
-    printf("      Align the strcpy destination string to ALIGN. The default is to use the\n");
-    printf("      value returned by malloc.\n");
-    printf("  micro_bench [--src_align ALIGN] [--dst_align ALIGN] strcmp NUM_BYTES [ITERS]\n");
-    printf("    --src_align ALIGN\n");
-    printf("      Align the first strcmp string to ALIGN. The default is to use the\n");
-    printf("      value returned by malloc.\n");
-    printf("    --dst_align ALIGN\n");
-    printf("      Align the second strcmp string to ALIGN. The default is to use the\n");
-    printf("      value returned by malloc.\n");
+    printf("  micro_bench [--dst_align ALIGN] [--dst_or_mask OR_MASK] memcpy NUM_BYTES [ITERS]\n");
+    printf("  micro_bench [--dst_align ALIGN] [--dst_or_mask OR_MASK] memset NUM_BYTES [ITERS]\n");
     printf("  micro_bench memread NUM_BYTES [ITERS]\n");
+    printf("  micro_bench [--src_align ALIGN] [--src_or_mask OR_MASK] [--dst_align ALIGN] [--dst_or_mask] [--dst_str_size SIZE] strcat NUM_BYTES [ITERS]\n");
+    printf("  micro_bench [--src_align ALIGN] [--src_or_mask OR_MASK] [--dst_align ALIGN] [--dst_or_mask OR_MASK] strcmp NUM_BYTES [ITERS]\n");
+    printf("  micro_bench [--src_align ALIGN] [--src_or_mask OR_MASK] [--dst_align ALIGN] [--dst_or_mask] strcpy NUM_BYTES [ITERS]\n");
+    printf("  micro_bench [--dst_align ALIGN] [--dst_or_mask OR_MASK] strlen NUM_BYTES [ITERS]\n");
 }
 
 function_t *processOptions(int argc, char **argv, command_data_t *cmd_data) {
@@ -364,6 +428,7 @@ function_t *processOptions(int argc, char **argv, command_data_t *cmd_data) {
     cmd_data->num_args = 0;
     cmd_data->cpu_to_lock = -1;
     cmd_data->data_size = DEFAULT_DATA_SIZE;
+    cmd_data->dst_str_size = -1;
     for (int i = 0; i < MAX_ARGS; i++) {
         cmd_data->args[i] = -1;
     }
@@ -387,6 +452,8 @@ function_t *processOptions(int argc, char **argv, command_data_t *cmd_data) {
               save_value = &cmd_data->cpu_to_lock;
             } else if (strcmp(argv[i], "--data_size") == 0) {
               save_value = &cmd_data->data_size;
+            } else if (strcmp(argv[i], "--dst_str_size") == 0) {
+              save_value = &cmd_data->dst_str_size;
             } else {
                 printf("Unknown option %s\n", argv[i]);
                 return NULL;
