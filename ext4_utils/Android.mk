@@ -121,6 +121,11 @@ LOCAL_STATIC_LIBRARIES += \
     libz \
     libcutils \
     libc
+ifeq ($(HAVE_SELINUX), true)
+  LOCAL_C_INCLUDES += external/libselinux/include
+  LOCAL_STATIC_LIBRARIES += libselinux
+  LOCAL_CFLAGS += -DHAVE_SELINUX
+endif # HAVE_SELINUX
 
 include $(BUILD_EXECUTABLE)
 
