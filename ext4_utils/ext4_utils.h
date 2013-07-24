@@ -36,6 +36,7 @@ extern "C" {
 #include <stdlib.h>
 #include <string.h>
 #include <setjmp.h>
+#include <stdint.h>
 
 #if defined(__APPLE__) && defined(__MACH__)
 #define lseek64 lseek
@@ -84,6 +85,12 @@ extern int force;
 #define __u16 u16
 #define __u8 u8
 
+/* XXX */
+#define cpu_to_le32(x) (x)
+#define cpu_to_le16(x) (x)
+#define le32_to_cpu(x) (x)
+#define le16_to_cpu(x) (x)
+
 typedef unsigned long long u64;
 typedef signed long long s64;
 typedef unsigned int u32;
@@ -91,6 +98,7 @@ typedef unsigned short int u16;
 typedef unsigned char u8;
 
 struct block_group_info;
+struct xattr_list_element;
 
 struct ext2_group_desc {
 	__le32 bg_block_bitmap;
@@ -99,8 +107,10 @@ struct ext2_group_desc {
 	__le16 bg_free_blocks_count;
 	__le16 bg_free_inodes_count;
 	__le16 bg_used_dirs_count;
-	__le16 bg_pad;
-	__le32 bg_reserved[3];
+	__le16 bg_flags;
+	__le32 bg_reserved[2];
+	__le16 bg_reserved16;
+	__le16 bg_checksum;
 };
 
 struct fs_info {
@@ -128,6 +138,7 @@ struct fs_aux_info {
 	struct ext4_super_block **backup_sb;
 	struct ext2_group_desc *bg_desc;
 	struct block_group_info *bgs;
+	struct xattr_list_element *xattrs;
 	u32 first_data_block;
 	u64 len_blocks;
 	u32 inode_table_blocks;
@@ -166,6 +177,17 @@ void ext4_queue_sb(void);
 u64 get_file_size(int fd);
 u64 parse_num(const char *arg);
 void ext4_parse_sb(struct ext4_super_block *sb);
+u16 ext4_crc16(u16 crc_in, const void *buf, int size);
+
+typedef void (*fs_config_func_t)(const char *path, int dir, unsigned *uid, unsigned *gid,
+        unsigned *mode, uint64_t *capabilities);
+
+struct selabel_handle;
+
+int make_ext4fs_internal(int fd, const char *directory,
+                         const char *mountpoint, fs_config_func_t fs_config_func, int gzip,
+                         int sparse, int crc, int wipe,
+                         struct selabel_handle *sehnd, int verbose);
 
 #ifdef __cplusplus
 }

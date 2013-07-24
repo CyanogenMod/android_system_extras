@@ -25,6 +25,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <stddef.h>
 #include <string.h>
 
 #ifdef USE_MINGW
@@ -125,6 +126,7 @@ void ext4_create_fs_aux_info()
 	aux_info.bg_desc = calloc(info.block_size, aux_info.bg_desc_blocks);
 	if (!aux_info.bg_desc)
 		critical_error_errno("calloc");
+	aux_info.xattrs = NULL;
 }
 
 void ext4_free_fs_aux_info()
@@ -362,11 +364,12 @@ void ext4_create_journal_inode()
    block group */
 void ext4_update_free()
 {
-	unsigned int i;
+	u32 i;
 
 	for (i = 0; i < aux_info.groups; i++) {
 		u32 bg_free_blocks = get_free_blocks(i);
 		u32 bg_free_inodes = get_free_inodes(i);
+		u16 crc;
 
 		aux_info.bg_desc[i].bg_free_blocks_count = bg_free_blocks;
 		aux_info.sb->s_free_blocks_count_lo += bg_free_blocks;
@@ -375,6 +378,13 @@ void ext4_update_free()
 		aux_info.sb->s_free_inodes_count += bg_free_inodes;
 
 		aux_info.bg_desc[i].bg_used_dirs_count += get_directories(i);
+
+		aux_info.bg_desc[i].bg_flags = get_bg_flags(i);
+
+		crc = ext4_crc16(~0, aux_info.sb->s_uuid, sizeof(aux_info.sb->s_uuid));
+		crc = ext4_crc16(crc, &i, sizeof(i));
+		crc = ext4_crc16(crc, &aux_info.bg_desc[i], offsetof(struct ext2_group_desc, bg_checksum));
+		aux_info.bg_desc[i].bg_checksum = crc;
 	}
 }
 

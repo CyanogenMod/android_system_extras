@@ -18,6 +18,15 @@
 #include <string.h>
 #include <stdio.h>
 
+#ifdef HAVE_ANDROID_OS
+#include <linux/capability.h>
+#else
+#include <private/android_filesystem_capability.h>
+#endif
+
+#define XATTR_SELINUX_SUFFIX "selinux"
+#define XATTR_CAPS_SUFFIX "capability"
+
 #include "ext4_utils.h"
 #include "ext4.h"
 #include "make_ext4fs.h"
@@ -190,7 +199,7 @@ u32 make_file(const char *filename, u64 len)
 }
 
 /* Creates a file on disk.  Returns the inode number of the new file */
-u32 make_link(const char *filename, const char *link)
+u32 make_link(const char *link)
 {
 	struct ext4_inode *inode;
 	u32 inode_num;
@@ -242,51 +251,231 @@ int inode_set_permissions(u32 inode_num, u16 mode, u16 uid, u16 gid, u32 mtime)
 	return 0;
 }
 
-#ifdef HAVE_SELINUX
-#define XATTR_SELINUX_SUFFIX "selinux"
-
-/* XXX */
-#define cpu_to_le32(x) (x)
-#define cpu_to_le16(x) (x)
-
-int inode_set_selinux(u32 inode_num, const char *secon)
+/*
+ * Returns the amount of free space available in the specified
+ * xattr region
+ */
+static size_t xattr_free_space(struct ext4_xattr_entry *entry, char *end)
 {
-	struct ext4_inode *inode = get_inode(inode_num);
-	u32 *hdr;
-	struct ext4_xattr_entry *entry;
-	size_t name_len = strlen(XATTR_SELINUX_SUFFIX);
-	size_t value_len;
-	size_t size, min_offs;
-	char *val;
+	while(!IS_LAST_ENTRY(entry) && (((char *) entry) < end)) {
+		end   -= EXT4_XATTR_SIZE(le32_to_cpu(entry->e_value_size));
+		entry  = EXT4_XATTR_NEXT(entry);
+	}
 
-	if (!secon)
+	if (((char *) entry) > end) {
+		error("unexpected read beyond end of xattr space");
 		return 0;
+	}
 
-	if (!inode)
+	return end - ((char *) entry);
+}
+
+/*
+ * Returns a pointer to the free space immediately after the
+ * last xattr element
+ */
+static struct ext4_xattr_entry* xattr_get_last(struct ext4_xattr_entry *entry)
+{
+	for (; !IS_LAST_ENTRY(entry); entry = EXT4_XATTR_NEXT(entry)) {
+		// skip entry
+	}
+	return entry;
+}
+
+/*
+ * assert that the elements in the ext4 xattr section are in sorted order
+ *
+ * The ext4 filesystem requires extended attributes to be sorted when
+ * they're not stored in the inode. The kernel ext4 code uses the following
+ * sorting algorithm:
+ *
+ * 1) First sort extended attributes by their name_index. For example,
+ *    EXT4_XATTR_INDEX_USER (1) comes before EXT4_XATTR_INDEX_SECURITY (6).
+ * 2) If the name_indexes are equal, then sorting is based on the length
+ *    of the name. For example, XATTR_SELINUX_SUFFIX ("selinux") comes before
+ *    XATTR_CAPS_SUFFIX ("capability") because "selinux" is shorter than "capability"
+ * 3) If the name_index and name_length are equal, then memcmp() is used to determine
+ *    which name comes first. For example, "selinux" would come before "yelinux".
+ *
+ * This method is intended to implement the sorting function defined in
+ * the Linux kernel file fs/ext4/xattr.c function ext4_xattr_find_entry().
+ */
+static void xattr_assert_sane(struct ext4_xattr_entry *entry)
+{
+	for( ; !IS_LAST_ENTRY(entry); entry = EXT4_XATTR_NEXT(entry)) {
+		struct ext4_xattr_entry *next = EXT4_XATTR_NEXT(entry);
+		if (IS_LAST_ENTRY(next)) {
+			return;
+		}
+
+		int cmp = next->e_name_index - entry->e_name_index;
+		if (cmp == 0)
+			cmp = next->e_name_len - entry->e_name_len;
+		if (cmp == 0)
+			cmp = memcmp(next->e_name, entry->e_name, next->e_name_len);
+		if (cmp < 0) {
+			error("BUG: extended attributes are not sorted\n");
+			return;
+		}
+		if (cmp == 0) {
+			error("BUG: duplicate extended attributes detected\n");
+			return;
+		}
+	}
+}
+
+#define NAME_HASH_SHIFT 5
+#define VALUE_HASH_SHIFT 16
+
+static void ext4_xattr_hash_entry(struct ext4_xattr_header *header,
+		struct ext4_xattr_entry *entry)
+{
+	__u32 hash = 0;
+	char *name = entry->e_name;
+	int n;
+
+	for (n = 0; n < entry->e_name_len; n++) {
+		hash = (hash << NAME_HASH_SHIFT) ^
+			(hash >> (8*sizeof(hash) - NAME_HASH_SHIFT)) ^
+			*name++;
+	}
+
+	if (entry->e_value_block == 0 && entry->e_value_size != 0) {
+		__le32 *value = (__le32 *)((char *)header +
+			le16_to_cpu(entry->e_value_offs));
+		for (n = (le32_to_cpu(entry->e_value_size) +
+			EXT4_XATTR_ROUND) >> EXT4_XATTR_PAD_BITS; n; n--) {
+			hash = (hash << VALUE_HASH_SHIFT) ^
+				(hash >> (8*sizeof(hash) - VALUE_HASH_SHIFT)) ^
+				le32_to_cpu(*value++);
+		}
+	}
+	entry->e_hash = cpu_to_le32(hash);
+}
+
+#undef NAME_HASH_SHIFT
+#undef VALUE_HASH_SHIFT
+
+static struct ext4_xattr_entry* xattr_addto_range(
+		void *block_start,
+		void *block_end,
+		struct ext4_xattr_entry *first,
+		int name_index,
+		const char *name,
+		const void *value,
+		size_t value_len)
+{
+	size_t name_len = strlen(name);
+	if (name_len > 255)
+		return NULL;
+
+	size_t available_size = xattr_free_space(first, block_end);
+	size_t needed_size = EXT4_XATTR_LEN(name_len) + EXT4_XATTR_SIZE(value_len);
+
+	if (needed_size > available_size)
+		return NULL;
+
+	struct ext4_xattr_entry *new_entry = xattr_get_last(first);
+	memset(new_entry, 0, EXT4_XATTR_LEN(name_len));
+
+	new_entry->e_name_len = name_len;
+	new_entry->e_name_index = name_index;
+	memcpy(new_entry->e_name, name, name_len);
+	new_entry->e_value_block = 0;
+	new_entry->e_value_size = cpu_to_le32(value_len);
+
+	char *val = (char *) new_entry + available_size - EXT4_XATTR_SIZE(value_len);
+	size_t e_value_offs = val - (char *) block_start;
+
+	new_entry->e_value_offs = cpu_to_le16(e_value_offs);
+	memset(val, 0, EXT4_XATTR_SIZE(value_len));
+	memcpy(val, value, value_len);
+
+	xattr_assert_sane(first);
+	return new_entry;
+}
+
+static int xattr_addto_inode(struct ext4_inode *inode, int name_index,
+		const char *name, const void *value, size_t value_len)
+{
+	struct ext4_xattr_ibody_header *hdr = (struct ext4_xattr_ibody_header *) (inode + 1);
+	struct ext4_xattr_entry *first = (struct ext4_xattr_entry *) (hdr + 1);
+	char *block_end = ((char *) inode) + info.inode_size;
+
+	struct ext4_xattr_entry *result =
+		xattr_addto_range(first, block_end, first, name_index, name, value, value_len);
+
+	if (result == NULL)
 		return -1;
 
-	hdr = (u32 *) (inode + 1);
-	*hdr = cpu_to_le32(EXT4_XATTR_MAGIC);
-	entry = (struct ext4_xattr_entry *) (hdr+1);
-	memset(entry, 0, EXT4_XATTR_LEN(name_len));
-	entry->e_name_index = EXT4_XATTR_INDEX_SECURITY;
-	entry->e_name_len = name_len;
-	memcpy(entry->e_name, XATTR_SELINUX_SUFFIX, name_len);
-	value_len = strlen(secon)+1;
-	entry->e_value_size = cpu_to_le32(value_len);
-	min_offs = (char *)inode + info.inode_size - (char*) entry;
-	size = EXT4_XATTR_SIZE(value_len);
-	val = (char *)entry + min_offs - size;
-	entry->e_value_offs = cpu_to_le16(min_offs - size);
-	memset(val + size - EXT4_XATTR_PAD, 0, EXT4_XATTR_PAD);
-	memcpy(val, secon, value_len);
+	hdr->h_magic = cpu_to_le32(EXT4_XATTR_MAGIC);
 	inode->i_extra_isize = cpu_to_le16(sizeof(struct ext4_inode) - EXT4_GOOD_OLD_INODE_SIZE);
 
 	return 0;
 }
-#else
-int inode_set_selinux(u32 inode_num, const char *secon)
+
+static int xattr_addto_block(struct ext4_inode *inode, int name_index,
+		const char *name, const void *value, size_t value_len)
 {
+	struct ext4_xattr_header *header = get_xattr_block_for_inode(inode);
+	if (!header)
+		return -1;
+
+	struct ext4_xattr_entry *first = (struct ext4_xattr_entry *) (header + 1);
+	char *block_end = ((char *) header) + info.block_size;
+
+	struct ext4_xattr_entry *result =
+		xattr_addto_range(header, block_end, first, name_index, name, value, value_len);
+
+	if (result == NULL)
+		return -1;
+
+	ext4_xattr_hash_entry(header, result);
 	return 0;
 }
-#endif
+
+
+static int xattr_add(u32 inode_num, int name_index, const char *name,
+		const void *value, size_t value_len)
+{
+	if (!value)
+		return 0;
+
+	struct ext4_inode *inode = get_inode(inode_num);
+
+	if (!inode)
+		return -1;
+
+	int result = xattr_addto_inode(inode, name_index, name, value, value_len);
+	if (result != 0) {
+		result = xattr_addto_block(inode, name_index, name, value, value_len);
+	}
+	return result;
+}
+
+int inode_set_selinux(u32 inode_num, const char *secon)
+{
+	if (!secon)
+		return 0;
+
+	return xattr_add(inode_num, EXT4_XATTR_INDEX_SECURITY,
+		XATTR_SELINUX_SUFFIX, secon, strlen(secon) + 1);
+}
+
+int inode_set_capabilities(u32 inode_num, uint64_t capabilities) {
+	if (capabilities == 0)
+		return 0;
+
+	struct vfs_cap_data cap_data;
+	memset(&cap_data, 0, sizeof(cap_data));
+
+	cap_data.magic_etc = VFS_CAP_REVISION | VFS_CAP_FLAGS_EFFECTIVE;
+	cap_data.data[0].permitted = (uint32_t) (capabilities & 0xffffffff);
+	cap_data.data[0].inheritable = 0;
+	cap_data.data[1].permitted = (uint32_t) (capabilities >> 32);
+	cap_data.data[1].inheritable = 0;
+
+	return xattr_add(inode_num, EXT4_XATTR_INDEX_SECURITY,
+		XATTR_CAPS_SUFFIX, &cap_data, sizeof(cap_data));
+}
+

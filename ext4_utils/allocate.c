@@ -56,7 +56,14 @@ struct block_group_info {
 	u32 first_free_block;
 	u32 free_inodes;
 	u32 first_free_inode;
+	u16 flags;
 	u16 used_dirs;
+};
+
+struct xattr_list_element {
+	struct ext4_inode *inode;
+	struct ext4_xattr_header *header;
+	struct xattr_list_element *next;
 };
 
 struct block_allocation *create_allocation()
@@ -71,6 +78,25 @@ struct block_allocation *create_allocation()
 	alloc->oob_list.iter = NULL;
 	alloc->oob_list.partial_iter = 0;
 	return alloc;
+}
+
+static struct ext4_xattr_header *xattr_list_find(struct ext4_inode *inode)
+{
+	struct xattr_list_element *element;
+	for (element = aux_info.xattrs; element != NULL; element = element->next) {
+		if (element->inode == inode)
+			return element->header;
+	}
+	return NULL;
+}
+
+static void xattr_list_insert(struct ext4_inode *inode, struct ext4_xattr_header *header)
+{
+	struct xattr_list_element *element = malloc(sizeof(struct xattr_list_element));
+	element->inode = inode;
+	element->header = header;
+	element->next = aux_info.xattrs;
+	aux_info.xattrs = element;
 }
 
 static void region_list_remove(struct region_list *list, struct region *reg)
@@ -157,24 +183,8 @@ static void allocate_bg_inode_table(struct block_group_info *bg)
 
 	sparse_file_add_data(info.sparse_file, bg->inode_table,
 			aux_info.inode_table_blocks	* info.block_size, block);
-}
 
-void init_unused_inode_tables(void)
-{
-	unsigned int i;
-	u32 block;
-	struct block_group_info *bg;
-
-	for (i = 0; i < aux_info.groups; i++) {
-		if (!aux_info.bgs[i].inode_table) {
-			bg = &aux_info.bgs[i];
-			block = bg->first_block + 2;
-			if (bg->has_superblock)
-				block += aux_info.bg_desc_blocks + info.bg_desc_reserve_blocks + 1;
-			sparse_file_add_fill(info.sparse_file, 0,
-					aux_info.inode_table_blocks * info.block_size, block);
-		}
-	}
+	bg->flags &= ~EXT4_BG_INODE_UNINIT;
 }
 
 static int bitmap_set_bit(u8 *bitmap, u32 bit)
@@ -297,6 +307,7 @@ static void init_bg(struct block_group_info *bg, unsigned int i)
 	bg->first_free_block = 0;
 	bg->free_inodes = info.inodes_per_group;
 	bg->first_free_inode = 1;
+	bg->flags = EXT4_BG_INODE_UNINIT;
 
 	if (reserve_blocks(bg, bg->first_free_block, bg->header_blocks) < 0)
 		error("failed to reserve %u blocks in block group %u\n", bg->header_blocks, i);
@@ -687,6 +698,35 @@ struct ext4_inode *get_inode(u32 inode)
 		info.inode_size);
 }
 
+struct ext4_xattr_header *get_xattr_block_for_inode(struct ext4_inode *inode)
+{
+	struct ext4_xattr_header *block = xattr_list_find(inode);
+	if (block != NULL)
+		return block;
+
+	u32 block_num = allocate_block();
+	block = calloc(info.block_size, 1);
+	if (block == NULL) {
+		error("get_xattr: failed to allocate %d", info.block_size);
+		return NULL;
+	}
+
+	block->h_magic = cpu_to_le32(EXT4_XATTR_MAGIC);
+	block->h_refcount = cpu_to_le32(1);
+	block->h_blocks = cpu_to_le32(1);
+	inode->i_blocks_lo = cpu_to_le32(le32_to_cpu(inode->i_blocks_lo) + (info.block_size / 512));
+	inode->i_file_acl_lo = cpu_to_le32(block_num);
+
+	int result = sparse_file_add_data(info.sparse_file, block, info.block_size, block_num);
+	if (result != 0) {
+		error("get_xattr: sparse_file_add_data failure %d", result);
+		free(block);
+		return NULL;
+	}
+	xattr_list_insert(inode, block);
+	return block;
+}
+
 /* Mark the first len inodes in a block group as used */
 u32 reserve_inodes(int bg, u32 num)
 {
@@ -742,6 +782,12 @@ void add_directory(u32 inode)
 u16 get_directories(int bg)
 {
 	return aux_info.bgs[bg].used_dirs;
+}
+
+/* Returns the flags for a block group */
+u16 get_bg_flags(int bg)
+{
+	return aux_info.bgs[bg].flags;
 }
 
 /* Frees the memory used by a linked list of allocation regions */

@@ -152,9 +152,7 @@ $(call device-test, $(sources))
 
 sources := \
     other/bench_locks.c \
-    other/test_aligned.c \
     other/test_arc4random.c \
-    other/test_atomics.c \
     other/test_sysconf.c \
     other/test_system.c \
     other/test_thread_max.c \
@@ -162,6 +160,11 @@ sources := \
     other/test_timer_create2.c \
     other/test_timer_create3.c \
     other/test_vfprintf_leak.c \
+
+ifeq ($(TARGET_ARCH),arm)
+sources += \
+    other/test_atomics.c
+endif
 
 $(call device-test, $(sources))
 

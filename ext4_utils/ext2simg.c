@@ -57,7 +57,6 @@ static int read_ext(int fd)
 {
 	off64_t ret;
 	struct ext4_super_block sb;
-	unsigned int i;
 
 	ret = lseek64(fd, 1024, SEEK_SET);
 	if (ret < 0)
