@@ -388,7 +388,7 @@ void ext4_update_free()
 	}
 }
 
-static u64 get_block_device_size(int fd)
+u64 get_block_device_size(int fd)
 {
 	u64 size = 0;
 	int ret;
