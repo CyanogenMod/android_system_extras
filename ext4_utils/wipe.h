@@ -17,6 +17,8 @@
 #ifndef _WIPE_H_
 #define _WIPE_H_
 
+#include "ext4_utils.h"
+
 int wipe_block_device(int fd, s64 len);
 
 #endif
