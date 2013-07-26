@@ -43,6 +43,7 @@ struct vaddr {
 };
 
 struct ksm_page {
+    uint64_t count;
     uint32_t hash;
     struct vaddr *vaddr;
     size_t vaddr_len, vaddr_size;
@@ -275,6 +276,12 @@ static int read_pages(struct ksm_pages *kp, pm_map_t **maps, size_t num_maps, ui
                     kp->pages = tmp;
                     kp->size += GROWTH_FACTOR;
                 }
+                rc = pm_kernel_count(ker, pagemap[j], &kp->pages[kp->len].count);
+                if (rc) {
+                    fprintf(stderr, "error reading page count\n");
+                    free(pagemap);
+                    goto err_count;
+                }
                 kp->pages[kp->len].hash = hash;
                 kp->pages[kp->len].pattern =
                         is_pattern((uint8_t *)data, pm_kernel_pagesize(ker)) ?
@@ -318,6 +325,7 @@ static int read_pages(struct ksm_pages *kp, pm_map_t **maps, size_t num_maps, ui
     goto no_err;
 
 err_realloc:
+err_count:
     if (pr_flags & PR_VERBOSE) {
         for (i = 0; i < kp->len; i++) {
             free(kp->pages[i].vaddr);
@@ -346,6 +354,13 @@ static void print_pages(struct ksm_pages *kp, uint8_t pr_flags) {
         printf(" %4d page", kp->pages[i].vaddr_count);
         if (kp->pages[i].vaddr_count > 1) {
             printf("s");
+        }
+        if (!(pr_flags & PR_ALL)) {
+            printf(" (%llu reference", kp->pages[i].count);
+            if (kp->pages[i].count > 1) {
+                printf("s");
+            }
+            printf(")");
         }
         printf("\n");
 
@@ -393,8 +408,9 @@ static void usage(char *myname) {
 static int cmp_pages(const void *a, const void *b) {
     const struct ksm_page *pg_a = a;
     const struct ksm_page *pg_b = b;
+    int cmp = pg_b->vaddr_count - pg_a->vaddr_count;
 
-    return pg_b->vaddr_count - pg_a->vaddr_count;
+    return cmp ? cmp : pg_b->count - pg_a->count;
 }
 
 static bool is_pattern(uint8_t *data, size_t len) {
