@@ -102,6 +102,7 @@ LOCAL_MODULE_PATH := $(PRODUCT_OUT)/utilities
 LOCAL_UNSTRIPPED_PATH := $(PRODUCT_OUT)/symbols/utilities
 LOCAL_STATIC_LIBRARIES += \
     libext4_utils_static \
+    libselinux \
     libsparse_static \
     libz \
     libcutils \
