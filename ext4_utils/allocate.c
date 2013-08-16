@@ -312,9 +312,10 @@ static void init_bg(struct block_group_info *bg, unsigned int i)
 	if (reserve_blocks(bg, bg->first_free_block, bg->header_blocks) < 0)
 		error("failed to reserve %u blocks in block group %u\n", bg->header_blocks, i);
 
-	u32 overrun = bg->first_block + info.blocks_per_group - aux_info.len_blocks;
-	if (overrun > 0)
+	if (bg->first_block + info.blocks_per_group > aux_info.len_blocks) {
+		u32 overrun = bg->first_block + info.blocks_per_group - aux_info.len_blocks;
 		reserve_blocks(bg, info.blocks_per_group - overrun, overrun);
+	}
 }
 
 void block_allocator_init()
