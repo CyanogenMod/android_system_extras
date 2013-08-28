@@ -214,9 +214,14 @@ int pm_process_workingset(pm_process_t *proc,
 }
 
 int pm_process_destroy(pm_process_t *proc) {
+    int i;
+
     if (!proc)
         return -1;
 
+    for (i = 0; i < proc->num_maps; i++) {
+        pm_map_destroy(proc->maps[i]);
+    }
     free(proc->maps);
     close(proc->pagemap_fd);
     free(proc);
