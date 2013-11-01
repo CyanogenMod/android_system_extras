@@ -69,7 +69,9 @@ int pm_process_create(pm_kernel_t *ker, pid_t pid, pm_process_t **proc_out) {
     return 0;
 }
 
-int pm_process_usage(pm_process_t *proc, pm_memusage_t *usage_out) {
+int pm_process_usage_flags(pm_process_t *proc, pm_memusage_t *usage_out,
+                        uint64_t flags_mask, uint64_t required_flags)
+{
     pm_memusage_t usage, map_usage;
     int error;
     int i;
@@ -80,7 +82,8 @@ int pm_process_usage(pm_process_t *proc, pm_memusage_t *usage_out) {
     pm_memusage_zero(&usage);
 
     for (i = 0; i < proc->num_maps; i++) {
-        error = pm_map_usage(proc->maps[i], &map_usage);
+        error = pm_map_usage_flags(proc->maps[i], &map_usage, flags_mask,
+                                   required_flags);
         if (error) return error;
 
         pm_memusage_add(&usage, &map_usage);
@@ -89,6 +92,11 @@ int pm_process_usage(pm_process_t *proc, pm_memusage_t *usage_out) {
     memcpy(usage_out, &usage, sizeof(pm_memusage_t));
 
     return 0;
+
+}
+
+int pm_process_usage(pm_process_t *proc, pm_memusage_t *usage_out) {
+    return pm_process_usage_flags(proc, usage_out, 0, 0);
 }
 
 int pm_process_pagemap_range(pm_process_t *proc,
@@ -268,6 +276,7 @@ static int read_maps(pm_process_t *proc) {
 
         map->proc = proc;
 
+        name[0] = '\0';
         sscanf(line, "%lx-%lx %s %lx %*s %*d %" S(MAX_LINE) "s",
                &map->start, &map->end, perms, &map->offset, name);
 

@@ -174,6 +174,7 @@ void ext4_create_resize_inode(void);
 void ext4_create_journal_inode(void);
 void ext4_update_free(void);
 void ext4_queue_sb(void);
+u64 get_block_device_size(int fd);
 u64 get_file_size(int fd);
 u64 parse_num(const char *arg);
 void ext4_parse_sb(struct ext4_super_block *sb);

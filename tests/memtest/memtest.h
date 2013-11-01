@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 The Android Open Source Project
+ * Copyright (C) 2013 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,16 +14,12 @@
  * limitations under the License.
  */
 
-#include <pagemap/pagemap.h>
+#ifndef __MEMTEST_H__
+#define __MEMTEST_H__
 
-void pm_memusage_zero(pm_memusage_t *mu) {
-    mu->vss = mu->rss = mu->pss = mu->uss = mu->swap = 0;
-}
+typedef long long nsecs_t;
 
-void pm_memusage_add(pm_memusage_t *a, pm_memusage_t *b) {
-    a->vss += b->vss;
-    a->rss += b->rss;
-    a->pss += b->pss;
-    a->uss += b->uss;
-    a->swap += b->swap;
-}
+// Function prototypes.
+nsecs_t system_time();
+
+#endif // __MEMTEST_H__

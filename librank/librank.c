@@ -17,6 +17,8 @@
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
+#include <getopt.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
@@ -59,6 +61,7 @@ declare_sort(vss);
 declare_sort(rss);
 declare_sort(pss);
 declare_sort(uss);
+declare_sort(swap);
 
 #define INIT_LIBRARIES 16
 #define INIT_MAPPINGS 4
@@ -69,13 +72,19 @@ struct library_info **libraries;
 int libraries_count;
 int libraries_size;
 
-struct library_info *get_library(char *name) {
+struct library_info *get_library(const char *name, bool all) {
     int i;
     struct library_info *library;
 
-    for (i = 0; library_name_blacklist[i]; i++)
-        if (!strcmp(name, library_name_blacklist[i]))
-            return NULL;
+    if (!all) {
+        for (i = 0; library_name_blacklist[i]; i++)
+            if (!strcmp(name, library_name_blacklist[i]))
+                return NULL;
+    } else {
+        if (name[0] == 0) {
+            name = "[anon]";
+        }
+    }
 
     for (i = 0; i < libraries_count; i++) {
         if (!strcmp(libraries[i]->name, name))
@@ -162,6 +171,30 @@ struct process_info *get_process(pid_t pid) {
     return process;
 }
 
+static int parse_perm(const char *perm)
+{
+    int ret = 0;
+
+    while (*perm) {
+        switch(*perm) {
+        case 'r':
+            ret |= PM_MAP_READ;
+            break;
+        case 'w':
+            ret |= PM_MAP_WRITE;
+            break;
+        case 'x':
+            ret |= PM_MAP_EXEC;
+            break;
+        default:
+            fprintf(stderr, "Unknown permission '%c'\n", *perm);
+            exit(EXIT_FAILURE);
+        }
+        perm++;
+    }
+    return ret;
+}
+
 int main(int argc, char *argv[]) {
     char cmdline[256];
     char *prefix;
@@ -183,34 +216,102 @@ int main(int argc, char *argv[]) {
     struct process_info *pi;
 
     int i, j, error;
+    int perm;
+    bool all;
+    uint64_t required_flags;
+    uint64_t flags_mask;
+
+    bool has_swap = false;
 
     signal(SIGPIPE, SIG_IGN);
     compfn = &sort_by_pss;
     order = -1;
     prefix = NULL;
     prefix_len = 0;
+    opterr = 0;
+    perm = 0;
+    all = false;
+    required_flags = 0;
+    flags_mask = 0;
 
-    for (i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "-P")) {
-            if (i + 1 >= argc) {
-                fprintf(stderr, "Option -P requires an argument.\n");
-                usage(argv[0]);
-                exit(EXIT_FAILURE);
-            }
-            prefix = argv[++i];
-            prefix_len = strlen(prefix);
-            continue;
+    while (1) {
+        int c;
+        const struct option longopts[] = {
+            {"all", 0, 0, 'a'},
+            {"cached", 0, 0, 'c'},
+            {"nocached", 0, 0, 'C'},
+            {"ksm", 0, 0, 'k'},
+            {"help", 0, 0, 'h'},
+            {"pss", 0, 0, 'p'},
+            {"uss", 0, 0, 'u'},
+            {"vss", 0, 0, 'v'},
+            {"rss", 0, 0, 'r'},
+            {"swap", 0, 0, 's'},
+            {"reverse", 0, 0, 'R'},
+            {"path", required_argument, 0, 'P'},
+            {"perm", required_argument, 0, 'm'},
+            {0, 0, 0, 0}
+        };
+        c = getopt_long(argc, argv, "acChkm:pP:uvrsR", longopts, NULL);
+        if (c < 0) {
+            break;
         }
-        if (!strcmp(argv[i], "-v")) { compfn = &sort_by_vss; continue; }
-        if (!strcmp(argv[i], "-r")) { compfn = &sort_by_rss; continue; }
-        if (!strcmp(argv[i], "-p")) { compfn = &sort_by_pss; continue; }
-        if (!strcmp(argv[i], "-u")) { compfn = &sort_by_uss; continue; }
-        if (!strcmp(argv[i], "-R")) { order *= -1; continue; }
-        if (!strcmp(argv[i], "-h")) { usage(argv[0]); exit(0); }
-        fprintf(stderr, "Invalid argument \"%s\".\n", argv[i]);
-        usage(argv[0]);
-        exit(EXIT_FAILURE);
+        /* Alphabetical cases */
+        switch (c) {
+        case 'a':
+            all = true;
+            break;
+        case 'c':
+            required_flags = 0;
+            flags_mask = PM_PAGE_SWAPBACKED;
+            break;
+        case 'C':
+            required_flags = PM_PAGE_SWAPBACKED;
+            flags_mask = PM_PAGE_SWAPBACKED;
+            break;
+        case 'k':
+            required_flags = PM_PAGE_KSM;
+            flags_mask = PM_PAGE_KSM;
+            break;
+        case 'h':
+            usage(argv[0]);
+            exit(EXIT_SUCCESS);
+        case 'm':
+            perm = parse_perm(optarg);
+            break;
+        case 'p':
+            compfn = &sort_by_pss;
+            break;
+        case 'P':
+            prefix = optarg;
+            prefix_len = strlen(prefix);
+            break;
+        case 'u':
+            compfn = &sort_by_uss;
+            break;
+        case 'v':
+            compfn = &sort_by_vss;
+            break;
+        case 'r':
+            compfn = &sort_by_rss;
+            break;
+        case 's':
+            compfn = &sort_by_swap;
+            break;
+        case 'R':
+            order *= -1;
+            break;
+        case '?':
+            fprintf(stderr, "Invalid argument \"%s\".\n", argv[optind - 1]);
+            usage(argv[0]);
+            exit(EXIT_FAILURE);
+        default:
+            abort();
+        }
     }
+
+    argc -= optind;
+    argv += optind;
 
     libraries = malloc(INIT_LIBRARIES * sizeof(struct library_info *));
     libraries_count = 0; libraries_size = INIT_LIBRARIES;
@@ -247,25 +348,40 @@ int main(int argc, char *argv[]) {
             if (prefix && (strncmp(pm_map_name(maps[j]), prefix, prefix_len)))
                 continue;
 
-            li = get_library(pm_map_name(maps[j]));
+            if (perm && (pm_map_flags(maps[j]) & PM_MAP_PERMISSIONS) != perm)
+                continue;
+
+            li = get_library(pm_map_name(maps[j]), all);
             if (!li)
                 continue;
 
             mi = get_mapping(li, pi);
             
-            error = pm_map_usage(maps[j], &map_usage);
+            error = pm_map_usage_flags(maps[j], &map_usage, flags_mask,
+                                       required_flags);
             if (error) {
                 fprintf(stderr, "Error getting map memory usage of "
                                 "map %s in process %d.\n",
                         pm_map_name(maps[j]), proc->pid);
                 exit(EXIT_FAILURE);
             }
+
+            if (map_usage.swap) {
+                has_swap = true;
+            }
+
             pm_memusage_add(&mi->usage, &map_usage);
             pm_memusage_add(&li->total_usage, &map_usage);
         }
     }
 
-    printf(          " %6s   %6s   %6s   %6s   %6s  %s\n", "RSStot", "VSS", "RSS", "PSS", "USS", "Name/PID");
+    printf(" %6s   %6s   %6s   %6s   %6s  ", "RSStot", "VSS", "RSS", "PSS", "USS");
+
+    if (has_swap) {
+        printf(" %6s  ", "Swap");
+    }
+
+    printf("Name/PID\n");
     fflush(stdout);
 
     qsort(libraries, libraries_count, sizeof(libraries[0]), &licmp);
@@ -273,7 +389,11 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < libraries_count; i++) {
         li = libraries[i];
 
-        printf("%6dK   %6s   %6s   %6s   %6s  %s\n", li->total_usage.pss / 1024, "", "", "", "", li->name);
+        printf("%6dK   %6s   %6s   %6s   %6s  ", li->total_usage.pss / 1024, "", "", "", "");
+        if (has_swap) {
+            printf(" %6s  ", "");
+        }
+        printf("%s\n", li->name);
         fflush(stdout);
 
         qsort(li->mappings, li->mappings_count, sizeof(li->mappings[0]), compfn);
@@ -281,11 +401,15 @@ int main(int argc, char *argv[]) {
         for (j = 0; j < li->mappings_count; j++) {
             mi = li->mappings[j];
             pi = mi->proc;
-            printf(   " %6s  %6dK  %6dK  %6dK  %6dK    %s [%d]\n", "",
+            printf(   " %6s  %6dK  %6dK  %6dK  %6dK  ", "",
                 mi->usage.vss / 1024,
                 mi->usage.rss / 1024,
                 mi->usage.pss / 1024,
-                mi->usage.uss / 1024,
+                mi->usage.uss / 1024);
+            if (has_swap) {
+                printf("%6dK  ", mi->usage.swap / 1024);
+            }
+            printf("  %s [%d]\n",
                 pi->cmdline,
                 pi->pid);
         }
@@ -297,16 +421,22 @@ int main(int argc, char *argv[]) {
 }
 
 static void usage(char *myname) {
-    fprintf(stderr, "Usage: %s [ -P | -L ] [ -v | -r | -p | -u | -h ]\n"
+    fprintf(stderr, "Usage: %s [ -P | -L ] [ -v | -r | -p | -u | -s | -h ]\n"
                     "\n"
                     "Sort options:\n"
                     "    -v  Sort processes by VSS.\n"
                     "    -r  Sort processes by RSS.\n"
                     "    -p  Sort processes by PSS.\n"
                     "    -u  Sort processes by USS.\n"
+                    "    -s  Sort processes by swap.\n"
                     "        (Default sort order is PSS.)\n"
+                    "    -a  Show all mappings, including stack, heap and anon.\n"
                     "    -P /path  Limit libraries displayed to those in path.\n"
                     "    -R  Reverse sort order (default is descending).\n"
+                    "    -m [r][w][x] Only list pages that exactly match permissions\n"
+                    "    -c  Only show cached (storage backed) pages\n"
+                    "    -C  Only show non-cached (ram/swap backed) pages\n"
+                    "    -k  Only show pages collapsed by KSM\n"
                     "    -h  Display this help screen.\n",
     myname);
 }
@@ -348,3 +478,4 @@ create_sort(vss, numcmp)
 create_sort(rss, numcmp)
 create_sort(pss, numcmp)
 create_sort(uss, numcmp)
+create_sort(swap, numcmp)
