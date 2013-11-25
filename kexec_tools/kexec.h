@@ -2,7 +2,7 @@
 #define _SYS_KEXEC_H
 
 #include <sys/cdefs.h>
-#include <uapi/linux/kexec.h>
+#include <linux/kexec.h>
 #include <unistd.h>
 #include <sys/syscall.h>
 #include "kexec.h"
