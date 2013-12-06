@@ -109,7 +109,7 @@ static u32 build_default_directory_structure()
    if the image were mounted at the specified mount point */
 static u32 build_directory_structure(const char *full_path, const char *dir_path,
 		u32 dir_inode, fs_config_func_t fs_config_func,
-		struct selabel_handle *sehnd, int verbose)
+		struct selabel_handle *sehnd, int verbose, time_t fixed_time)
 {
 	int entries = 0;
 	struct dentry *dentries;
@@ -163,7 +163,11 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 
 		dentries[i].size = stat.st_size;
 		dentries[i].mode = stat.st_mode & (S_ISUID|S_ISGID|S_ISVTX|S_IRWXU|S_IRWXG|S_IRWXO);
-		dentries[i].mtime = stat.st_mtime;
+		if (fixed_time == -1) {
+			dentries[i].mtime = stat.st_mtime;
+		} else {
+			dentries[i].mtime = fixed_time;
+		}
 		uint64_t capabilities;
 		if (fs_config_func != NULL) {
 #ifdef ANDROID
@@ -256,7 +260,7 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 			if (ret < 0)
 				critical_error_errno("asprintf");
 			entry_inode = build_directory_structure(subdir_full_path,
-					subdir_dir_path, inode, fs_config_func, sehnd, verbose);
+					subdir_dir_path, inode, fs_config_func, sehnd, verbose, fixed_time);
 			free(subdir_full_path);
 			free(subdir_dir_path);
 		} else if (dentries[i].file_type == EXT4_FT_SYMLINK) {
@@ -357,28 +361,28 @@ static u32 compute_bg_desc_reserve_blocks()
 }
 
 void reset_ext4fs_info() {
-    // Reset all the global data structures used by make_ext4fs so it
-    // can be called again.
-    memset(&info, 0, sizeof(info));
-    memset(&aux_info, 0, sizeof(aux_info));
+	// Reset all the global data structures used by make_ext4fs so it
+	// can be called again.
+	memset(&info, 0, sizeof(info));
+	memset(&aux_info, 0, sizeof(aux_info));
 
-    if (info.sparse_file) {
-        sparse_file_destroy(info.sparse_file);
-        info.sparse_file = NULL;
-    }
+	if (info.sparse_file) {
+		sparse_file_destroy(info.sparse_file);
+		info.sparse_file = NULL;
+	}
 }
 
 int make_ext4fs_sparse_fd(int fd, long long len,
-                const char *mountpoint, struct selabel_handle *sehnd)
+				const char *mountpoint, struct selabel_handle *sehnd)
 {
 	reset_ext4fs_info();
 	info.len = len;
 
-	return make_ext4fs_internal(fd, NULL, mountpoint, NULL, 0, 1, 0, 0, sehnd, 0);
+	return make_ext4fs_internal(fd, NULL, mountpoint, NULL, 0, 1, 0, 0, sehnd, 0, -1);
 }
 
 int make_ext4fs(const char *filename, long long len,
-                const char *mountpoint, struct selabel_handle *sehnd)
+				const char *mountpoint, struct selabel_handle *sehnd)
 {
 	int fd;
 	int status;
@@ -392,7 +396,7 @@ int make_ext4fs(const char *filename, long long len,
 		return EXIT_FAILURE;
 	}
 
-	status = make_ext4fs_internal(fd, NULL, mountpoint, NULL, 0, 0, 0, 1, sehnd, 0);
+	status = make_ext4fs_internal(fd, NULL, mountpoint, NULL, 0, 0, 0, 1, sehnd, 0, -1);
 	close(fd);
 
 	return status;
@@ -456,9 +460,9 @@ static char *canonicalize_rel_slashes(const char *str)
 }
 
 int make_ext4fs_internal(int fd, const char *_directory,
-                         const char *_mountpoint, fs_config_func_t fs_config_func, int gzip,
-                         int sparse, int crc, int wipe,
-                         struct selabel_handle *sehnd, int verbose)
+						 const char *_mountpoint, fs_config_func_t fs_config_func, int gzip,
+						 int sparse, int crc, int wipe,
+						 struct selabel_handle *sehnd, int verbose, time_t fixed_time)
 {
 	u32 root_inode_num;
 	u16 root_mode;
@@ -567,7 +571,7 @@ int make_ext4fs_internal(int fd, const char *_directory,
 #else
 	if (directory)
 		root_inode_num = build_directory_structure(directory, mountpoint, 0,
-                        fs_config_func, sehnd, verbose);
+				fs_config_func, sehnd, verbose, fixed_time);
 	else
 		root_inode_num = build_default_directory_structure();
 #endif
