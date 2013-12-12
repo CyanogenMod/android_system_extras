@@ -271,13 +271,13 @@ int main(int argc, char *argv[]) {
         printf("%5d  ", procs[i]->pid);
 
         if (ws) {
-            printf("%6dK  %6dK  %6dK  ",
+            printf("%6zuK  %6zuK  %6zuK  ",
                 procs[i]->usage.rss / 1024,
                 procs[i]->usage.pss / 1024,
                 procs[i]->usage.uss / 1024
             );
         } else {
-            printf("%7dK  %6dK  %6dK  %6dK  ",
+            printf("%7zuK  %6zuK  %6zuK  %6zuK  ",
                 procs[i]->usage.vss / 1024,
                 procs[i]->usage.rss / 1024,
                 procs[i]->usage.pss / 1024,
@@ -286,7 +286,7 @@ int main(int argc, char *argv[]) {
         }
 
         if (has_swap) {
-            printf("%6dK  ", procs[i]->usage.swap / 1024);
+            printf("%6zuK  ", procs[i]->usage.swap / 1024);
         }
 
         printf("%s\n", cmdline);
@@ -375,7 +375,7 @@ static int getprocname(pid_t pid, char *buf, int len) {
         return -1;
     }
 
-    if (asprintf(&filename, "/proc/%zd/cmdline", pid) < 0) {
+    if (asprintf(&filename, "/proc/%d/cmdline", pid) < 0) {
         rc = 1;
         goto exit;
     }
