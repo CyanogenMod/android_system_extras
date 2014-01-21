@@ -156,7 +156,11 @@ static inline int log_2(int j)
 	return i - 1;
 }
 
+int bitmap_get_bit(u8 *bitmap, u32 bit);
+void bitmap_clear_bit(u8 *bitmap, u32 bit);
 int ext4_bg_has_super_block(int bg);
+void read_sb(int fd, struct ext4_super_block *sb);
+void write_sb(int fd, unsigned long long offset, struct ext4_super_block *sb);
 void write_ext4_image(int fd, int gz, int sparse, int crc);
 void ext4_create_fs_aux_info(void);
 void ext4_free_fs_aux_info(void);
@@ -180,6 +184,8 @@ int make_ext4fs_internal(int fd, const char *directory,
 						 const char *mountpoint, fs_config_func_t fs_config_func, int gzip,
 						 int sparse, int crc, int wipe,
 						 struct selabel_handle *sehnd, int verbose, time_t fixed_time);
+
+int read_ext(int fd, int verbose);
 
 #ifdef __cplusplus
 }

@@ -62,6 +62,21 @@ static int is_power_of(int a, int b)
 	return (a == b) ? 1 : 0;
 }
 
+int bitmap_get_bit(u8 *bitmap, u32 bit)
+{
+	if (bitmap[bit / 8] & (1 << (bit % 8)))
+		return 1;
+
+	return 0;
+}
+
+void bitmap_clear_bit(u8 *bitmap, u32 bit)
+{
+	bitmap[bit / 8] &= ~(1 << (bit % 8));
+
+	return;
+}
+
 /* Returns 1 if the bg contains a backup superblock.  On filesystems with
    the sparse_super feature, only block groups 0, 1, and powers of 3, 5,
    and 7 have backup superblocks.  Otherwise, all block groups have backup
@@ -79,6 +94,38 @@ int ext4_bg_has_super_block(int bg)
 		return 1;
 
 	return 0;
+}
+
+/* Function to read the primary superblock */
+void read_sb(int fd, struct ext4_super_block *sb)
+{
+	off64_t ret;
+
+	ret = lseek64(fd, 1024, SEEK_SET);
+	if (ret < 0)
+		critical_error_errno("failed to seek to superblock");
+
+	ret = read(fd, sb, sizeof(*sb));
+	if (ret < 0)
+		critical_error_errno("failed to read superblock");
+	if (ret != sizeof(*sb))
+		critical_error("failed to read all of superblock");
+}
+
+/* Function to write a primary or backup superblock at a given offset */
+void write_sb(int fd, unsigned long long offset, struct ext4_super_block *sb)
+{
+	off64_t ret;
+
+	ret = lseek64(fd, offset, SEEK_SET);
+	if (ret < 0)
+		critical_error_errno("failed to seek to superblock");
+
+	ret = write(fd, sb, sizeof(*sb));
+	if (ret < 0)
+		critical_error_errno("failed to write superblock");
+	if (ret != sizeof(*sb))
+		critical_error("failed to write all of superblock");
 }
 
 /* Write the filesystem image to a file */
@@ -450,3 +497,48 @@ u64 parse_num(const char *arg)
 
 	return num;
 }
+
+int read_ext(int fd, int verbose)
+{
+	off64_t ret;
+	struct ext4_super_block sb;
+
+	read_sb(fd, &sb);
+
+	ext4_parse_sb(&sb);
+
+	ret = lseek64(fd, info.len, SEEK_SET);
+	if (ret < 0)
+		critical_error_errno("failed to seek to end of input image");
+
+	ret = lseek64(fd, info.block_size * (aux_info.first_data_block + 1), SEEK_SET);
+	if (ret < 0)
+		critical_error_errno("failed to seek to block group descriptors");
+
+	ret = read(fd, aux_info.bg_desc, info.block_size * aux_info.bg_desc_blocks);
+	if (ret < 0)
+		critical_error_errno("failed to read block group descriptors");
+	if (ret != (int)info.block_size * (int)aux_info.bg_desc_blocks)
+		critical_error("failed to read all of block group descriptors");
+
+	if (verbose) {
+		printf("Found filesystem with parameters:\n");
+		printf("    Size: %llu\n", info.len);
+		printf("    Block size: %d\n", info.block_size);
+		printf("    Blocks per group: %d\n", info.blocks_per_group);
+		printf("    Inodes per group: %d\n", info.inodes_per_group);
+		printf("    Inode size: %d\n", info.inode_size);
+		printf("    Label: %s\n", info.label);
+		printf("    Blocks: %llu\n", aux_info.len_blocks);
+		printf("    Block groups: %d\n", aux_info.groups);
+		printf("    Reserved block group size: %d\n", info.bg_desc_reserve_blocks);
+		printf("    Used %d/%d inodes and %d/%d blocks\n",
+			aux_info.sb->s_inodes_count - aux_info.sb->s_free_inodes_count,
+			aux_info.sb->s_inodes_count,
+			aux_info.sb->s_blocks_count_lo - aux_info.sb->s_free_blocks_count_lo,
+			aux_info.sb->s_blocks_count_lo);
+	}
+
+	return 0;
+}
+

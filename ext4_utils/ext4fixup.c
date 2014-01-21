@@ -83,42 +83,6 @@ static int compute_new_inum(unsigned int old_inum)
     return (group * new_inodes_per_group) + offset + 1;
 }
 
-/* Function to read the primary superblock */
-static void read_sb(int fd, struct ext4_super_block *sb)
-{
-    off64_t ret;
-
-    ret = lseek64(fd, 1024, SEEK_SET);
-    if (ret < 0)
-        critical_error_errno("failed to seek to superblock");
-
-    ret = read(fd, sb, sizeof(*sb));
-    if (ret < 0)
-        critical_error_errno("failed to read superblock");
-    if (ret != sizeof(*sb))
-        critical_error("failed to read all of superblock");
-}
-
-/* Function to write a primary or backup superblock at a given offset */
-static void write_sb(int fd, unsigned long long offset, struct ext4_super_block *sb)
-{
-    off64_t ret;
-
-    if (no_write) {
-        return;
-    }
-
-    ret = lseek64(fd, offset, SEEK_SET);
-    if (ret < 0)
-        critical_error_errno("failed to seek to superblock");
-
-    ret = write(fd, sb, sizeof(*sb));
-    if (ret < 0)
-        critical_error_errno("failed to write superblock");
-    if (ret != sizeof(*sb))
-        critical_error("failed to write all of superblock");
-}
-
 static int get_fs_fixup_state(int fd)
 {
     unsigned long long magic;
@@ -191,64 +155,9 @@ static int set_fs_fixup_state(int fd, int state)
         /* we are done, so make the filesystem mountable again */
         sb.s_desc_size &= ~1;
     }
-    write_sb(fd, 1024, &sb);
 
-    return 0;
-}
-
-static int read_ext(int fd)
-{
-    off64_t ret;
-    struct ext4_super_block sb;
-
-    read_sb(fd, &sb);
-
-    ext4_parse_sb(&sb);
-
-    if (info.feat_incompat & EXT4_FEATURE_INCOMPAT_RECOVER) {
-        critical_error("Filesystem needs recovery first, mount and unmount to do that\n");
-    }
-
-    /* Clear the low bit which is set while this tool is in progress.
-     * If the tool crashes, it will still be set when we restart.
-     * The low bit is set to make the filesystem unmountable while
-     * it is being fixed up.  Also allow 0, which means the old ext2
-     * size is in use.
-     */
-    if (((sb.s_desc_size & ~1) != sizeof(struct ext2_group_desc)) &&
-        ((sb.s_desc_size & ~1) != 0))
-        critical_error("error: bg_desc_size != sizeof(struct ext2_group_desc)\n");
-
-    ret = lseek64(fd, info.len, SEEK_SET);
-    if (ret < 0)
-        critical_error_errno("failed to seek to end of input image");
-
-    ret = lseek64(fd, info.block_size * (aux_info.first_data_block + 1), SEEK_SET);
-    if (ret < 0)
-        critical_error_errno("failed to seek to block group descriptors");
-
-    ret = read(fd, aux_info.bg_desc, info.block_size * aux_info.bg_desc_blocks);
-    if (ret < 0)
-        critical_error_errno("failed to read block group descriptors");
-    if (ret != (int)info.block_size * (int)aux_info.bg_desc_blocks)
-        critical_error("failed to read all of block group descriptors");
-
-    if (verbose) {
-        printf("Found filesystem with parameters:\n");
-        printf("    Size: %llu\n", info.len);
-        printf("    Block size: %d\n", info.block_size);
-        printf("    Blocks per group: %d\n", info.blocks_per_group);
-        printf("    Inodes per group: %d\n", info.inodes_per_group);
-        printf("    Inode size: %d\n", info.inode_size);
-        printf("    Label: %s\n", info.label);
-        printf("    Blocks: %llu\n", aux_info.len_blocks);
-        printf("    Block groups: %d\n", aux_info.groups);
-        printf("    Reserved block group size: %d\n", info.bg_desc_reserve_blocks);
-        printf("    Used %d/%d inodes and %d/%d blocks\n",
-                aux_info.sb->s_inodes_count - aux_info.sb->s_free_inodes_count,
-                aux_info.sb->s_inodes_count,
-                aux_info.sb->s_blocks_count_lo - aux_info.sb->s_free_blocks_count_lo,
-                aux_info.sb->s_blocks_count_lo);
+    if (!no_write) {
+        write_sb(fd, 1024, &sb);
     }
 
     return 0;
@@ -318,21 +227,6 @@ static int write_block(int fd, unsigned long long block_num, void *block)
     }
 
     return 0;
-}
-
-static int bitmap_get_bit(u8 *bitmap, u32 bit)
-{
-        if (bitmap[bit / 8] & (1 << (bit % 8)))
-                return 1;
-
-        return 0;
-}
-
-static void bitmap_clear_bit(u8 *bitmap, u32 bit)
-{
-        bitmap[bit / 8] &= ~(1 << (bit % 8));
-
-        return;
 }
 
 static void check_inode_bitmap(int fd, unsigned int bg_num)
@@ -425,7 +319,13 @@ static int update_superblocks_and_bg_desc(int fd, int state)
                 sb.s_desc_size &= ~1;
             }
 
-            write_sb(fd, (unsigned long long)i * info.blocks_per_group * info.block_size + sb_offset, &sb);
+            if (!no_write) {
+                write_sb(fd,
+                         (unsigned long long)i
+                         * info.blocks_per_group * info.block_size
+                         + sb_offset,
+                         &sb);
+            }
 
             ret = lseek64(fd, ((unsigned long long)i * info.blocks_per_group * info.block_size) +
                               (info.block_size * (aux_info.first_data_block + 1)), SEEK_SET);
@@ -805,7 +705,21 @@ int ext4fixup_internal(char *fsdev, int v_flag, int n_flag,
     if (fd < 0)
         critical_error_errno("failed to open filesystem image");
 
-    read_ext(fd);
+    read_ext(fd, verbose);
+
+    if (info.feat_incompat & EXT4_FEATURE_INCOMPAT_RECOVER) {
+        critical_error("Filesystem needs recovery first, mount and unmount to do that\n");
+    }
+
+    /* Clear the low bit which is set while this tool is in progress.
+     * If the tool crashes, it will still be set when we restart.
+     * The low bit is set to make the filesystem unmountable while
+     * it is being fixed up.  Also allow 0, which means the old ext2
+     * size is in use.
+     */
+    if (((aux_info.sb->s_desc_size & ~1) != sizeof(struct ext2_group_desc)) &&
+        ((aux_info.sb->s_desc_size & ~1) != 0))
+        critical_error("error: bg_desc_size != sizeof(struct ext2_group_desc)\n");
 
     if ((info.feat_incompat & EXT4_FEATURE_INCOMPAT_FILETYPE) == 0) {
         critical_error("Expected filesystem to have filetype flag set\n");
