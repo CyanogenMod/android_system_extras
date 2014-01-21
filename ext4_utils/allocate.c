@@ -358,28 +358,6 @@ static u32 ext4_allocate_blocks_from_block_group(u32 len, int bg_num)
 	return bg->first_block + block;
 }
 
-static struct region *ext4_allocate_contiguous_blocks(u32 len)
-{
-	unsigned int i;
-	struct region *reg;
-
-	for (i = 0; i < aux_info.groups; i++) {
-		u32 block = ext4_allocate_blocks_from_block_group(len, i);
-
-		if (block != EXT4_ALLOCATE_FAILED) {
-			reg = malloc(sizeof(struct region));
-			reg->block = block;
-			reg->len = len;
-			reg->next = NULL;
-			reg->prev = NULL;
-			reg->bg = i;
-			return reg;
-		}
-	}
-
-	return NULL;
-}
-
 /* Allocate a single block and return its block number */
 u32 allocate_block()
 {
@@ -394,52 +372,52 @@ u32 allocate_block()
 	return EXT4_ALLOCATE_FAILED;
 }
 
-static struct region *ext4_allocate_partial(u32 len)
+static struct region *ext4_allocate_best_fit_partial(u32 len)
 {
 	unsigned int i;
-	struct region *reg;
+	unsigned int found_bg = 0;
+	u32 found_bg_len = 0;
 
 	for (i = 0; i < aux_info.groups; i++) {
-		if (aux_info.bgs[i].data_blocks_used == 0) {
-			u32 bg_len = aux_info.bgs[i].free_blocks;
-			u32 block;
+		u32 bg_len = aux_info.bgs[i].free_blocks;
 
-			if (len <= bg_len) {
-				/* If the requested length would fit in a block group,
-				 use the regular allocator to try to fit it in a partially
-				 used block group */
-				bg_len = len;
-				reg = ext4_allocate_contiguous_blocks(len);
-			} else {
-				block = ext4_allocate_blocks_from_block_group(bg_len, i);
-
-				if (block == EXT4_ALLOCATE_FAILED) {
-					error("failed to allocate %d blocks in block group %d", bg_len, i);
-					return NULL;
-				}
-
-				reg = malloc(sizeof(struct region));
-				reg->block = block;
-				reg->len = bg_len;
-				reg->next = NULL;
-				reg->prev = NULL;
-				reg->bg = i;
-			}
-
-			return reg;
+		if ((len <= bg_len && (found_bg_len == 0 || bg_len < found_bg_len)) ||
+		    (len > found_bg_len && bg_len > found_bg_len)) {
+			found_bg = i;
+			found_bg_len = bg_len;
 		}
 	}
+
+	if (found_bg_len) {
+		u32 allocate_len = min(len, found_bg_len);
+		struct region *reg;
+		u32 block = ext4_allocate_blocks_from_block_group(allocate_len, found_bg);
+		if (block == EXT4_ALLOCATE_FAILED) {
+			error("failed to allocate %d blocks in block group %d", allocate_len, found_bg);
+			return NULL;
+		}
+		reg = malloc(sizeof(struct region));
+		reg->block = block;
+		reg->len = allocate_len;
+		reg->next = NULL;
+		reg->prev = NULL;
+		reg->bg = found_bg;
+		return reg;
+	} else {
+		error("failed to allocate %u blocks, out of space?", len);
+	}
+
 	return NULL;
 }
 
-static struct region *ext4_allocate_multiple_contiguous_blocks(u32 len)
+static struct region *ext4_allocate_best_fit(u32 len)
 {
 	struct region *first_reg = NULL;
 	struct region *prev_reg = NULL;
 	struct region *reg;
 
 	while (len > 0) {
-		reg = ext4_allocate_partial(len);
+		reg = ext4_allocate_best_fit_partial(len);
 		if (reg == NULL)
 			return NULL;
 
@@ -458,27 +436,16 @@ static struct region *ext4_allocate_multiple_contiguous_blocks(u32 len)
 	return first_reg;
 }
 
-struct region *do_allocate(u32 len)
-{
-	struct region *reg = ext4_allocate_contiguous_blocks(len);
-
-	if (reg == NULL)
-		reg = ext4_allocate_multiple_contiguous_blocks(len);
-
-	return reg;
-}
-
 /* Allocate len blocks.  The blocks may be spread across multiple block groups,
    and are returned in a linked list of the blocks in each block group.  The
    allocation algorithm is:
-      1.  Try to allocate the entire block len in each block group
-      2.  If the request doesn't fit in any block group, allocate as many
-          blocks as possible into each block group that is completely empty
-      3.  Put the last set of blocks in the first block group they fit in
+      1.  If the remaining allocation is larger than any available contiguous region,
+          allocate the largest contiguous region and loop
+      2.  Otherwise, allocate the smallest contiguous region that it fits in
 */
 struct block_allocation *allocate_blocks(u32 len)
 {
-	struct region *reg = do_allocate(len);
+	struct region *reg = ext4_allocate_best_fit(len);
 
 	if (reg == NULL)
 		return NULL;
@@ -674,7 +641,7 @@ int advance_oob_blocks(struct block_allocation *alloc, int blocks)
 
 int append_oob_allocation(struct block_allocation *alloc, u32 len)
 {
-	struct region *reg = do_allocate(len);
+	struct region *reg = ext4_allocate_best_fit(len);
 
 	if (reg == NULL) {
 		error("failed to allocate %d blocks", len);
