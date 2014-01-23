@@ -261,7 +261,7 @@ void ext4_queue_sb(void)
 	}
 }
 
-void ext4_parse_sb(struct ext4_super_block *sb)
+void ext4_parse_sb_info(struct ext4_super_block *sb)
 {
 	if (sb->s_magic != EXT4_SUPER_MAGIC)
 		error("superblock magic incorrect");
@@ -269,20 +269,7 @@ void ext4_parse_sb(struct ext4_super_block *sb)
 	if ((sb->s_state & EXT4_VALID_FS) != EXT4_VALID_FS)
 		error("filesystem state not valid");
 
-	info.block_size = 1024 << sb->s_log_block_size;
-	info.blocks_per_group = sb->s_blocks_per_group;
-	info.inodes_per_group = sb->s_inodes_per_group;
-	info.inode_size = sb->s_inode_size;
-	info.inodes = sb->s_inodes_count;
-	info.feat_ro_compat = sb->s_feature_ro_compat;
-	info.feat_compat = sb->s_feature_compat;
-	info.feat_incompat = sb->s_feature_incompat;
-	info.bg_desc_reserve_blocks = sb->s_reserved_gdt_blocks;
-	info.label = sb->s_volume_name;
-
-	aux_info.len_blocks = ((u64)sb->s_blocks_count_hi << 32) +
-			sb->s_blocks_count_lo;
-	info.len = (u64)info.block_size * aux_info.len_blocks;
+	ext4_parse_sb(sb, &info);
 
 	ext4_create_fs_aux_info();
 

@@ -68,7 +68,7 @@ static int read_ext(int fd)
 	if (ret != sizeof(sb))
 		critical_error("failed to read all of superblock");
 
-	ext4_parse_sb(&sb);
+	ext4_parse_sb_info(&sb);
 
 	ret = lseek64(fd, info.len, SEEK_SET);
 	if (ret < 0)

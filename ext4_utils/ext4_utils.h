@@ -45,7 +45,7 @@ extern "C" {
 #define off64_t off_t
 #endif
 
-#include "ext4_kernel_headers.h"
+#include "ext4_sb.h"
 
 extern int force;
 
@@ -55,7 +55,6 @@ extern int force;
 #define critical_error(fmt, args...) do { fprintf(stderr, "critical error: %s: " fmt "\n", __func__, ## args); longjmp(setjmp_env, EXIT_FAILURE); } while (0)
 #define critical_error_errno(s, args...) critical_error(s ": %s", ##args, strerror(errno))
 
-#define EXT4_SUPER_MAGIC 0xEF53
 #define EXT4_JNL_BACKUP_BLOCKS 1
 
 #ifndef min /* already defined by windows.h */
@@ -91,24 +90,6 @@ struct ext2_group_desc {
 	u32 bg_reserved[2];
 	u16 bg_reserved16;
 	u16 bg_checksum;
-};
-
-struct fs_info {
-	s64 len;	/* If set to 0, ask the block device for the size,
-			 * if less than 0, reserve that much space at the
-			 * end of the partition, else use the size given. */
-	u32 block_size;
-	u32 blocks_per_group;
-	u32 inodes_per_group;
-	u32 inode_size;
-	u32 inodes;
-	u32 journal_blocks;
-	u16 feat_ro_compat;
-	u16 feat_compat;
-	u16 feat_incompat;
-	u32 bg_desc_reserve_blocks;
-	const char *label;
-	u8 no_journal;
 };
 
 struct fs_aux_info {
@@ -156,7 +137,7 @@ void ext4_queue_sb(void);
 u64 get_block_device_size(int fd);
 u64 get_file_size(int fd);
 u64 parse_num(const char *arg);
-void ext4_parse_sb(struct ext4_super_block *sb);
+void ext4_parse_sb_info(struct ext4_super_block *sb);
 u16 ext4_crc16(u16 crc_in, const void *buf, int size);
 
 typedef void (*fs_config_func_t)(const char *path, int dir, unsigned *uid, unsigned *gid,

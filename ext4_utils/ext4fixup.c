@@ -203,7 +203,7 @@ static int read_ext(int fd)
 
     read_sb(fd, &sb);
 
-    ext4_parse_sb(&sb);
+    ext4_parse_sb_info(&sb);
 
     if (info.feat_incompat & EXT4_FEATURE_INCOMPAT_RECOVER) {
         critical_error("Filesystem needs recovery first, mount and unmount to do that\n");
