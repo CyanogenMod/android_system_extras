@@ -15,8 +15,6 @@
  */
 
 #include "ext4_utils.h"
-#include "ext4.h"
-#include "ext4_extents.h"
 #include "extent.h"
 
 #include <sparse/sparse.h>

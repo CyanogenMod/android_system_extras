@@ -45,6 +45,8 @@ extern "C" {
 #define off64_t off_t
 #endif
 
+#include "ext4_kernel_headers.h"
+
 extern int force;
 
 #define warn(fmt, args...) do { fprintf(stderr, "warning: %s: " fmt "\n", __func__, ## args); } while (0)
@@ -63,19 +65,6 @@ extern int force;
 #define DIV_ROUND_UP(x, y) (((x) + (y) - 1)/(y))
 #define ALIGN(x, y) ((y) * DIV_ROUND_UP((x), (y)))
 
-#define __le64 u64
-#define __le32 u32
-#define __le16 u16
-
-#define __be64 u64
-#define __be32 u32
-#define __be16 u16
-
-#define __u64 u64
-#define __u32 u32
-#define __u16 u16
-#define __u8 u8
-
 /* XXX */
 #define cpu_to_le32(x) (x)
 #define cpu_to_le16(x) (x)
@@ -92,16 +81,16 @@ struct block_group_info;
 struct xattr_list_element;
 
 struct ext2_group_desc {
-	__le32 bg_block_bitmap;
-	__le32 bg_inode_bitmap;
-	__le32 bg_inode_table;
-	__le16 bg_free_blocks_count;
-	__le16 bg_free_inodes_count;
-	__le16 bg_used_dirs_count;
-	__le16 bg_flags;
-	__le32 bg_reserved[2];
-	__le16 bg_reserved16;
-	__le16 bg_checksum;
+	u32 bg_block_bitmap;
+	u32 bg_inode_bitmap;
+	u32 bg_inode_table;
+	u16 bg_free_blocks_count;
+	u16 bg_free_inodes_count;
+	u16 bg_used_dirs_count;
+	u16 bg_flags;
+	u32 bg_reserved[2];
+	u16 bg_reserved16;
+	u16 bg_checksum;
 };
 
 struct fs_info {

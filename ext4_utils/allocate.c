@@ -16,7 +16,6 @@
 
 #include "ext4_utils.h"
 #include "allocate.h"
-#include "ext4.h"
 
 #include <sparse/sparse.h>
 

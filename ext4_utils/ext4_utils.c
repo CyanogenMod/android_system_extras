@@ -41,9 +41,6 @@
 #include <sys/disk.h>
 #endif
 
-#include "ext4.h"
-#include "jbd2.h"
-
 int force = 0;
 struct fs_info info;
 struct fs_aux_info aux_info;
