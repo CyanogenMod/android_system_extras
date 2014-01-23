@@ -22,6 +22,7 @@
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <libgen.h>
 #include <unistd.h>
 
@@ -86,13 +87,13 @@ static int read_ext(int fd)
 
 	if (verbose) {
 		printf("Found filesystem with parameters:\n");
-		printf("    Size: %llu\n", info.len);
+		printf("    Size: %"PRIu64"\n", info.len);
 		printf("    Block size: %d\n", info.block_size);
 		printf("    Blocks per group: %d\n", info.blocks_per_group);
 		printf("    Inodes per group: %d\n", info.inodes_per_group);
 		printf("    Inode size: %d\n", info.inode_size);
 		printf("    Label: %s\n", info.label);
-		printf("    Blocks: %llu\n", aux_info.len_blocks);
+		printf("    Blocks: %"PRIu64"\n", aux_info.len_blocks);
 		printf("    Block groups: %d\n", aux_info.groups);
 		printf("    Reserved block group size: %d\n", info.bg_desc_reserve_blocks);
 		printf("    Used %d/%d inodes and %d/%d blocks\n",

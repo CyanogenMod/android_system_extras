@@ -70,8 +70,13 @@ extern int force;
 #define le32_to_cpu(x) (x)
 #define le16_to_cpu(x) (x)
 
+#ifdef __LP64__
+typedef unsigned long u64;
+typedef signed long s64;
+#else
 typedef unsigned long long u64;
 typedef signed long long s64;
+#endif
 typedef unsigned int u32;
 typedef unsigned short int u16;
 typedef unsigned char u8;
