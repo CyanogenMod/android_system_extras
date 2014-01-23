@@ -41,7 +41,7 @@ static u8 *extent_create_backing(struct block_allocation *alloc,
 
 		len = min(region_len * info.block_size, backing_len);
 
-		sparse_file_add_data(info.sparse_file, ptr, len, region_block);
+		sparse_file_add_data(ext4_sparse_file, ptr, len, region_block);
 		ptr += len;
 		backing_len -= len;
 	}
@@ -63,7 +63,7 @@ static void extent_create_backing_file(struct block_allocation *alloc,
 
 		len = min(region_len * info.block_size, backing_len);
 
-		sparse_file_add_file(info.sparse_file, filename, offset, len,
+		sparse_file_add_file(ext4_sparse_file, filename, offset, len,
 				region_block);
 		offset += len;
 		backing_len -= len;
@@ -123,7 +123,7 @@ static struct block_allocation *do_inode_allocate_extents(
 		if (!data)
 			critical_error_errno("calloc");
 
-		sparse_file_add_data(info.sparse_file, data, info.block_size,
+		sparse_file_add_data(ext4_sparse_file, data, info.block_size,
 				extent_block);
 
 		if (((int)(info.block_size - sizeof(struct ext4_extent_header) /

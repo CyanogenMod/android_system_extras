@@ -109,8 +109,6 @@ struct fs_info {
 	u32 bg_desc_reserve_blocks;
 	const char *label;
 	u8 no_journal;
-
-	struct sparse_file *sparse_file;
 };
 
 struct fs_aux_info {
@@ -132,6 +130,7 @@ struct fs_aux_info {
 
 extern struct fs_info info;
 extern struct fs_aux_info aux_info;
+extern struct sparse_file *ext4_sparse_file;
 
 extern jmp_buf setjmp_env;
 
