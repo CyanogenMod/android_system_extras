@@ -41,12 +41,10 @@
 #include <sys/disk.h>
 #endif
 
-#include "ext4.h"
-#include "jbd2.h"
-
 int force = 0;
 struct fs_info info;
 struct fs_aux_info aux_info;
+struct sparse_file *ext4_sparse_file;
 
 jmp_buf setjmp_env;
 
@@ -84,7 +82,7 @@ int ext4_bg_has_super_block(int bg)
 /* Write the filesystem image to a file */
 void write_ext4_image(int fd, int gz, int sparse, int crc)
 {
-	sparse_file_write(info.sparse_file, fd, gz, sparse, crc);
+	sparse_file_write(ext4_sparse_file, fd, gz, sparse, crc);
 }
 
 /* Compute the rest of the parameters of the filesystem from the basic info */
@@ -228,10 +226,10 @@ void ext4_fill_in_sb()
 				memcpy(aux_info.backup_sb[i], sb, info.block_size);
 				/* Update the block group nr of this backup superblock */
 				aux_info.backup_sb[i]->s_block_group_nr = i;
-				sparse_file_add_data(info.sparse_file, aux_info.backup_sb[i],
+				sparse_file_add_data(ext4_sparse_file, aux_info.backup_sb[i],
 						info.block_size, group_start_block);
 			}
-			sparse_file_add_data(info.sparse_file, aux_info.bg_desc,
+			sparse_file_add_data(ext4_sparse_file, aux_info.bg_desc,
 				aux_info.bg_desc_blocks * info.block_size,
 				group_start_block + 1);
 			header_size = 1 + aux_info.bg_desc_blocks + info.bg_desc_reserve_blocks;
@@ -257,13 +255,13 @@ void ext4_queue_sb(void)
 	if (info.block_size > 1024) {
 		u8 *buf = calloc(info.block_size, 1);
 		memcpy(buf + 1024, (u8*)aux_info.sb, 1024);
-		sparse_file_add_data(info.sparse_file, buf, info.block_size, 0);
+		sparse_file_add_data(ext4_sparse_file, buf, info.block_size, 0);
 	} else {
-		sparse_file_add_data(info.sparse_file, aux_info.sb, 1024, 1);
+		sparse_file_add_data(ext4_sparse_file, aux_info.sb, 1024, 1);
 	}
 }
 
-void ext4_parse_sb(struct ext4_super_block *sb)
+void ext4_parse_sb_info(struct ext4_super_block *sb)
 {
 	if (sb->s_magic != EXT4_SUPER_MAGIC)
 		error("superblock magic incorrect");
@@ -271,20 +269,7 @@ void ext4_parse_sb(struct ext4_super_block *sb)
 	if ((sb->s_state & EXT4_VALID_FS) != EXT4_VALID_FS)
 		error("filesystem state not valid");
 
-	info.block_size = 1024 << sb->s_log_block_size;
-	info.blocks_per_group = sb->s_blocks_per_group;
-	info.inodes_per_group = sb->s_inodes_per_group;
-	info.inode_size = sb->s_inode_size;
-	info.inodes = sb->s_inodes_count;
-	info.feat_ro_compat = sb->s_feature_ro_compat;
-	info.feat_compat = sb->s_feature_compat;
-	info.feat_incompat = sb->s_feature_incompat;
-	info.bg_desc_reserve_blocks = sb->s_reserved_gdt_blocks;
-	info.label = sb->s_volume_name;
-
-	aux_info.len_blocks = ((u64)sb->s_blocks_count_hi << 32) +
-			sb->s_blocks_count_lo;
-	info.len = (u64)info.block_size * aux_info.len_blocks;
+	ext4_parse_sb(sb, &info);
 
 	ext4_create_fs_aux_info();
 

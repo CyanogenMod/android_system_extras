@@ -25,6 +25,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <unistd.h>
 
 #ifndef USE_MINGW
@@ -203,7 +204,7 @@ static int read_ext(int fd)
 
     read_sb(fd, &sb);
 
-    ext4_parse_sb(&sb);
+    ext4_parse_sb_info(&sb);
 
     if (info.feat_incompat & EXT4_FEATURE_INCOMPAT_RECOVER) {
         critical_error("Filesystem needs recovery first, mount and unmount to do that\n");
@@ -235,13 +236,13 @@ static int read_ext(int fd)
 
     if (verbose) {
         printf("Found filesystem with parameters:\n");
-        printf("    Size: %llu\n", info.len);
+        printf("    Size: %"PRIu64"\n", info.len);
         printf("    Block size: %d\n", info.block_size);
         printf("    Blocks per group: %d\n", info.blocks_per_group);
         printf("    Inodes per group: %d\n", info.inodes_per_group);
         printf("    Inode size: %d\n", info.inode_size);
         printf("    Label: %s\n", info.label);
-        printf("    Blocks: %llu\n", aux_info.len_blocks);
+        printf("    Blocks: %"PRIu64"\n", aux_info.len_blocks);
         printf("    Block groups: %d\n", aux_info.groups);
         printf("    Reserved block group size: %d\n", info.bg_desc_reserve_blocks);
         printf("    Used %d/%d inodes and %d/%d blocks\n",
