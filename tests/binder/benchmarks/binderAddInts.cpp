@@ -74,7 +74,7 @@ class AddIntsService : public BBinder
 {
   public:
     AddIntsService(int cpu = unbound);
-    virtual ~AddIntsService() {};
+    virtual ~AddIntsService() {}
 
     enum command {
         ADD_INTS = 0x120,
@@ -306,7 +306,7 @@ static void client(void)
 
 AddIntsService::AddIntsService(int cpu): cpu_(cpu) {
     if (cpu != unbound) { bindCPU(cpu); }
-};
+}
 
 // Server function that handles parcels received from the client
 status_t AddIntsService::onTransact(uint32_t code, const Parcel &data,
