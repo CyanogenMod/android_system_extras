@@ -40,6 +40,6 @@ struct ext4_xattr_entry {
      (char *)(entry) + EXT4_XATTR_LEN((entry)->e_name_len)))
 #define EXT4_XATTR_SIZE(size) \
     (((size) + EXT4_XATTR_ROUND) & ~EXT4_XATTR_ROUND)
-#define IS_LAST_ENTRY(entry) (*(__u32 *)(entry) == 0)
+#define IS_LAST_ENTRY(entry) (*(uint32_t *)(entry) == 0)
 
 #endif /* !_SYSTEM_EXTRAS_EXT4_UTILS_XATTR_H */

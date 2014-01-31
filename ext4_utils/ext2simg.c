@@ -66,7 +66,7 @@ static int build_sparse_ext(int fd, const char *filename)
 		critical_error("failed to allocate block bitmap");
 
 	if (aux_info.first_data_block > 0)
-		sparse_file_add_file(info.sparse_file, filename, 0,
+		sparse_file_add_file(ext4_sparse_file, filename, 0,
 				info.block_size * aux_info.first_data_block, 0);
 
 	for (i = 0; i < aux_info.groups; i++) {
@@ -91,7 +91,7 @@ static int build_sparse_ext(int fd, const char *filename)
 					u32 start_block = first_block + start_contiguous_block;
 					u32 len_blocks = block - start_contiguous_block;
 
-					sparse_file_add_file(info.sparse_file, filename,
+					sparse_file_add_file(ext4_sparse_file, filename,
 							(u64)info.block_size * start_block,
 							info.block_size * len_blocks, start_block);
 					start_contiguous_block = -1;
@@ -105,7 +105,7 @@ static int build_sparse_ext(int fd, const char *filename)
 		if (start_contiguous_block >= 0) {
 			u32 start_block = first_block + start_contiguous_block;
 			u32 len_blocks = last_block - start_contiguous_block;
-			sparse_file_add_file(info.sparse_file, filename,
+			sparse_file_add_file(ext4_sparse_file, filename,
 					(u64)info.block_size * start_block,
 					info.block_size * len_blocks, start_block);
 		}
@@ -170,7 +170,7 @@ int main(int argc, char **argv)
 
 	read_ext(infd, verbose);
 
-	info.sparse_file = sparse_file_new(info.block_size, info.len);
+	ext4_sparse_file = sparse_file_new(info.block_size, info.len);
 
 	build_sparse_ext(infd, in);
 
@@ -189,7 +189,7 @@ int main(int argc, char **argv)
 	write_ext4_image(outfd, gzip, sparse, crc);
 	close(outfd);
 
-	sparse_file_destroy(info.sparse_file);
+	sparse_file_destroy(ext4_sparse_file);
 
 	return 0;
 }

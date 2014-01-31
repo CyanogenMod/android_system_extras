@@ -20,8 +20,6 @@
 #define EXT4_ALLOCATE_FAILED (u32)(~0)
 
 #include "ext4_utils.h"
-#include "ext4.h"
-#include "xattr.h"
 
 struct block_allocation;
 

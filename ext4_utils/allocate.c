@@ -16,7 +16,6 @@
 
 #include "ext4_utils.h"
 #include "allocate.h"
-#include "ext4.h"
 
 #include <sparse/sparse.h>
 
@@ -181,7 +180,7 @@ static void allocate_bg_inode_table(struct block_group_info *bg)
 	if (bg->inode_table == NULL)
 		critical_error_errno("calloc");
 
-	sparse_file_add_data(info.sparse_file, bg->inode_table,
+	sparse_file_add_data(ext4_sparse_file, bg->inode_table,
 			aux_info.inode_table_blocks	* info.block_size, block);
 
 	bg->flags &= ~EXT4_BG_INODE_UNINIT;
@@ -299,7 +298,7 @@ static void init_bg(struct block_group_info *bg, unsigned int i)
 	u32 block = bg->first_block;
 	if (bg->has_superblock)
 		block += 1 + aux_info.bg_desc_blocks +  info.bg_desc_reserve_blocks;
-	sparse_file_add_data(info.sparse_file, bg->bitmaps, 2 * info.block_size,
+	sparse_file_add_data(ext4_sparse_file, bg->bitmaps, 2 * info.block_size,
 			block);
 
 	bg->data_blocks_used = 0;
@@ -718,7 +717,7 @@ struct ext4_xattr_header *get_xattr_block_for_inode(struct ext4_inode *inode)
 	inode->i_blocks_lo = cpu_to_le32(le32_to_cpu(inode->i_blocks_lo) + (info.block_size / 512));
 	inode->i_file_acl_lo = cpu_to_le32(block_num);
 
-	int result = sparse_file_add_data(info.sparse_file, block, info.block_size, block_num);
+	int result = sparse_file_add_data(ext4_sparse_file, block, info.block_size, block_num);
 	if (result != 0) {
 		error("get_xattr: sparse_file_add_data failure %d", result);
 		free(block);
