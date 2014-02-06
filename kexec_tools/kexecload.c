@@ -141,15 +141,15 @@ int main(int argc, char *argv[])
 
     segment[0].buf = zimage_buffer;
     segment[0].bufsz = zimage_size;
-    segment[0].mem = (void *) ((unsigned) start_address + KEXEC_ARM_ZIMAGE_OFFSET);
+    segment[0].mem = (void *) ((uintptr_t) start_address + KEXEC_ARM_ZIMAGE_OFFSET);
     segment[0].memsz = zimage_size;
 
     segment[1].buf = atag_buffer;
     segment[1].bufsz = atag_size;
-    segment[1].mem = (void *) ((unsigned) start_address + KEXEC_ARM_ATAGS_OFFSET);
+    segment[1].mem = (void *) ((uintptr_t) start_address + KEXEC_ARM_ATAGS_OFFSET);
     segment[1].memsz = atag_size;
 
-    rv = kexec_load(((unsigned) start_address + KEXEC_ARM_ZIMAGE_OFFSET),
+    rv = kexec_load(((uintptr_t) start_address + KEXEC_ARM_ZIMAGE_OFFSET),
                     2, (void *) segment, KEXEC_ARCH_DEFAULT | KEXEC_ON_CRASH);
 
     if (rv != 0) {
