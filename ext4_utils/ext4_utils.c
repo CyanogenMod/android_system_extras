@@ -210,7 +210,7 @@ void ext4_fill_in_sb()
 		EXT4_GOOD_OLD_INODE_SIZE;
 	sb->s_want_extra_isize = sizeof(struct ext4_inode) -
 		EXT4_GOOD_OLD_INODE_SIZE;
-	sb->s_flags = 0;
+	sb->s_flags = 2;
 	sb->s_raid_stride = 0;
 	sb->s_mmp_interval = 0;
 	sb->s_mmp_block = 0;
