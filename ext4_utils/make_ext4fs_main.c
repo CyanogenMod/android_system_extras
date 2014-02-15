@@ -203,6 +203,7 @@ int main(int argc, char **argv)
 	exitcode = make_ext4fs_internal(fd, directory, mountpoint, fs_config_func, gzip,
 			sparse, crc, wipe, sehnd, verbose);
 	close(fd);
-
+	if (exitcode && strcmp(filename, "-"))
+		unlink(filename);
 	return exitcode;
 }
