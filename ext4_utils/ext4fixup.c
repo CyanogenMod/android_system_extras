@@ -739,7 +739,7 @@ int ext4fixup_internal(char *fsdev, int v_flag, int n_flag,
 #endif
 
     /* Compute what the new value of inodes_per_blockgroup will be when we're done */
-    new_inodes_per_group=ALIGN(info.inodes_per_group,(info.block_size/info.inode_size));
+    new_inodes_per_group=EXT4_ALIGN(info.inodes_per_group,(info.block_size/info.inode_size));
 
     read_inode(fd, EXT4_ROOT_INO, &root_inode);
 

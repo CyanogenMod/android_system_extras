@@ -45,7 +45,7 @@ static u32 dentry_size(u32 entries, struct dentry *dentries)
 	unsigned int dentry_len;
 
 	for (i = 0; i < entries; i++) {
-		dentry_len = 8 + ALIGN(strlen(dentries[i].filename), 4);
+		dentry_len = 8 + EXT4_ALIGN(strlen(dentries[i].filename), 4);
 		if (len % info.block_size + dentry_len > info.block_size)
 			len += info.block_size - (len % info.block_size);
 		len += dentry_len;
@@ -59,7 +59,7 @@ static struct ext4_dir_entry_2 *add_dentry(u8 *data, u32 *offset,
 		u8 file_type)
 {
 	u8 name_len = strlen(name);
-	u16 rec_len = 8 + ALIGN(name_len, 4);
+	u16 rec_len = 8 + EXT4_ALIGN(name_len, 4);
 	struct ext4_dir_entry_2 *dentry;
 
 	u32 start_block = *offset / info.block_size;

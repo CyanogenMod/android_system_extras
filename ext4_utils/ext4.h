@@ -98,7 +98,7 @@ struct ext4_allocation_request {
 #define EXT4_BLOCK_SIZE_BITS(s) ((s)->s_log_block_size + 10)
 #define EXT4_INODE_SIZE(s) (((s)->s_rev_level == EXT4_GOOD_OLD_REV) ?   EXT4_GOOD_OLD_INODE_SIZE :   (s)->s_inode_size)
 #define EXT4_FIRST_INO(s) (((s)->s_rev_level == EXT4_GOOD_OLD_REV) ?   EXT4_GOOD_OLD_FIRST_INO :   (s)->s_first_ino)
-#define EXT4_BLOCK_ALIGN(size, blkbits) ALIGN((size), (1 << (blkbits)))
+#define EXT4_BLOCK_ALIGN(size, blkbits) EXT4_ALIGN((size), (1 << (blkbits)))
 
 struct ext4_group_desc
 {

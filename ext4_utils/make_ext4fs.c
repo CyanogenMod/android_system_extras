@@ -334,7 +334,7 @@ static u32 compute_inodes_per_group()
 	u32 blocks = DIV_ROUND_UP(info.len, info.block_size);
 	u32 block_groups = DIV_ROUND_UP(blocks, info.blocks_per_group);
 	u32 inodes = DIV_ROUND_UP(info.inodes, block_groups);
-	inodes = ALIGN(inodes, (info.block_size / info.inode_size));
+	inodes = EXT4_ALIGN(inodes, (info.block_size / info.inode_size));
 
 	/* After properly rounding up the number of inodes/group,
 	 * make sure to update the total inodes field in the info struct.

@@ -62,7 +62,7 @@ extern int force;
 #endif
 
 #define DIV_ROUND_UP(x, y) (((x) + (y) - 1)/(y))
-#define ALIGN(x, y) ((y) * DIV_ROUND_UP((x), (y)))
+#define EXT4_ALIGN(x, y) ((y) * DIV_ROUND_UP((x), (y)))
 
 /* XXX */
 #define cpu_to_le32(x) (x)
