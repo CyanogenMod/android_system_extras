@@ -140,7 +140,6 @@ $(call device-test, $(sources))
 sources := \
     other/test_arc4random.c \
     other/test_sysconf.c \
-    other/test_thread_max.c \
     other/test_vfprintf_leak.c \
 
 ifeq ($(TARGET_ARCH),arm)
