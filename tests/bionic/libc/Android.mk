@@ -68,7 +68,6 @@ sources := \
     common/test_gethostbyname.c \
     common/test_gethostname.c \
     common/test_pthread_cleanup_push.c \
-    common/test_pthread_getcpuclockid.c \
     common/test_pthread_join.c \
     common/test_pthread_mutex.c \
     common/test_pthread_rwlock.c \
@@ -141,7 +140,6 @@ $(call device-test, $(sources))
 sources := \
     other/test_arc4random.c \
     other/test_sysconf.c \
-    other/test_system.c \
     other/test_thread_max.c \
     other/test_vfprintf_leak.c \
 
