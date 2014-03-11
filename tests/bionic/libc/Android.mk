@@ -64,7 +64,6 @@ sources := \
     common/bench_stdio.c \
     common/test_clock.c \
     common/test_cpu_set.c \
-    common/test_drand48.c \
     common/test_executable_destructor.c \
     common/test_getaddrinfo.c \
     common/test_gethostbyname.c \
@@ -127,13 +126,6 @@ $(call host-test, $(sources))
 EXTRA_LDLIBS := -ldl -Wl,--export-dynamic -Wl,-u,foo
 $(call device-test, $(sources))
 
-
-sources := \
-    common/test_libgen.c \
-
-EXTRA_CFLAGS := -DHOST
-$(call host-test, $(sources))
-$(call device-test, $(sources))
 
 # Second, the Bionic-specific tests
 
@@ -227,21 +219,6 @@ LOCAL_LDFLAGS := -ldl
 #LOCAL_SHARED_LIBRARIES := libdlclosetest1 libdlclosetest2
 LOCAL_MODULE_TAGS := tests
 include $(BUILD_EXECUTABLE)
-
-# Testing 'clone' is only possible on Linux systems
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES := common/test_clone.c
-LOCAL_MODULE := test_clone
-LOCAL_MODULE_TAGS := tests
-include $(BUILD_EXECUTABLE)
-
-ifeq ($(HOST_OS),linux)
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES := common/test_clone.c
-LOCAL_MODULE := test_clone
-LOCAL_MODULE_TAGS := tests
-include $(BUILD_HOST_EXECUTABLE)
-endif
 
 # TODO: Add a variety of GLibc test programs too...
 
