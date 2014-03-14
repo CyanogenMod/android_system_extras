@@ -15,14 +15,15 @@
  */
 
 #include <errno.h>
+#include <fcntl.h>
+#include <getopt.h>
+#include <inttypes.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <string.h>
-#include <fcntl.h>
-#include <stdint.h>
-#include <getopt.h>
 
 #include <pagemap/pagemap.h>
 
@@ -237,7 +238,7 @@ static int read_pages(struct ksm_pages *kp, pm_map_t **maps, size_t num_maps, ui
         for (j = 0; j < map_len; j++) {
             error = pm_kernel_flags(ker, pagemap[j], &flags);
             if (error) {
-                fprintf(stderr, "warning: could not read flags for pfn at address 0x%016llx\n",
+                fprintf(stderr, "warning: could not read flags for pfn at address 0x%016" PRIx64 "\n",
                         pagemap[i]);
                 continue;
             }
@@ -351,12 +352,12 @@ static void print_pages(struct ksm_pages *kp, uint8_t pr_flags) {
         } else {
             printf("KSM CRC 0x%08x:", kp->pages[i].hash);
         }
-        printf(" %4d page", kp->pages[i].vaddr_count);
+        printf(" %4zu page", kp->pages[i].vaddr_count);
         if (kp->pages[i].vaddr_count > 1) {
             printf("s");
         }
         if (!(pr_flags & PR_ALL)) {
-            printf(" (%llu reference", kp->pages[i].count);
+            printf(" (%" PRIu64 " reference", kp->pages[i].count);
             if (kp->pages[i].count > 1) {
                 printf("s");
             }
@@ -371,7 +372,7 @@ static void print_pages(struct ksm_pages *kp, uint8_t pr_flags) {
                 for (k = 0; k < 8 && j < kp->pages[i].vaddr_len; k++, j++) {
                     printf(" 0x%08lx", kp->pages[i].vaddr[j].addr);
 
-                    index = snprintf(suffix, sizeof(suffix), ":%d",
+                    index = snprintf(suffix, sizeof(suffix), ":%zu",
                             kp->pages[i].vaddr[j].num_pages);
                     if (pr_flags & PR_ALL) {
                         index += snprintf(suffix + index, sizeof(suffix) - index, "[%d]",
@@ -448,7 +449,7 @@ static int getprocname(pid_t pid, char *buf, int len) {
         return -1;
     }
 
-    if (asprintf(&filename, "/proc/%zd/cmdline", pid) < 0) {
+    if (asprintf(&filename, "/proc/%d/cmdline", (int)pid) < 0) {
         rc = 1;
         goto exit;
     }
