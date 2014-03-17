@@ -36,14 +36,14 @@ struct process_info {
 struct mapping_info {
     struct process_info *proc;
     pm_memusage_t usage;
-};    
+};
 
 struct library_info {
     struct library_info *next;
     char *name;
     struct mapping_info **mappings;
-    int mappings_count;
-    int mappings_size;
+    size_t mappings_count;
+    size_t mappings_size;
     pm_memusage_t total_usage;
 };
 
@@ -69,11 +69,11 @@ declare_sort(swap);
 static int order;
 
 struct library_info **libraries;
-int libraries_count;
-int libraries_size;
+size_t libraries_count;
+size_t libraries_size;
 
 struct library_info *get_library(const char *name, bool all) {
-    int i;
+    size_t i;
     struct library_info *library;
 
     if (!all) {
@@ -126,7 +126,7 @@ struct library_info *get_library(const char *name, bool all) {
 
 struct mapping_info *get_mapping(struct library_info *library, struct process_info *proc) {
     struct mapping_info *mapping;
-    int i;
+    size_t i;
 
     for (i = 0; i < library->mappings_count; i++) {
         if (library->mappings[i]->proc == proc)
@@ -164,7 +164,7 @@ struct process_info *get_process(pid_t pid) {
         fprintf(stderr, "Couldn't allocate space for process struct: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
-    
+
     process->pid = pid;
     getprocname(pid, process->cmdline, sizeof(process->cmdline));
 
@@ -215,7 +215,8 @@ int main(int argc, char *argv[]) {
     struct mapping_info *mi, **mis;
     struct process_info *pi;
 
-    int i, j, error;
+    size_t i, j;
+    int error;
     int perm;
     bool all;
     uint64_t required_flags;
@@ -335,7 +336,7 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "warning: could not create process interface for %d\n", pids[i]);
             continue;
         }
-        
+
         pi = get_process(pids[i]);
 
         error = pm_process_maps(proc, &maps, &num_maps);
@@ -356,7 +357,7 @@ int main(int argc, char *argv[]) {
                 continue;
 
             mi = get_mapping(li, pi);
-            
+
             error = pm_map_usage_flags(maps[j], &map_usage, flags_mask,
                                        required_flags);
             if (error) {
@@ -389,7 +390,7 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < libraries_count; i++) {
         li = libraries[i];
 
-        printf("%6dK   %6s   %6s   %6s   %6s  ", li->total_usage.pss / 1024, "", "", "", "");
+        printf("%6zdK   %6s   %6s   %6s   %6s  ", li->total_usage.pss / 1024, "", "", "", "");
         if (has_swap) {
             printf(" %6s  ", "");
         }
@@ -401,13 +402,13 @@ int main(int argc, char *argv[]) {
         for (j = 0; j < li->mappings_count; j++) {
             mi = li->mappings[j];
             pi = mi->proc;
-            printf(   " %6s  %6dK  %6dK  %6dK  %6dK  ", "",
+            printf(   " %6s  %6zdK  %6zdK  %6zdK  %6zdK  ", "",
                 mi->usage.vss / 1024,
                 mi->usage.rss / 1024,
                 mi->usage.pss / 1024,
                 mi->usage.uss / 1024);
             if (has_swap) {
-                printf("%6dK  ", mi->usage.swap / 1024);
+                printf("%6zdK  ", mi->usage.swap / 1024);
             }
             printf("  %s [%d]\n",
                 pi->cmdline,
