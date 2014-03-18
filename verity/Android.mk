@@ -9,14 +9,6 @@ LOCAL_SHARED_LIBRARIES := libcrypto-host
 LOCAL_C_INCLUDES += external/openssl/include
 include $(BUILD_HOST_EXECUTABLE)
 
-#include $(CLEAR_VARS)
-#LOCAL_MODULE := generate_block_patch
-#LOCAL_SRC_FILES := generate_block_patch.c
-#LOCAL_MODULE_CLASS := EXECUTABLES
-#LOCAL_MODULE_TAGS := optional
-#LOCAL_SHARED_LIBRARIES := libminibsdiff
-#include $(BUILD_HOST_EXECUTABLE)
-
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := VeritySigner.java
 LOCAL_MODULE := VeritySigner
