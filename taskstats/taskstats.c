@@ -23,7 +23,6 @@
 
 #include <errno.h>
 #include <getopt.h>
-#include <netlink-types.h>
 #include <netlink/attr.h>
 #include <netlink/genl/genl.h>
 #include <netlink/handlers.h>

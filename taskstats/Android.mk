@@ -6,15 +6,11 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := \
 	taskstats.c
 
-LOCAL_C_INCLUDES := \
-	external/libnl-headers
-
-LOCAL_STATIC_LIBRARIES := \
-	libnl_2
+LOCAL_SHARED_LIBRARIES := \
+	libnl
 
 LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 LOCAL_MODULE_TAGS := debug
 LOCAL_MODULE:= taskstats
-LOCAL_32_BIT_ONLY := true
 
 include $(BUILD_EXECUTABLE)
