@@ -29,6 +29,7 @@
 #include <netlink/msg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/cdefs.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -61,8 +62,8 @@ int send_command(struct nl_sock* netlink_socket, uint16_t nlmsg_type,
     return result;
 }
 
-int print_receive_error(struct sockaddr_nl* address, struct nlmsgerr* error,
-                        void* arg) {
+int print_receive_error(struct sockaddr_nl* address __unused,
+                        struct nlmsgerr* error, void* arg __unused) {
     fprintf(stderr, "Netlink receive error: %s\n", strerror(-error->error));
     return NL_STOP;
 }
@@ -164,14 +165,15 @@ int query_task_stats(struct nl_sock* netlink_socket, int family_id,
     return stats->pid || stats->tgid;
 }
 
-double average_ms(uint64_t total, uint64_t count) {
+double average_ms(unsigned long long total, unsigned long long count) {
     if (!count) {
         return 0;
     }
     return ((double)total) / count / 1e6;
 }
 
-uint64_t average_ns(uint64_t total, uint64_t count) {
+unsigned long long average_ns(unsigned long long total,
+                              unsigned long long count) {
     if (!count) {
         return 0;
     }
