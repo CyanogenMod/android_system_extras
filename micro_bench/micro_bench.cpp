@@ -140,12 +140,12 @@ static inline double computeStdDev(double square_avg, double running_avg) {
 }
 
 static inline void printIter(uint64_t time_ns, const char *name, size_t size, size_t copies, double avg) {
-    printf("%s %ux%u bytes took %.06f seconds (%f MB/s)\n",
+    printf("%s %zux%zu bytes took %.06f seconds (%f MB/s)\n",
            name, copies, size, (double)time_ns/NS_PER_SEC, avg/1024.0);
 }
 
-static inline void printSummary(uint64_t time_ns, const char *name, size_t size, size_t copies, double running_avg, double std_dev, double min, double max) {
-    printf("  %s %ux%u bytes average %.2f MB/s std dev %.4f min %.2f MB/s max %.2f MB/s\n",
+static inline void printSummary(uint64_t /*time_ns*/, const char *name, size_t size, size_t copies, double running_avg, double std_dev, double min, double max) {
+    printf("  %s %zux%zu bytes average %.2f MB/s std dev %.4f min %.2f MB/s max %.2f MB/s\n",
            name, copies, size, running_avg/1024.0, std_dev/1024.0, min/1024.0,
            max/1024.0);
 }
@@ -174,14 +174,14 @@ static inline double computeColdAverage(uint64_t time_ns, size_t size, size_t co
 }
 
 static void inline printColdIter(uint64_t time_ns, const char *name, size_t size, size_t copies, size_t num_buffers, double avg) {
-    printf("%s %ux%ux%u bytes took %.06f seconds (%f MB/s)\n",
+    printf("%s %zux%zux%zu bytes took %.06f seconds (%f MB/s)\n",
            name, copies, num_buffers, size, (double)time_ns/NS_PER_SEC, avg/1024.0);
 }
 
 static void inline printColdSummary(
-        uint64_t time_ns, const char *name, size_t size, size_t copies, size_t num_buffers,
+        uint64_t /*time_ns*/, const char *name, size_t size, size_t copies, size_t num_buffers,
         double running_avg, double square_avg, double min, double max) {
-    printf("  %s %ux%ux%u bytes average %.2f MB/s std dev %.4f min %.2f MB/s max %.2f MB/s\n",
+    printf("  %s %zux%zux%zu bytes average %.2f MB/s std dev %.4f min %.2f MB/s max %.2f MB/s\n",
            name, copies, num_buffers, size, running_avg/1024.0,
            computeStdDev(running_avg, square_avg)/1024.0, min/1024.0, max/1024.0);
 }
@@ -369,7 +369,7 @@ static void inline printColdSummary(
                       buf2 += buf2_stride_incr;                               \
                   });
 
-int benchmarkSleep(const char *name, const command_data_t &cmd_data, void_func_t func) {
+int benchmarkSleep(const char* /*name*/, const command_data_t &cmd_data, void_func_t /*func*/) {
     int delay = cmd_data.args[0];
     MAINLOOP(cmd_data, sleep(delay),
              (double)time_ns/NS_PER_SEC,
@@ -381,7 +381,7 @@ int benchmarkSleep(const char *name, const command_data_t &cmd_data, void_func_t
     return 0;
 }
 
-int benchmarkCpu(const char *name, const command_data_t &cmd_data, void_func_t func) {
+int benchmarkCpu(const char* /*name*/, const command_data_t &cmd_data, void_func_t /*func*/) {
     // Use volatile so that the loop is not optimized away by the compiler.
     volatile int cpu_foo;
 
@@ -431,7 +431,7 @@ int benchmarkMemcpyCold(const char *name, const command_data_t &cmd_data, void_f
     return 0;
 }
 
-int benchmarkMemread(const char *name, const command_data_t &cmd_data, void_func_t func) {
+int benchmarkMemread(const char *name, const command_data_t &cmd_data, void_func_t /*func*/) {
     int size = cmd_data.args[0];
 
     uint32_t *src = reinterpret_cast<uint32_t*>(malloc(size));
@@ -485,7 +485,7 @@ int benchmarkStrlen(const char *name, const command_data_t &cmd_data, void_func_
                   initString(buf, size),
                   real_size = strlen_func(reinterpret_cast<char*>(buf)); \
                   if (real_size + 1 != size) { \
-                      printf("%s failed, expected %u, got %u\n", name, size, real_size); \
+                      printf("%s failed, expected %zu, got %zu\n", name, size, real_size); \
                       return -1; \
                   });
 
@@ -502,7 +502,7 @@ int benchmarkStrlenCold(const char *name, const command_data_t &cmd_data, void_f
                  },
                  real_size = strlen_func(reinterpret_cast<char*>(buf)); \
                  if (real_size + 1 != size) { \
-                     printf("%s failed, expected %u, got %u\n", name, size, real_size); \
+                     printf("%s failed, expected %zu, got %zu\n", name, size, real_size); \
                      return -1; \
                  });
     return 0;
