@@ -103,6 +103,7 @@ LOCAL_UNSTRIPPED_PATH := $(PRODUCT_OUT)/symbols/utilities
 LOCAL_STATIC_LIBRARIES += \
     libext4_utils_static \
     libselinux \
+    libmincrypt \
     libsparse_static \
     libz \
     libcutils \
