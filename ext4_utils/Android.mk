@@ -117,6 +117,7 @@ LOCAL_MODULE := ext2simg
 LOCAL_SHARED_LIBRARIES += \
     libext4_utils \
     libselinux \
+    libmincrypt \
     libsparse \
     libz
 include $(BUILD_EXECUTABLE)
