@@ -60,23 +60,39 @@ def SetSocketTimeout(sock, ms):
   us = (ms % 1000) * 1000
   sock.setsockopt(SOL_SOCKET, SO_RCVTIMEO, struct.pack("LL", s, us))
 
-# Convenience functions to create ping sockets.
+def SetNonBlocking(fd):
+  flags = fcntl.fcntl(fd, fcntl.F_GETFL, 0)
+  fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
+# Convenience functions to create sockets.
 def Socket(family, sock_type, protocol):
   s = socket(family, sock_type, protocol)
   SetSocketTimeout(s, 1000)
   return s
 
+def PingSocket(family):
+  proto = {AF_INET: IPPROTO_ICMP, AF_INET6: IPPROTO_ICMPV6}[family]
+  return Socket(family, SOCK_DGRAM, proto)
+
 def IPv4PingSocket():
-  return Socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)
+  return PingSocket(AF_INET)
 
 def IPv6PingSocket():
-  return Socket(AF_INET6, SOCK_DGRAM, IPPROTO_ICMPV6)
+  return PingSocket(AF_INET6)
+
+def TCPSocket(family):
+  s = Socket(family, SOCK_STREAM, IPPROTO_TCP)
+  SetNonBlocking(s.fileno())
+  return s
 
 def IPv4TCPSocket():
-  return Socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
+  return TCPSocket(AF_INET)
 
 def IPv6TCPSocket():
-  return Socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP)
+  return TCPSocket(AF_INET6)
+
+def UDPSocket(family):
+  return Socket(family, SOCK_DGRAM, IPPROTO_UDP)
 
 def IPv6PacketSocket():
   return Socket(AF_PACKET, SOCK_DGRAM, htons(ETH_P_IPV6))
@@ -86,10 +102,6 @@ def IPv4RawSocket(protocol):
   s.setsockopt(SOL_IP, IP_HDRINCL, 1)
   return s
 
-def SetNonBlocking(fd):
-  flags = fcntl.fcntl(fd, fcntl.F_GETFL, 0)
-  fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
-
 def GetInterfaceIndex(ifname):
   s = IPv4PingSocket()
   ifr = struct.pack("16si", ifname, 0)
@@ -97,6 +109,7 @@ def GetInterfaceIndex(ifname):
   return struct.unpack("16si", ifr)[1]
 
 def SetInterfaceHWAddr(ifname, hwaddr):
+  s = IPv4PingSocket()
   hwaddr = hwaddr.replace(":", "")
   hwaddr = hwaddr.decode("hex")
   if len(hwaddr) != 6:
