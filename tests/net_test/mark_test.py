@@ -6,11 +6,11 @@ import os
 import posix
 import random
 import re
+from socket import *  # pylint: disable=wildcard-import
 import struct
 import time
 import unittest
 from scapy import all as scapy
-from socket import *
 
 import net_test
 
@@ -66,20 +66,20 @@ class Packets(object):
       raise ValueError("Can't find ToS Field")
 
   @classmethod
-  def UDP(self, version, srcaddr, dstaddr, sport=0):
-    ip = self._GetIpLayer(version)
+  def UDP(cls, version, srcaddr, dstaddr, sport=0):
+    ip = cls._GetIpLayer(version)
     # Can't just use "if sport" because None has meaning (it means unspecified).
     if sport == 0:
-      sport = self.RandomPort()
+      sport = cls.RandomPort()
     return ("UDPv%d packet" % version,
             ip(src=srcaddr, dst=dstaddr) /
             scapy.UDP(sport=sport, dport=53) / UDP_PAYLOAD)
 
   @classmethod
-  def SYN(self, dport, version, srcaddr, dstaddr, sport=0, seq=TCP_SEQ):
-    ip = self._GetIpLayer(version)
+  def SYN(cls, dport, version, srcaddr, dstaddr, sport=0, seq=TCP_SEQ):
+    ip = cls._GetIpLayer(version)
     if sport == 0:
-      sport = self.RandomPort()
+      sport = cls.RandomPort()
     return ("TCP SYN",
             ip(src=srcaddr, dst=dstaddr) /
             scapy.TCP(sport=sport, dport=dport,
@@ -87,8 +87,8 @@ class Packets(object):
                       flags=TCP_SYN, window=TCP_WINDOW))
 
   @classmethod
-  def RST(self, version, srcaddr, dstaddr, packet):
-    ip = self._GetIpLayer(version)
+  def RST(cls, version, srcaddr, dstaddr, packet):
+    ip = cls._GetIpLayer(version)
     original = packet.getlayer("TCP")
     return ("TCP RST",
             ip(src=srcaddr, dst=dstaddr) /
@@ -97,8 +97,8 @@ class Packets(object):
                       flags=TCP_RST | TCP_ACK, window=TCP_WINDOW))
 
   @classmethod
-  def SYNACK(self, version, srcaddr, dstaddr, packet):
-    ip = self._GetIpLayer(version)
+  def SYNACK(cls, version, srcaddr, dstaddr, packet):
+    ip = cls._GetIpLayer(version)
     original = packet.getlayer("TCP")
     return ("TCP SYN+ACK",
             ip(src=srcaddr, dst=dstaddr) /
@@ -107,8 +107,8 @@ class Packets(object):
                       flags=TCP_SYN | TCP_ACK, window=None))
 
   @classmethod
-  def ACK(self, version, srcaddr, dstaddr, packet):
-    ip = self._GetIpLayer(version)
+  def ACK(cls, version, srcaddr, dstaddr, packet):
+    ip = cls._GetIpLayer(version)
     original = packet.getlayer("TCP")
     was_syn = (original.flags & TCP_SYN) != 0
     return ("TCP ACK",
@@ -118,7 +118,7 @@ class Packets(object):
                       flags=TCP_ACK, window=TCP_WINDOW))
 
   @classmethod
-  def ICMPPortUnreachable(self, version, srcaddr, dstaddr, packet):
+  def ICMPPortUnreachable(cls, version, srcaddr, dstaddr, packet):
     if version == 4:
       # Linux hardcodes the ToS on ICMP errors to 0xc0 or greater because of
       # RFC 1812 4.3.2.5 (!).
@@ -131,23 +131,23 @@ class Packets(object):
               scapy.ICMPv6DestUnreach(code=4) / packet)
 
   @classmethod
-  def ICMPEcho(self, version, srcaddr, dstaddr):
-    ip = self._GetIpLayer(version)
+  def ICMPEcho(cls, version, srcaddr, dstaddr):
+    ip = cls._GetIpLayer(version)
     icmp = {4: scapy.ICMP, 6: scapy.ICMPv6EchoRequest}[version]
     packet = (ip(src=srcaddr, dst=dstaddr) /
               icmp(id=PING_IDENT, seq=PING_SEQ) / PING_PAYLOAD)
-    self._SetPacketTos(packet, PING_TOS)
+    cls._SetPacketTos(packet, PING_TOS)
     return ("ICMPv%d echo" % version, packet)
 
   @classmethod
-  def ICMPReply(self, version, srcaddr, dstaddr, packet):
-    ip = self._GetIpLayer(version)
+  def ICMPReply(cls, version, srcaddr, dstaddr, packet):
+    ip = cls._GetIpLayer(version)
     # Scapy doesn't provide an ICMP echo reply constructor.
     icmpv4_reply = lambda **kwargs: scapy.ICMP(type=0, **kwargs)
     icmp = {4: icmpv4_reply, 6: scapy.ICMPv6EchoReply}[version]
     packet = (ip(src=srcaddr, dst=dstaddr) /
               icmp(id=PING_IDENT, seq=PING_SEQ) / PING_PAYLOAD)
-    self._SetPacketTos(packet, PING_TOS)
+    cls._SetPacketTos(packet, PING_TOS)
     return ("ICMPv%d echo" % version, packet)
 
 
@@ -174,27 +174,27 @@ class MarkTest(net_test.NetworkTest):
       raise ValueError("Don't support IPv%s" % version)
 
   @classmethod
-  def _MyIPv4Address(self, netid):
+  def _MyIPv4Address(cls, netid):
     return "10.0.%d.2" % netid
 
   @classmethod
-  def _MyIPv6Address(self, netid):
-    return net_test.GetLinkAddress(self._GetInterfaceName(netid), False)
+  def _MyIPv6Address(cls, netid):
+    return net_test.GetLinkAddress(cls._GetInterfaceName(netid), False)
 
   @classmethod
-  def _MyAddress(self, version, netid):
-    return {4: self._MyIPv4Address(netid),
-            6: self._MyIPv6Address(netid)}[version]
+  def _MyAddress(cls, version, netid):
+    return {4: cls._MyIPv4Address(netid),
+            6: cls._MyIPv6Address(netid)}[version]
 
   @classmethod
-  def _CreateTunInterface(self, netid):
-    iface = self._GetInterfaceName(netid)
+  def _CreateTunInterface(cls, netid):
+    iface = cls._GetInterfaceName(netid)
     f = open("/dev/net/tun", "r+b")
     ifr = struct.pack("16sH", iface, IFF_TAP | IFF_NO_PI)
     ifr += "\x00" * (40 - len(ifr))
     fcntl.ioctl(f, TUNSETIFF, ifr)
     # Give ourselves a predictable MAC address.
-    net_test.SetInterfaceHWAddr(iface, self._MyMacAddress(netid))
+    net_test.SetInterfaceHWAddr(iface, cls._MyMacAddress(netid))
     # Disable DAD so we don't have to wait for it.
     open("/proc/sys/net/ipv6/conf/%s/dad_transmits" % iface, "w").write("0")
     net_test.SetInterfaceUp(iface)
@@ -206,11 +206,11 @@ class MarkTest(net_test.NetworkTest):
     return "nettest%d" % netid
 
   @classmethod
-  def _SendRA(self, netid):
+  def _SendRA(cls, netid):
     validity = 300                 # seconds
     validity_ms = validity * 1000  # milliseconds
-    macaddr = self._RouterMacAddress(netid)
-    lladdr = self._RouterAddress(netid, 6)
+    macaddr = cls._RouterMacAddress(netid)
+    lladdr = cls._RouterAddress(netid, 6)
     ra = (scapy.Ether(src=macaddr, dst="33:33:00:00:00:01") /
           scapy.IPv6(src=lladdr, hlim=255) /
           scapy.ICMPv6ND_RA(retranstimer=validity_ms,
@@ -221,7 +221,7 @@ class MarkTest(net_test.NetworkTest):
                                       L=1, A=1,
                                       validlifetime=validity,
                                       preferredlifetime=validity))
-    posix.write(self.tuns[netid].fileno(), str(ra))
+    posix.write(cls.tuns[netid].fileno(), str(ra))
 
   COMMANDS = [
       "/sbin/%(iptables)s %(append_delete)s INPUT -t mangle -i %(iface)s"
@@ -239,35 +239,35 @@ class MarkTest(net_test.NetworkTest):
   ]
 
   @classmethod
-  def _RunSetupCommands(self, netid, is_add):
-    iface = self._GetInterfaceName(netid)
+  def _RunSetupCommands(cls, netid, is_add):
+    iface = cls._GetInterfaceName(netid)
     for version, iptables in zip([4, 6], ["iptables", "ip6tables"]):
 
       if version == 6:
-        cmds = self.COMMANDS
-        if self.AUTOCONF_TABLE_OFFSET < 0:
+        cmds = cls.COMMANDS
+        if cls.AUTOCONF_TABLE_OFFSET < 0:
           # Set up routing manually.
-          # Don't do cmds += self.ROUTE_COMMANDS as this modifies self.COMMANDS.
-          cmds = self.COMMANDS + self.ROUTE_COMMANDS
+          # Don't do cmds += cls.ROUTE_COMMANDS as this modifies cls.COMMANDS.
+          cmds = cls.COMMANDS + cls.ROUTE_COMMANDS
 
       if version == 4:
         # Deleting addresses also causes routes to be deleted, so watch the
         # order or the test will output lots of ENOENT errors.
         if is_add:
-          cmds = self.COMMANDS + self.IPV4_COMMANDS + self.ROUTE_COMMANDS
+          cmds = cls.COMMANDS + cls.IPV4_COMMANDS + cls.ROUTE_COMMANDS
         else:
-          cmds = self.COMMANDS + self.ROUTE_COMMANDS + self.IPV4_COMMANDS
+          cmds = cls.COMMANDS + cls.ROUTE_COMMANDS + cls.IPV4_COMMANDS
 
       cmds = str("\n".join(cmds) % {
           "add_del": "add" if is_add else "del",
           "append_delete": "-A" if is_add else "-D",
           "iface": iface,
           "iptables": iptables,
-          "ipv4addr": self._MyIPv4Address(netid),
-          "macaddr": self._RouterMacAddress(netid),
+          "ipv4addr": cls._MyIPv4Address(netid),
+          "macaddr": cls._RouterMacAddress(netid),
           "netid": netid,
-          "router": self._RouterAddress(netid, version),
-          "table": self._TableForNetid(netid),
+          "router": cls._RouterAddress(netid, version),
+          "table": cls._TableForNetid(netid),
           "version": version,
       }).split("\n")
       for cmd in cmds:
@@ -278,56 +278,56 @@ class MarkTest(net_test.NetworkTest):
           raise ConfigurationError("Setup command failed: %s" % " ".join(cmd))
 
   @classmethod
-  def _SetAutoconfTableSysctl(self, offset):
+  def _SetAutoconfTableSysctl(cls, offset):
     try:
       open(AUTOCONF_TABLE_SYSCTL, "w").write(str(offset))
-      self.AUTOCONF_TABLE_OFFSET = offset
+      cls.AUTOCONF_TABLE_OFFSET = offset
     except IOError:
-      self.AUTOCONF_TABLE_OFFSET = -1
+      cls.AUTOCONF_TABLE_OFFSET = -1
 
   @classmethod
-  def _TableForNetid(self, netid):
-    if self.AUTOCONF_TABLE_OFFSET >= 0:
-      return self.ifindices[netid] + self.AUTOCONF_TABLE_OFFSET
+  def _TableForNetid(cls, netid):
+    if cls.AUTOCONF_TABLE_OFFSET >= 0:
+      return cls.ifindices[netid] + cls.AUTOCONF_TABLE_OFFSET
     else:
       return netid
 
   @classmethod
-  def _ICMPRatelimitFilename(self, version):
+  def _ICMPRatelimitFilename(cls, version):
     return "/proc/sys/net/" + {4: "ipv4/icmp_ratelimit",
                                6: "ipv6/icmp/ratelimit"}[version]
 
   @classmethod
-  def _GetICMPRatelimit(self, version):
-    return int(open(self._ICMPRatelimitFilename(version), "r").read().strip())
+  def _GetICMPRatelimit(cls, version):
+    return int(open(cls._ICMPRatelimitFilename(version), "r").read().strip())
 
   @classmethod
-  def _SetICMPRatelimit(self, version, limit):
-    return open(self._ICMPRatelimitFilename(version), "w").write("%d" % limit)
+  def _SetICMPRatelimit(cls, version, limit):
+    return open(cls._ICMPRatelimitFilename(version), "w").write("%d" % limit)
 
   @classmethod
-  def setUpClass(self):
+  def setUpClass(cls):
     # This is per-class setup instead of per-testcase setup because shelling out
     # to ip and iptables is slow, and because routing configuration doesn't
     # change during the test.
-    self.tuns = {}
-    self.ifindices = {}
-    self._SetAutoconfTableSysctl(1000)
+    cls.tuns = {}
+    cls.ifindices = {}
+    cls._SetAutoconfTableSysctl(1000)
 
     # Disable ICMP rate limits.
-    self.ratelimits = {}
+    cls.ratelimits = {}
     for version in [4, 6]:
-      self.ratelimits[version] = self._GetICMPRatelimit(version)
-      self._SetICMPRatelimit(version, 0)
+      cls.ratelimits[version] = cls._GetICMPRatelimit(version)
+      cls._SetICMPRatelimit(version, 0)
 
-    for netid in self.NETIDS:
-      self.tuns[netid] = self._CreateTunInterface(netid)
+    for netid in cls.NETIDS:
+      cls.tuns[netid] = cls._CreateTunInterface(netid)
 
-      iface = self._GetInterfaceName(netid)
-      self.ifindices[netid] = net_test.GetInterfaceIndex(iface)
+      iface = cls._GetInterfaceName(netid)
+      cls.ifindices[netid] = net_test.GetInterfaceIndex(iface)
 
-      self._SendRA(netid)
-      self._RunSetupCommands(netid, True)
+      cls._SendRA(netid)
+      cls._RunSetupCommands(netid, True)
 
     # Open a port so we can observe SYN+ACKs. Since it's a dual-stack socket it
     # will accept both IPv4 and IPv6 connections. We do this here instead of in
@@ -335,11 +335,11 @@ class MarkTest(net_test.NetworkTest):
     # bug causes incoming packets to mark the listening socket instead of the
     # accepted socket, the test will fail as soon as the next address/interface
     # combination is tried.
-    self.listenport = 1234
-    self.listensocket = net_test.IPv6TCPSocket()
-    self.listensocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-    self.listensocket.bind(("::", self.listenport))
-    self.listensocket.listen(100)
+    cls.listenport = 1234
+    cls.listensocket = net_test.IPv6TCPSocket()
+    cls.listensocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+    cls.listensocket.bind(("::", cls.listenport))
+    cls.listensocket.listen(100)
 
     # Give time for unknown things to settle down.
     time.sleep(0.5)
@@ -349,13 +349,13 @@ class MarkTest(net_test.NetworkTest):
     # time.sleep(30)
 
   @classmethod
-  def tearDownClass(self):
-    for netid in self.tuns:
-      self._RunSetupCommands(netid, False)
-      self.tuns[netid].close()
-    self._SetAutoconfTableSysctl(-1)
+  def tearDownClass(cls):
+    for netid in cls.tuns:
+      cls._RunSetupCommands(netid, False)
+      cls.tuns[netid].close()
+    cls._SetAutoconfTableSysctl(-1)
     for version in [4, 6]:
-      self._SetICMPRatelimit(version, self.ratelimits[version])
+      cls._SetICMPRatelimit(version, cls.ratelimits[version])
 
   def assertPacketMatches(self, expected, actual):
     # Remove the Ethernet header from the incoming packet.
