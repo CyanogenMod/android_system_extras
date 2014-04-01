@@ -44,6 +44,7 @@ STRUCT_RTMSG = "=BBBBBBBBI"
 
 
 ### FIB rule constants. See include/uapi/linux/fib_rules.h.
+FRA_PRIORITY = 6
 FRA_FWMARK = 10
 FRA_TABLE = 15
 
@@ -81,7 +82,7 @@ class IPRoute(object):
   def _Recv(self):
     return self.sock.recv(self.BUFSIZE)
 
-  def _Rule(self, version, is_add, table, match_nlattr):
+  def _Rule(self, version, is_add, table, match_nlattr, priority):
     """Python equivalent of "ip rule <add|del> <match_cond> lookup <table>".
 
     Args:
@@ -89,6 +90,7 @@ class IPRoute(object):
       is_add: True to add a rule, False to delete it.
       table: The table to add/delete the rule from.
       match_nlattr: A blob of struct nlattrs that express the match condition.
+      priority: An integer, the priority.
 
     Raises:
       IOError: If the netlink request returns an error.
@@ -100,6 +102,7 @@ class IPRoute(object):
     family = {4: socket.AF_INET, 6: socket.AF_INET6}[version]
     rtmsg = struct.pack(STRUCT_RTMSG, family, 0, 0, 0, 0,
                         RTPROT_STATIC, RT_SCOPE_UNIVERSE, RTN_UNICAST, 0)
+    rtmsg += self._NlAttrU32(FRA_PRIORITY, priority)
     rtmsg += match_nlattr
     rtmsg += self._NlAttrU32(FRA_TABLE, table)
 
@@ -127,6 +130,6 @@ class IPRoute(object):
     else:
       raise ValueError("Unexpected netlink ACK type %d" % msgtype)
 
-  def FwmarkRule(self, version, is_add, fwmark, table):
+  def FwmarkRule(self, version, is_add, fwmark, table, priority=16383):
     nlattr = self._NlAttrU32(FRA_FWMARK, fwmark)
-    return self._Rule(version, is_add, table, nlattr)
+    return self._Rule(version, is_add, table, nlattr, priority)
