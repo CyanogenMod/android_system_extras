@@ -59,6 +59,7 @@ RTMsg = cstruct.Struct(
 FRA_PRIORITY = 6
 FRA_FWMARK = 10
 FRA_TABLE = 15
+EXPERIMENTAL_FRA_UID = 18
 
 
 class IPRoute(object):
@@ -139,6 +140,10 @@ class IPRoute(object):
 
   def FwmarkRule(self, version, is_add, fwmark, table, priority=16383):
     nlattr = self._NlAttrU32(FRA_FWMARK, fwmark)
+    return self._Rule(version, is_add, table, nlattr, priority)
+
+  def UidRule(self, version, is_add, uid, table, priority=16383):
+    nlattr = (self._NlAttrU32(EXPERIMENTAL_FRA_UID, uid))
     return self._Rule(version, is_add, table, nlattr, priority)
 
   def DumpRules(self, version):
