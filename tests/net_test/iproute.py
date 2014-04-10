@@ -23,6 +23,7 @@ NLM_F_DUMP = 0x300
 
 # Message types.
 NLMSG_ERROR = 2
+NLMSG_DONE = 3
 
 # Data structure formats.
 # These aren't constants, they're classes. So, pylint: disable=invalid-name
@@ -85,8 +86,11 @@ class IPRoute(object):
       print s
 
   def _NlAttr(self, nla_type, data):
-    nla_len = len(data) + len(NLAttr)
-    return NLAttr((nla_len, nla_type)).Pack() + data
+    datalen = len(data)
+    # Pad the data if it's not a multiple of NLA_ALIGNTO bytes long.
+    padding = "\x00" * (PaddedLength(datalen) - datalen)
+    nla_len = datalen + len(NLAttr)
+    return NLAttr((nla_len, nla_type)).Pack() + data + padding
 
   def _NlAttrU32(self, nla_type, value):
     return self._NlAttr(nla_type, struct.pack("=I", value))
@@ -105,6 +109,13 @@ class IPRoute(object):
 
   def _Recv(self):
     return self.sock.recv(self.BUFSIZE)
+
+  def _ExpectDone(self):
+    response = self._Recv()
+    hdr, _ = cstruct.Read(response, NLMsgHdr)
+    if hdr.type != NLMSG_DONE:
+      raise ValueError("Expected NLMSG_DONE (%d), got %d" % (NLMSG_DONE,
+                                                             hdr.type))
 
   def _ExpectAck(self):
     # Find the error code.
@@ -161,7 +172,7 @@ class IPRoute(object):
     return self._Rule(version, is_add, table, nlattr, priority)
 
   def OifRule(self, version, is_add, oif, table, priority=16383):
-    nlattr = self._NlAttr(FRA_OIFNAME, struct.pack("16s", oif))
+    nlattr = self._NlAttr(FRA_OIFNAME, oif)
     return self._Rule(version, is_add, table, nlattr, priority)
 
   def UidRule(self, version, is_add, uid, table, priority=16383):
@@ -210,6 +221,7 @@ class IPRoute(object):
 
       rules.append((rtmsg, attributes))
 
+    self._ExpectDone()
     return rules
 
 
