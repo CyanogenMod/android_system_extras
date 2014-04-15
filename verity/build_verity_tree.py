@@ -23,14 +23,25 @@ def get_hash_image_size(data_image_size):
 
 def blockify(data):
     blocks = []
-    for i in range(0, len(data), BLOCK_SIZE):
+    data_len = len(data)
+    assert(data_len % BLOCK_SIZE == 0)
+    for i in range(0, data_len, BLOCK_SIZE):
         chunk = data[i:i+BLOCK_SIZE]
         blocks.append(chunk)
-    return blocks
+    for b in blocks:
+        yield b
 
-def read_blocks(image_path):
-    image = open(image_path, "rb").read()
-    return blockify(image)
+def read_blocks(image_path, read_size=16*1024*1024):
+    image = open(image_path, "rb")
+    total_read = 0
+    while True:
+        data = image.read(read_size)
+        if not data:
+            break
+        for block in blockify(data):
+            total_read += len(block)
+            yield block
+    assert(total_read == os.path.getsize(image_path))
 
 def hash_block(data, salt):
     hasher = hashlib.new(HASH_FUNCTION)
