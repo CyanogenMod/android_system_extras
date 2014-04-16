@@ -25,19 +25,20 @@
 /* For O_DIRECT */
 #define _GNU_SOURCE
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <string.h>
 #include <ctype.h>
 #include <errno.h>
-#include <limits.h>
 #include <fcntl.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/types.h>
+#include <inttypes.h>
+#include <limits.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include <linux/fs.h>
 
@@ -249,7 +250,7 @@ int main(int argc, const char *argv[])
 		}
 
 		if (memcmp(write_buf, read_buf, test_size)) {
-			printf("Readback verification failed at block %llu\n\n",
+			printf("Readback verification failed at block %" PRIu64 "\n\n",
 					cur_blk);
 			printf("Written data:\n");
 			dump_hex(write_buf, test_size);
