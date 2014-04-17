@@ -41,3 +41,13 @@ LOCAL_SRC_FILES := build_verity_metadata.py
 LOCAL_IS_HOST_MODULE := true
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_PREBUILT)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := build_verity_tree
+LOCAL_SRC_FILES := build_verity_tree.cpp
+LOCAL_MODULE_TAGS := optional
+LOCAL_STATIC_LIBRARIES := libsparse_host libz
+LOCAL_SHARED_LIBRARIES := libcrypto-host
+LOCAL_C_INCLUDES := external/openssl/include
+LOCAL_CFLAGS += -Wall -Werror
+include $(BUILD_HOST_EXECUTABLE)
