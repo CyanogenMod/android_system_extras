@@ -363,23 +363,25 @@ class MultiNetworkTest(net_test.NetworkTest):
 
   @classmethod
   def _RunSetupCommands(cls, netid, is_add):
-    iptables_commands = [
-        "/sbin/%(iptables)s %(append_delete)s INPUT -t mangle -i %(iface)s"
-        " -j MARK --set-mark %(mark)d",
-    ]
-    route_commands = [
-        "ip -%(version)d route %(add_del)s table %(table)s"
-        " default dev %(iface)s via %(router)s",
-    ]
-    ipv4_commands = [
-        "ip -4 nei %(add_del)s %(router)s dev %(iface)s"
-        " lladdr %(macaddr)s nud permanent",
-        "ip -4 addr %(add_del)s %(ipv4addr)s/24 dev %(iface)s",
-    ]
-
-    for version, iptables in zip([4, 6], ["iptables", "ip6tables"]):
-      table = cls._TableForNetid(netid)
+    for version in [4, 6]:
+      # Find out how to configure things.
       iface = cls.GetInterfaceName(netid)
+      ifindex = cls.ifindices[netid]
+      macaddr = cls.RouterMacAddress(netid)
+      router = cls._RouterAddress(netid, version)
+      table = cls._TableForNetid(netid)
+
+      # Run iptables to set up incoming packet marking.
+      add_del = "-A" if is_add else "-D"
+      iptables = {4: "iptables", 6: "ip6tables"}[version]
+      args = "%s %s INPUT -t mangle -i %s -j MARK --set-mark %d" % (
+          iptables, add_del, iface, netid)
+      iptables = "/sbin/" + iptables
+      ret = os.spawnvp(os.P_WAIT, iptables, args.split(" "))
+      if ret:
+        raise ConfigurationError("Setup command failed: %s" % args)
+
+      # Set up routing rules.
       if HAVE_EXPERIMENTAL_UID_ROUTING:
         start, end = cls.UidRangeForNetid(netid)
         cls.iproute.UidRangeRule(version, is_add, start, end, table,
@@ -387,42 +389,28 @@ class MultiNetworkTest(net_test.NetworkTest):
       cls.iproute.OifRule(version, is_add, iface, table, priority=200)
       cls.iproute.FwmarkRule(version, is_add, netid, table, priority=300)
 
-      if cls.DEBUG:
-        os.spawnvp(os.P_WAIT, "/sbin/ip", ["ip", "-6", "rule", "list"])
-
-      if version == 6:
-        if cls.AUTOCONF_TABLE_OFFSET is None:
-          # Set up routing manually.
-          cmds = iptables_commands + route_commands
-        else:
-          cmds = iptables_commands
-
-      if version == 4:
-        # Deleting addresses also causes routes to be deleted, so watch the
-        # order or the test will output lots of ENOENT errors.
-        if is_add:
-          cmds = iptables_commands + ipv4_commands + route_commands
-        else:
-          cmds = iptables_commands + route_commands + ipv4_commands
-
-      cmds = str("\n".join(cmds) % {
-          "add_del": "add" if is_add else "del",
-          "append_delete": "-A" if is_add else "-D",
-          "iface": iface,
-          "iptables": iptables,
-          "ipv4addr": cls._MyIPv4Address(netid),
-          "macaddr": cls.RouterMacAddress(netid),
-          "mark": netid,
-          "router": cls._RouterAddress(netid, version),
-          "table": table,
-          "version": version,
-      }).split("\n")
-      for cmd in cmds:
-        cmd = cmd.split(" ")
-        if cls.DEBUG: print " ".join(cmd)
-        ret = os.spawnvp(os.P_WAIT, cmd[0], cmd)
-        if ret:
-          raise ConfigurationError("Setup command failed: %s" % " ".join(cmd))
+      # Configure routing and addressing.
+      #
+      # IPv6 uses autoconf for everything, except if per-device autoconf routing
+      # tables are not supported, in which case the default route (only) is
+      # configured manually. For IPv4 we have to manualy configure addresses,
+      # routes, and neighbour cache entries (since we don't reply to ARP or ND).
+      #
+      # Since deleting addresses also causes routes to be deleted, we need to
+      # be careful with ordering or the delete commands will fail with ENOENT.
+      do_routing = (version == 4 or cls.AUTOCONF_TABLE_OFFSET is None)
+      if is_add:
+        if version == 4:
+          cls.iproute.AddAddress(cls._MyIPv4Address(netid), 24, ifindex)
+          cls.iproute.AddNeighbour(version, router, macaddr, ifindex)
+        if do_routing:
+          cls.iproute.AddRoute(version, table, "default", 0, router, ifindex)
+      else:
+        if do_routing:
+          cls.iproute.DelRoute(version, table, "default", 0, router, ifindex)
+        if version == 4:
+          cls.iproute.DelNeighbour(version, router, macaddr, ifindex)
+          cls.iproute.DelAddress(cls._MyIPv4Address(netid), 24, ifindex)
 
   @classmethod
   def GetSysctl(cls, sysctl):
@@ -1030,6 +1018,7 @@ class RATest(MultiNetworkTest):
         self.SendRA(netid)
       CheckIPv6Connectivity(True)
 
+  @unittest.skipUnless(HAVE_AUTOCONF_TABLE, "our manual routing doesn't do PIO")
   def testOnlinkCommunication(self):
     """Checks that on-link communication goes direct and not through routers."""
     for netid in self.tuns:
