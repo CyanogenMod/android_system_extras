@@ -86,29 +86,31 @@ static int parse_header(const char* line, const mapinfo* prev, mapinfo** mi) {
 
 static int parse_field(mapinfo* mi, const char* line) {
     char field[64];
-    int size;
+    int len;
 
-    if (sscanf(line, "%63s %d kB", field, &size) != 2) {
-        return -1;
+    if (sscanf(line, "%63s %n", field, &len) == 1
+            && *field && field[strlen(field) - 1] == ':') {
+        int size;
+        if (sscanf(line + len, "%d kB", &size) == 1) {
+            if (!strcmp(field, "Size:")) {
+                mi->size = size;
+            } else if (!strcmp(field, "Rss:")) {
+                mi->rss = size;
+            } else if (!strcmp(field, "Pss:")) {
+                mi->pss = size;
+            } else if (!strcmp(field, "Shared_Clean:")) {
+                mi->shared_clean = size;
+            } else if (!strcmp(field, "Shared_Dirty:")) {
+                mi->shared_dirty = size;
+            } else if (!strcmp(field, "Private_Clean:")) {
+                mi->private_clean = size;
+            } else if (!strcmp(field, "Private_Dirty:")) {
+                mi->private_dirty = size;
+            }
+        }
+        return 0;
     }
-
-    if (!strcmp(field, "Size:")) {
-        mi->size = size;
-    } else if (!strcmp(field, "Rss:")) {
-        mi->rss = size;
-    } else if (!strcmp(field, "Pss:")) {
-        mi->pss = size;
-    } else if (!strcmp(field, "Shared_Clean:")) {
-        mi->shared_clean = size;
-    } else if (!strcmp(field, "Shared_Dirty:")) {
-        mi->shared_dirty = size;
-    } else if (!strcmp(field, "Private_Clean:")) {
-        mi->private_clean = size;
-    } else if (!strcmp(field, "Private_Dirty:")) {
-        mi->private_dirty = size;
-    }
-
-    return 0;
+    return -1;
 }
 
 static int order_before(const mapinfo *a, const mapinfo *b, int sort_by_address) {
