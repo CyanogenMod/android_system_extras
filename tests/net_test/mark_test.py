@@ -1098,16 +1098,13 @@ class PMTUTest(MultiNetworkTest):
       self.assertEquals(1280, self.GetSocketMTU(s))
 
 
-class UidRoutingTest(net_test.NetworkTest):
+@unittest.skipUnless(HAVE_EXPERIMENTAL_UID_ROUTING, "no UID routing")
+class UidRoutingTest(MultiNetworkTest):
 
   def setUp(self):
     self.iproute = iproute.IPRoute()
 
-  @staticmethod
-  def Random():
-    return random.randint(100 * 1000, 200 * 1000)
-
-  def GetRules(self, version, priority):
+  def GetRulesAtPriority(self, version, priority):
     rules = self.iproute.DumpRules(version)
     out = [(rule, attributes) for rule, attributes in rules
            if attributes.get(iproute.FRA_PRIORITY, 0) == priority]
@@ -1116,7 +1113,7 @@ class UidRoutingTest(net_test.NetworkTest):
   def CheckInitialTablesHaveNoUIDs(self, version):
     rules = []
     for priority in [0, 32766, 32767]:
-      rules.extend(self.GetRules(version, priority))
+      rules.extend(self.GetRulesAtPriority(version, priority))
     for _, attributes in rules:
       self.assertNotIn(iproute.EXPERIMENTAL_FRA_UID_START, attributes)
       self.assertNotIn(iproute.EXPERIMENTAL_FRA_UID_END, attributes)
@@ -1128,14 +1125,18 @@ class UidRoutingTest(net_test.NetworkTest):
     self.CheckInitialTablesHaveNoUIDs(6)
 
   def CheckGetAndSetRules(self, version):
-    priority = self.Random()
-    start, end = tuple(sorted([self.Random(), self.Random()]))
-    table = self.Random()
-    self.iproute.UidRangeRule(version, True, start, end, table,
-                              priority=priority)
+    def Random():
+      return random.randint(1000000, 2000000)
+
+    start, end = tuple(sorted([Random(), Random()]))
+    table = Random()
+    priority = Random()
 
     try:
-      rules = self.GetRules(version, priority)
+      self.iproute.UidRangeRule(version, True, start, end, table,
+                                priority=priority)
+
+      rules = self.GetRulesAtPriority(version, priority)
       self.assertTrue(rules)
       _, attributes = rules[-1]
       self.assertEquals(priority, attributes[iproute.FRA_PRIORITY])
@@ -1146,13 +1147,39 @@ class UidRoutingTest(net_test.NetworkTest):
       self.iproute.UidRangeRule(version, False, start, end, table,
                                 priority=priority)
 
-  @unittest.skipUnless(HAVE_EXPERIMENTAL_UID_ROUTING, "no UID routing")
   def testIPv4GetAndSetRules(self):
     self.CheckGetAndSetRules(4)
 
-  @unittest.skipUnless(HAVE_EXPERIMENTAL_UID_ROUTING, "no UID routing")
   def testIPv6GetAndSetRules(self):
     self.CheckGetAndSetRules(6)
+
+  def ExpectNoRoute(self, addr, oif, mark, uid):
+    # The lack of a route may be either an error, or an unreachable route.
+    try:
+      routes = self.iproute.GetRoutes(addr, oif, mark, uid)
+      rtmsg, _ = routes[0]
+      self.assertEquals(iproute.RTN_UNREACHABLE, rtmsg.type)
+    except IOError, e:
+      if int(e.errno) != -int(errno.ENETUNREACH):
+        raise e
+
+  def ExpectRoute(self, addr, oif, mark, uid):
+    routes = self.iproute.GetRoutes(addr, oif, mark, uid)
+    rtmsg, _ = routes[0]
+    self.assertEquals(iproute.RTN_UNICAST, rtmsg.type)
+
+  def CheckGetRoute(self, version, addr):
+    self.ExpectNoRoute(addr, 0, 0, 0)
+    for netid in self.NETIDS:
+      uid = self.UidForNetid(netid)
+      self.ExpectRoute(addr, 0, 0, uid)
+    self.ExpectNoRoute(addr, 0, 0, 0)
+
+  def testIPv4RouteGet(self):
+    self.CheckGetRoute(4, net_test.IPV4_ADDR)
+
+  def testIPv6RouteGet(self):
+    self.CheckGetRoute(6, net_test.IPV6_ADDR)
 
 
 if __name__ == "__main__":

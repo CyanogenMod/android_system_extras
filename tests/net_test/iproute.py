@@ -41,6 +41,7 @@ RTM_NEWADDR = 20
 RTM_DELADDR = 21
 RTM_NEWROUTE = 24
 RTM_DELROUTE = 25
+RTM_GETROUTE = 26
 RTM_NEWNEIGH = 28
 RTM_DELNEIGH = 29
 RTM_NEWRULE = 32
@@ -50,6 +51,7 @@ RTM_GETRULE = 34
 # Routing message type values (rtm_type).
 RTN_UNSPEC = 0
 RTN_UNICAST = 1
+RTN_UNREACHABLE = 7
 
 # Routing protocol values (rtm_protocol).
 RTPROT_UNSPEC = 0
@@ -63,8 +65,14 @@ RT_TABLE_UNSPEC = 0
 
 # Routing attributes.
 RTA_DST = 1
+RTA_SRC = 2
 RTA_OIF = 4
 RTA_GATEWAY = 5
+RTA_PRIORITY = 6
+RTA_PREFSRC = 7
+RTA_TABLE = 15
+RTA_MARK = 16
+EXPERIMENTAL_RTA_UID = 18
 
 # Data structure formats.
 RTMsg = cstruct.Struct(
@@ -109,15 +117,29 @@ EXPERIMENTAL_FRA_UID_START = 18
 EXPERIMENTAL_FRA_UID_END = 19
 
 
-def Decode(nla_type, nla_data):
-  if nla_type in [FRA_PRIORITY, FRA_FWMARK, FRA_TABLE,
-                  EXPERIMENTAL_FRA_UID_START, EXPERIMENTAL_FRA_UID_END]:
-    return struct.unpack("=I", nla_data)[0]
-  elif nla_type in [FRA_OIFNAME]:
-    return nla_data.strip("\x00")
-  else:
-    # Don't know what this is.
-    return nla_data
+def CommandVerb(command):
+  return ["NEW", "DEL", "GET", "SET"][command % 4]
+
+
+def CommandSubject(command):
+  return ["LINK", "ADDR", "ROUTE", "NEIGH", "RULE"][(command - 16) / 4]
+
+
+def Decode(command, family, nla_type, nla_data):
+  if CommandSubject(command) == "RULE":
+    if nla_type in [FRA_PRIORITY, FRA_FWMARK, FRA_TABLE,
+                    EXPERIMENTAL_FRA_UID_START, EXPERIMENTAL_FRA_UID_END]:
+      return struct.unpack("=I", nla_data)[0]
+    elif nla_type in [FRA_OIFNAME]:
+      return nla_data.strip("\x00")
+  elif CommandSubject(command) == "ROUTE":
+    if nla_type in [RTA_DST, RTA_SRC, RTA_GATEWAY, RTA_PREFSRC]:
+      return socket.inet_ntop(family, nla_data)
+    elif nla_type in [RTA_OIF, RTA_PRIORITY, RTA_TABLE]:
+      return struct.unpack("=I", nla_data)[0]
+
+  # Don't know what this is.
+  return nla_data
 
 
 def PaddedLength(length):
@@ -149,6 +171,50 @@ class IPRoute(object):
   def _NlAttrIPAddress(self, nla_type, family, address):
     return self._NlAttr(nla_type, socket.inet_pton(family, address))
 
+  def _ParseAttributes(self, command, family, data):
+    """Parses netlink attributes.
+
+    Values for which the code knows the type (e.g., the fwmark ID in a
+    RTM_NEWRULE command) are decoded to Python integers, strings, etc. Values
+    of unknown type are returned as raw byte strings.
+
+    Args:
+      command: An integer, the rtnetlink command being carried out. This is used
+        to interpret the attributes. For example, for an RTM_NEWROUTE command,
+        attribute type 3 is the incoming interface and is an integer, but for a
+        RTM_NEWRULE command, attribute type 3 is the incoming interface name
+        and is a string.
+      family: The address family. Used to convert IP addresses into strings.
+      data: A byte string containing a sequence of NLAttrs data structures.
+
+    Returns:
+      A dictionary mapping attribute types (integers) to decoded values.
+
+    Raises:
+      ValueError: There was a duplicate attribute type.
+    """
+    attributes = {}
+    while data:
+      # Read the nlattr header.
+      nla, data = cstruct.Read(data, NLAttr)
+
+      # Read the data.
+      datalen = nla.nla_len - len(nla)
+      padded_len = PaddedLength(nla.nla_len) - len(nla)
+      nla_data, data = data[:datalen], data[padded_len:]
+
+      # If it's an attribute we know about, try to decode it.
+      nla_data = Decode(command, family, nla.nla_type, nla_data)
+
+      # We only support unique attributes for now.
+      if nla.nla_type in attributes:
+        raise ValueError("Duplicate attribute %d" % nla.nla_type)
+
+      attributes[nla.nla_type] = nla_data
+      self._Debug("      %s" % str((nla, nla_data)))
+
+    return attributes
+
   def __init__(self):
     # Global sequence number.
     self.seq = 0
@@ -158,48 +224,54 @@ class IPRoute(object):
     self.pid = self.sock.getsockname()[1]
 
   def _Send(self, msg):
-    self._Debug(msg.encode("hex"))
+    # self._Debug(msg.encode("hex"))
     self.seq += 1
     self.sock.send(msg)
 
   def _Recv(self):
-    return self.sock.recv(self.BUFSIZE)
+    data = self.sock.recv(self.BUFSIZE)
+    # self._Debug(data.encode("hex"))
+    return data
 
   def _ExpectDone(self):
     response = self._Recv()
-    hdr, _ = cstruct.Read(response, NLMsgHdr)
+    hdr = NLMsgHdr(response)
     if hdr.type != NLMSG_DONE:
-      raise ValueError("Expected NLMSG_DONE (%d), got %d" % (NLMSG_DONE,
-                                                             hdr.type))
+      raise ValueError("Expected DONE, got type %d" % hdr.type)
 
-  def _ExpectAck(self):
+  def _ParseAck(self, response):
     # Find the error code.
-    response = self._Recv()
     hdr, data = cstruct.Read(response, NLMsgHdr)
     if hdr.type == NLMSG_ERROR:
       error = NLMsgErr(data).error
       if error:
         raise IOError(error, os.strerror(-error))
     else:
-      raise ValueError("Unexpected netlink ACK type %d" % hdr.type)
+      raise ValueError("Expected ACK, got type %d" % hdr.type)
+
+  def _ExpectAck(self):
+    response = self._Recv()
+    self._ParseAck(response)
 
   def _AddressFamily(self, version):
     return {4: socket.AF_INET, 6: socket.AF_INET6}[version]
 
-  def _SendNlRequest(self, command, is_add, data):
+  def _SendNlRequest(self, command, data):
     """Sends a netlink request and expects an ack."""
-    flags = NLM_F_REQUEST | NLM_F_ACK
-    if is_add:
+    flags = NLM_F_REQUEST
+    if CommandVerb(command) != "GET":
+      flags |= NLM_F_ACK
+    if CommandVerb(command) == "NEW":
       flags |= (NLM_F_EXCL | NLM_F_CREATE)
 
     length = len(NLMsgHdr) + len(data)
     nlmsg = NLMsgHdr((length, command, flags, self.seq, self.pid)).Pack()
 
-    # Send the message and block forever until we receive a response.
+    # Send the message.
     self._Send(nlmsg + data)
 
-    # Expect a successful ACK.
-    self._ExpectAck()
+    if flags & NLM_F_ACK:
+      self._ExpectAck()
 
   def _Rule(self, version, is_add, table, match_nlattr, priority):
     """Python equivalent of "ip rule <add|del> <match_cond> lookup <table>".
@@ -225,7 +297,7 @@ class IPRoute(object):
 
     # Create a netlink request containing the rtmsg.
     command = RTM_NEWRULE if is_add else RTM_DELRULE
-    self._SendNlRequest(command, is_add, rtmsg)
+    self._SendNlRequest(command, rtmsg)
 
   def FwmarkRule(self, version, is_add, fwmark, table, priority=16383):
     nlattr = self._NlAttrU32(FRA_FWMARK, fwmark)
@@ -239,6 +311,37 @@ class IPRoute(object):
     nlattr = (self._NlAttrU32(EXPERIMENTAL_FRA_UID_START, start) +
               self._NlAttrU32(EXPERIMENTAL_FRA_UID_END, end))
     return self._Rule(version, is_add, table, nlattr, priority)
+
+  def _GetRTMsg(self, data):
+    """Parses a RTMsg into a header and a dictionary of attributes."""
+    # Parse the netlink and rtmsg headers.
+    nlmsghdr, data = cstruct.Read(data, NLMsgHdr)
+    self._Debug("  %s" % nlmsghdr)
+
+    if nlmsghdr.type == NLMSG_ERROR or nlmsghdr.type == NLMSG_DONE:
+      print "done"
+      return None, data
+
+    rtmsg, data = cstruct.Read(data, RTMsg)
+    self._Debug("    %s" % rtmsg)
+
+    # Parse the attributes in the rtmsg.
+    attrlen = nlmsghdr.length - len(nlmsghdr) - len(rtmsg)
+    attributes = self._ParseAttributes(nlmsghdr.type, rtmsg.family,
+                                       data[:attrlen])
+    data = data[attrlen:]
+    return (rtmsg, attributes), data
+
+  def _GetRTMsgList(self, data, expect_done):
+    out = []
+    while data:
+      msg, data = self._GetRTMsg(data)
+      if msg is None:
+        break
+      out.append(msg)
+    if expect_done:
+      self._ExpectDone()
+    return out
 
   def DumpRules(self, version):
     """Returns the IP rules for the specified IP version."""
@@ -254,41 +357,7 @@ class IPRoute(object):
 
     self._Send(nlmsghdr.Pack() + rtmsg.Pack())
     data = self._Recv()
-
-    rules = []
-    while data:
-      # Parse the netlink and rtmsg headers.
-      nlmsghdr, data = cstruct.Read(data, NLMsgHdr)
-      self._Debug("%s" % nlmsghdr)
-      rtmsg, data = cstruct.Read(data, RTMsg)
-      self._Debug("  %s" % rtmsg)
-
-      # Parse the attributes in the rtmsg.
-      attributes = {}
-      bytesleft = nlmsghdr.length - len(nlmsghdr) - len(rtmsg)
-      while bytesleft:
-        # Read the nlattr header.
-        nla, data = cstruct.Read(data, NLAttr)
-
-        # Read the data. We don't know how to parse attributes, so just return
-        # them as raw bytes.
-        datalen = nla.nla_len - len(nla)
-        padded_len = PaddedLength(nla.nla_len) - len(nla)
-        nla_data, data = data[:datalen], data[padded_len:]
-
-        # If it's an attribute we know about, try to decode it.
-        nla_data = Decode(nla.nla_type, nla_data)
-
-        if nla.nla_type in attributes:
-          raise ValueError("Duplicate attribute %d in rules")
-        attributes[nla.nla_type] = nla_data
-        self._Debug("    %s" % str((nla, nla_data)))
-        bytesleft -= (padded_len + len(nla))
-
-      rules.append((rtmsg, attributes))
-
-    self._ExpectDone()
-    return rules
+    return self._GetRTMsgList(data, True)
 
   def _Address(self, version, is_add, addr, prefixlen, flags, scope, ifindex):
     """Adds or deletes an IP address."""
@@ -298,7 +367,7 @@ class IPRoute(object):
     if version == 4:
       ifaddrmsg += self._NlAttrIPAddress(IFA_LOCAL, family, addr)
     command = RTM_NEWADDR if is_add else RTM_DELADDR
-    self._SendNlRequest(command, is_add, ifaddrmsg)
+    self._SendNlRequest(command, ifaddrmsg)
 
   def AddAddress(self, address, prefixlen, ifindex):
     version = 6 if ":" in address else 4
@@ -309,24 +378,48 @@ class IPRoute(object):
     version = 6 if ":" in address else 4
     return self._Address(version, False, address, prefixlen, 0, 0, ifindex)
 
-  def _Route(self, version, is_add, table, dest, prefixlen, nexthop, dev):
-    """Adds or deletes a route."""
+  def _Route(self, version, command, table, dest, prefixlen, nexthop, dev,
+             mark, uid):
+    """Adds, deletes, or queries a route."""
     family = self._AddressFamily(version)
     rtmsg = RTMsg((family, prefixlen, 0, 0, RT_TABLE_UNSPEC,
                    RTPROT_STATIC, RT_SCOPE_UNIVERSE, RTN_UNICAST, 0)).Pack()
-    rtmsg += self._NlAttrU32(FRA_TABLE, table)
+    if command == RTM_NEWROUTE and not table:
+      # Don't allow setting routes in table 0, since its behaviour is confusing
+      # and differs between IPv4 and IPv6.
+      raise ValueError("Cowardly refusing to add a route to table 0")
+    if table:
+      rtmsg += self._NlAttrU32(FRA_TABLE, table)
     if dest != "default":  # The default is the default route.
       rtmsg += self._NlAttrIPAddress(RTA_DST, family, dest)
-    rtmsg += self._NlAttrIPAddress(RTA_GATEWAY, family, nexthop)
-    rtmsg += self._NlAttrU32(RTA_OIF, dev)
-    command = RTM_NEWROUTE if is_add else RTM_DELROUTE
-    self._SendNlRequest(command, is_add, rtmsg)
+    if nexthop:
+      rtmsg += self._NlAttrIPAddress(RTA_GATEWAY, family, nexthop)
+    if dev:
+      rtmsg += self._NlAttrU32(RTA_OIF, dev)
+    if mark is not None:
+      rtmsg += self._NlAttrU32(RTA_MARK, mark)
+    if uid is not None:
+      rtmsg += self._NlAttrU32(EXPERIMENTAL_RTA_UID, uid)
+    self._SendNlRequest(command, rtmsg)
 
   def AddRoute(self, version, table, dest, prefixlen, nexthop, dev):
-    self._Route(version, True, table, dest, prefixlen, nexthop, dev)
+    self._Route(version, RTM_NEWROUTE, table, dest, prefixlen, nexthop, dev,
+                None, None)
 
   def DelRoute(self, version, table, dest, prefixlen, nexthop, dev):
-    self._Route(version, False, table, dest, prefixlen, nexthop, dev)
+    self._Route(version, RTM_DELROUTE, table, dest, prefixlen, nexthop, dev,
+                None, None)
+
+  def GetRoutes(self, dest, oif, mark, uid):
+    version = 6 if ":" in dest else 4
+    prefixlen = {4: 32, 6: 128}[version]
+    self._Route(version, RTM_GETROUTE, 0, dest, prefixlen, None, oif, mark, uid)
+    data = self. _Recv()
+    # The response will either be an error or a list of routes.
+    if NLMsgHdr(data).type == NLMSG_ERROR:
+      self._ParseAck(data)
+    routes = self._GetRTMsgList(data, False)
+    return routes
 
   def _Neighbour(self, version, is_add, addr, lladdr, dev, state):
     """Adds or deletes a neighbour cache entry."""
@@ -343,7 +436,7 @@ class IPRoute(object):
     ndmsg += self._NlAttrIPAddress(NDA_DST, family, addr)
     ndmsg += self._NlAttr(NDA_LLADDR, lladdr)
     command = RTM_NEWNEIGH if is_add else RTM_DELNEIGH
-    self._SendNlRequest(command, is_add, ndmsg)
+    self._SendNlRequest(command, ndmsg)
 
   def AddNeighbour(self, version, addr, lladdr, dev):
     self._Neighbour(version, True, addr, lladdr, dev, NUD_PERMANENT)
@@ -356,3 +449,4 @@ if __name__ == "__main__":
   iproute = IPRoute()
   iproute.DEBUG = True
   iproute.DumpRules(6)
+  print iproute.GetRoutes("2001:4860:4860::8888", 0, 0, 0)
