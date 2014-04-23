@@ -31,7 +31,10 @@ SO_BINDTODEVICE = 25
 IP_UNICAST_IF = 50
 IPV6_UNICAST_IF = 76
 
-UDP_PAYLOAD = "hello"
+UDP_PAYLOAD = str(scapy.DNS(rd=1,
+                            id=random.randint(0, 65535),
+                            qd=scapy.DNSQR(qname="wWW.GoOGle.CoM",
+                                           qtype="AAAA")))
 
 
 # Check to see if the kernel supports UID routing.
@@ -839,7 +842,7 @@ class MarkTest(MultiNetworkTest):
         self.SelectInterface(s, netid, mode)
         if not use_connect:
           expected.src = self.MyAddress(version, netid)
-        s.sendto("hello", (dstaddr, 53))
+        s.sendto(UDP_PAYLOAD, (dstaddr, 53))
         connected_str = "Connected" if use_connect else "Unconnected"
         msg = "%s UDPv%d socket remarked using %s: expecting %s on %s" % (
             connected_str, version, mode, desc, self.GetInterfaceName(netid))
@@ -1043,10 +1046,10 @@ class RATest(MultiNetworkTest):
         s = net_test.UDPSocket(AF_INET6)
         self.SetSocketMark(s, netid)
         if expect_connectivity:
-          self.assertEquals(5, s.sendto("hello", (net_test.IPV6_ADDR, 1234)))
+          self.assertTrue(s.sendto(UDP_PAYLOAD, (net_test.IPV6_ADDR, 1234)))
         else:
-          self.assertRaisesErrno(errno.ENETUNREACH,
-                                 s.sendto, "hello", (net_test.IPV6_ADDR, 1234))
+          self.assertRaisesErrno(errno.ENETUNREACH, s.sendto, UDP_PAYLOAD,
+                                 (net_test.IPV6_ADDR, 1234))
 
     try:
       CheckIPv6Connectivity(True)
@@ -1070,7 +1073,7 @@ class RATest(MultiNetworkTest):
       # in the lower 32 bits, but our address has 0xff in the byte before that
       # (since it's constructed from the EUI-64 and so has ff:fe in the middle).
       dstaddr = self.GetRandomDestination(self.IPv6Prefix(netid))
-      s.sendto("hello", (dstaddr, 53))
+      s.sendto(UDP_PAYLOAD, (dstaddr, 53))
 
       # Expect an NS for that destination on the interface.
       myaddr = self.MyAddress(6, netid)
