@@ -19,6 +19,7 @@ SO_MARK = 36
 IPV6_FLOWLABEL_MGR = 32
 IPV6_FLOWINFO_SEND = 33
 
+ETH_P_IP = 0x0800
 ETH_P_IPV6 = 0x86dd
 
 SIOCSIFHWADDR = 0x8924
@@ -45,6 +46,8 @@ IPV6_SEQ_DGRAM_HEADER = ("  sl  "
                          "remote_address                        "
                          "st tx_queue rx_queue tr tm->when retrnsmt"
                          "   uid  timeout inode ref pointer drops\n")
+
+IPPROTO_GRE = 47
 
 
 def SetSocketTimeout(sock, ms):
@@ -102,13 +105,8 @@ def UDPSocket(family):
   return Socket(family, SOCK_DGRAM, IPPROTO_UDP)
 
 
-def IPv6PacketSocket():
-  return Socket(AF_PACKET, SOCK_DGRAM, htons(ETH_P_IPV6))
-
-
-def IPv4RawSocket(protocol):
-  s = Socket(AF_INET, SOCK_RAW, protocol)
-  s.setsockopt(SOL_IP, IP_HDRINCL, 1)
+def RawGRESocket(family):
+  s = Socket(family, SOCK_RAW, IPPROTO_GRE)
   return s
 
 
