@@ -79,7 +79,8 @@ static int filter_dot(const struct dirent *d)
 	return (strcmp(d->d_name, "..") && strcmp(d->d_name, "."));
 }
 
-static u32 build_default_directory_structure()
+static u32 build_default_directory_structure(const char *dir_path,
+					     struct selabel_handle *sehnd)
 {
 	u32 inode;
 	u32 root_inode;
@@ -96,6 +97,22 @@ static u32 build_default_directory_structure()
 	*dentries.inode = inode;
 	inode_set_permissions(inode, dentries.mode,
 		dentries.uid, dentries.gid, dentries.mtime);
+
+#ifndef USE_MINGW
+	if (sehnd) {
+		char *path = NULL;
+		char *secontext = NULL;
+
+		asprintf(&path, "%slost+found", dir_path);
+		if (selabel_lookup(sehnd, &secontext, path, S_IFDIR) < 0) {
+			error("cannot lookup security context for %s", path);
+		} else {
+			inode_set_selinux(inode, secontext);
+			freecon(secontext);
+		}
+		free(path);
+	}
+#endif
 
 	return root_inode;
 }
@@ -564,13 +581,13 @@ int make_ext4fs_internal(int fd, const char *_directory,
 #ifdef USE_MINGW
 	// Windows needs only 'create an empty fs image' functionality
 	assert(!directory);
-	root_inode_num = build_default_directory_structure();
+	root_inode_num = build_default_directory_structure(mountpoint, sehnd);
 #else
 	if (directory)
 		root_inode_num = build_directory_structure(directory, mountpoint, 0,
                         fs_config_func, sehnd, verbose);
 	else
-		root_inode_num = build_default_directory_structure();
+		root_inode_num = build_default_directory_structure(mountpoint, sehnd);
 #endif
 
 	root_mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
