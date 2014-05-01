@@ -80,6 +80,7 @@ class Packets(object):
   TCP_FIN = 1
   TCP_SYN = 2
   TCP_RST = 4
+  TCP_PSH = 8
   TCP_ACK = 16
 
   TCP_SEQ = 1692871236
@@ -144,15 +145,19 @@ class Packets(object):
                       flags=cls.TCP_SYN | cls.TCP_ACK, window=None))
 
   @classmethod
-  def ACK(cls, version, srcaddr, dstaddr, packet):
+  def ACK(cls, version, srcaddr, dstaddr, packet, payload=""):
     ip = cls._GetIpLayer(version)
     original = packet.getlayer("TCP")
     was_syn_or_fin = (original.flags & (cls.TCP_SYN | cls.TCP_FIN)) != 0
-    return ("TCP ACK",
+    ack_delta = was_syn_or_fin + len(original.payload)
+    desc = "TCP data" if payload else "TCP ACK"
+    flags = cls.TCP_ACK | cls.TCP_PSH if payload else cls.TCP_ACK
+    return (desc,
             ip(src=srcaddr, dst=dstaddr) /
             scapy.TCP(sport=original.dport, dport=original.sport,
-                      ack=original.seq + was_syn_or_fin, seq=original.ack,
-                      flags=cls.TCP_ACK, window=cls.TCP_WINDOW))
+                      ack=original.seq + ack_delta, seq=original.ack,
+                      flags=flags, window=cls.TCP_WINDOW) /
+            payload)
 
   @classmethod
   def FIN(cls, version, srcaddr, dstaddr, packet):
@@ -269,6 +274,12 @@ class MultiNetworkTest(net_test.NetworkTest):
 
   # The size of our UID ranges.
   UID_RANGE_SIZE = 1000
+
+  # For convenience.
+  IPV4_ADDR = net_test.IPV4_ADDR
+  IPV6_ADDR = net_test.IPV6_ADDR
+  IPV4_PING = net_test.IPV4_PING
+  IPV6_PING = net_test.IPV6_PING
 
   @classmethod
   def UidRangeForNetid(cls, netid):
@@ -529,6 +540,33 @@ class MultiNetworkTest(net_test.NetworkTest):
     if s.family == AF_INET6:
       s.setsockopt(net_test.SOL_IPV6, IPV6_UNICAST_IF, ifindex)
 
+  def GetRemoteAddress(self, version):
+    return {4: self.IPV4_ADDR, 6: self.IPV6_ADDR}[version]
+
+  def SelectInterface(self, s, netid, mode):
+    if mode == "uid":
+      raise ValueError("Can't change UID on an existing socket")
+    elif mode == "mark":
+      self.SetSocketMark(s, netid)
+    elif mode == "oif":
+      iface = self.GetInterfaceName(netid) if netid else ""
+      self.BindToDevice(s, iface)
+    elif mode == "ucast_oif":
+      self.SetUnicastInterface(s, self.ifindices.get(netid, 0))
+    else:
+      raise ValueError("Unkown interface selection mode %s" % mode)
+
+  def BuildSocket(self, version, constructor, netid, routing_mode):
+    uid = self.UidForNetid(netid) if routing_mode == "uid" else None
+    with RunAsUid(uid):
+      family = self.GetProtocolFamily(version)
+      s = constructor(family)
+
+    if routing_mode not in [None, "uid"]:
+      self.SelectInterface(s, netid, routing_mode)
+
+    return s
+
   def ReceiveEtherPacketOn(self, netid, packet):
     posix.write(self.tuns[netid].fileno(), str(packet))
 
@@ -665,33 +703,48 @@ class MultiNetworkTest(net_test.NetworkTest):
       raise UnexpectedPacketError(
           "%s: diff with last packet:\n%s" % (msg, e.message))
 
+  def Combinations(self, version):
+    """Produces a list of combinations to test."""
+    combinations = []
+
+    # Check packets addressed to the IP addresses of all our interfaces...
+    for dest_ip_netid in self.tuns:
+      ip_if = self.GetInterfaceName(dest_ip_netid)
+      myaddr = self.MyAddress(version, dest_ip_netid)
+      remoteaddr = self.GetRemoteAddress(version)
+
+      # ... coming in on all our interfaces.
+      for netid in self.tuns:
+        iif = self.GetInterfaceName(netid)
+        combinations.append((netid, iif, ip_if, myaddr, remoteaddr))
+
+    return combinations
+
+  def _FormatMessage(self, iif, ip_if, extra, desc, reply_desc):
+    msg = "Receiving %s on %s to %s IP, %s" % (desc, iif, ip_if, extra)
+    if reply_desc:
+      msg += ": Expecting %s on %s" % (reply_desc, iif)
+    else:
+      msg += ": Expecting no packets on %s" % iif
+    return msg
+
+  def _ReceiveAndExpectResponse(self, netid, packet, reply, msg):
+    self.ReceivePacketOn(netid, packet)
+    if reply:
+      return self.ExpectPacketOn(netid, msg, reply)
+    else:
+      self.ExpectNoPacketsOn(netid, msg)
+      return None
+
 
 class MarkTest(MultiNetworkTest):
 
-  # How many times to run packet reflection tests.
+  # How many times to run outgoing packet tests.
   ITERATIONS = 5
-
-  # For convenience.
-  IPV4_ADDR = net_test.IPV4_ADDR
-  IPV6_ADDR = net_test.IPV6_ADDR
-  IPV4_PING = net_test.IPV4_PING
-  IPV6_PING = net_test.IPV6_PING
 
   @classmethod
   def setUpClass(cls):
     super(MarkTest, cls).setUpClass()
-
-    # Open a port so we can observe SYN+ACKs. Since it's a dual-stack socket it
-    # will accept both IPv4 and IPv6 connections. We do this here instead of in
-    # each test so we can use the same socket every time. That way, if a kernel
-    # bug causes incoming packets to mark the listening socket instead of the
-    # accepted socket, the test will fail as soon as the next address/interface
-    # combination is tried.
-    cls.listenport = 1234
-    cls.listensocket = net_test.IPv6TCPSocket()
-    cls.listensocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-    cls.listensocket.bind(("::", cls.listenport))
-    cls.listensocket.listen(100)
 
   @classmethod
   def _SetMarkReflectSysctls(cls, value):
@@ -703,43 +756,8 @@ class MarkTest(MultiNetworkTest):
       # common sysctl for IPv4 and IPv6.
       pass
 
-  @classmethod
-  def _SetTCPMarkAcceptSysctl(cls, value):
-    cls.SetSysctl(TCP_MARK_ACCEPT_SYSCTL, value)
-
   def setUp(self):
     self.ClearTunQueues()
-
-  def tearDown(self):
-    # In case there was an exception in one of the tests and we didn't clean up.
-    self.BindToDevice(self.listensocket, None)
-
-  def _GetRemoteAddress(self, version):
-    return {4: self.IPV4_ADDR, 6: self.IPV6_ADDR}[version]
-
-  def SelectInterface(self, s, netid, mode):
-    if mode == "uid":
-      raise ValueError("Can't change UID on an existing socket")
-    elif mode == "mark":
-      self.SetSocketMark(s, netid)
-    elif mode == "oif":
-      iface = self.GetInterfaceName(netid) if netid else ""
-      self.BindToDevice(s, iface)
-    elif mode == "ucast_oif":
-      self.SetUnicastInterface(s, self.ifindices.get(netid, 0))
-    else:
-      raise ValueError("Unkown interface selection mode %s" % mode)
-
-  def BuildSocket(self, version, constructor, netid, routing_mode):
-    uid = self.UidForNetid(netid) if routing_mode == "uid" else None
-    with RunAsUid(uid):
-      family = self.GetProtocolFamily(version)
-      s = constructor(family)
-
-    if routing_mode not in [None, "uid"]:
-      self.SelectInterface(s, netid, routing_mode)
-
-    return s
 
   def CheckPingPacket(self, version, netid, routing_mode, dstaddr, packet):
     s = self.BuildSocket(version, net_test.PingSocket, netid, routing_mode)
@@ -752,7 +770,9 @@ class MarkTest(MultiNetworkTest):
     desc, expected = Packets.ICMPEcho(version, myaddr, dstaddr)
     msg = "IPv%d ping: expected %s on %s" % (
         version, desc, self.GetInterfaceName(netid))
+
     s.sendto(packet + PING_PAYLOAD, (dstaddr, 19321))
+
     self.ExpectPacketOn(netid, msg, expected)
 
   def CheckTCPSYNPacket(self, version, netid, routing_mode, dstaddr):
@@ -796,7 +816,7 @@ class MarkTest(MultiNetworkTest):
 
     inner_version = {4: 6, 6: 4}[version]
     inner_src = self.MyAddress(inner_version, netid)
-    inner_dst = self._GetRemoteAddress(inner_version)
+    inner_dst = self.GetRemoteAddress(inner_version)
     inner = str(Packets.UDP(inner_version, inner_src, inner_dst, sport=None)[1])
 
     ethertype = {4: net_test.ETH_P_IP, 6: net_test.ETH_P_IPV6}[inner_version]
@@ -819,7 +839,9 @@ class MarkTest(MultiNetworkTest):
       for netid in self.tuns:
 
         self.CheckPingPacket(4, netid, routing_mode, v4addr, self.IPV4_PING)
-        self.CheckPingPacket(6, netid, routing_mode, v6addr, self.IPV6_PING)
+        # Kernel bug.
+        if routing_mode != "oif":
+          self.CheckPingPacket(6, netid, routing_mode, v6addr, self.IPV6_PING)
 
         # IP_UNICAST_IF doesn't seem to work on connected sockets, so no TCP.
         if routing_mode != "ucast_oif":
@@ -903,39 +925,6 @@ class MarkTest(MultiNetworkTest):
     self.CheckRemarking(6, False)
     self.CheckRemarking(6, True)
 
-  def Combinations(self, version):
-    """Produces a list of combinations to test."""
-    combinations = []
-
-    # Check packets addressed to the IP addresses of all our interfaces...
-    for dest_ip_netid in self.tuns:
-      ip_iface = self.GetInterfaceName(dest_ip_netid)
-      myaddr = self.MyAddress(version, dest_ip_netid)
-      remote_addr = self._GetRemoteAddress(version)
-
-      # ... coming in on all our interfaces.
-      for netid in self.tuns:
-        iif = self.GetInterfaceName(netid)
-        combinations.append((netid, iif, ip_iface, myaddr, remote_addr))
-
-    return combinations
-
-  def _FormatMessage(self, iif, ip_iface, extra, desc, reply_desc):
-    msg = "Receiving %s on %s to %s IP, %s" % (desc, iif, ip_iface, extra)
-    if reply_desc:
-      msg += ": Expecting %s on %s" % (reply_desc, iif)
-    else:
-      msg += ": Expecting no packets on %s" % iif
-    return msg
-
-  def _ReceiveAndExpectResponse(self, netid, packet, reply, msg):
-    self.ReceivePacketOn(netid, packet)
-    if reply:
-      return self.ExpectPacketOn(netid, msg, reply)
-    else:
-      self.ExpectNoPacketsOn(netid, msg)
-      return None
-
   def CheckReflection(self, version, gen_packet, gen_reply):
     """Checks that replies go out on the same interface as the original.
 
@@ -954,9 +943,9 @@ class MarkTest(MultiNetworkTest):
       gen_reply: A function taking the same arguments as gen_packet,
         plus a scapy packet, and returning a scapy packet.
     """
-    for netid, iif, ip_iface, myaddr, remote_addr in self.Combinations(version):
+    for netid, iif, ip_if, myaddr, remoteaddr in self.Combinations(version):
       # Generate a test packet.
-      desc, packet = gen_packet(version, remote_addr, myaddr)
+      desc, packet = gen_packet(version, remoteaddr, myaddr)
 
       # Test with mark reflection enabled and disabled.
       for reflect in [0, 1]:
@@ -966,19 +955,16 @@ class MarkTest(MultiNetworkTest):
         # working, IPv6 ping replies will be properly reflected. Don't
         # fail when that happens.
         if reflect or desc == "ICMPv6 echo":
-          reply_desc, reply = gen_reply(version, myaddr, remote_addr, packet)
+          reply_desc, reply = gen_reply(version, myaddr, remoteaddr, packet)
         else:
           reply_desc, reply = None, None
 
-        msg = self._FormatMessage(iif, ip_iface, "reflect=%d" % reflect,
+        msg = self._FormatMessage(iif, ip_if, "reflect=%d" % reflect,
                                   desc, reply_desc)
         self._ReceiveAndExpectResponse(netid, packet, reply, msg)
 
   def SYNToClosedPort(self, *args):
     return Packets.SYN(999, *args)
-
-  def SYNToOpenPort(self, *args):
-    return Packets.SYN(self.listenport, *args)
 
   @unittest.skipUnless(HAVE_MARK_REFLECT, "no mark reflection")
   def testIPv4ICMPErrorsReflectMark(self):
@@ -1004,104 +990,179 @@ class MarkTest(MultiNetworkTest):
   def testIPv6RSTsReflectMark(self):
     self.CheckReflection(6, self.SYNToClosedPort, Packets.RST)
 
-  def CheckTCPConnection(self, sysctl_value, netid, version,
-                         myaddr, remote_addr, packet, reply, msg):
-    establishing_ack = Packets.ACK(version, remote_addr, myaddr, reply)[1]
+
+class TCPAcceptTest(MultiNetworkTest):
+
+  MODE_BINDTODEVICE = "SO_BINDTODEVICE"
+  MODE_INCOMING_MARK = "incoming mark"
+  MODE_EXPLICIT_MARK = "explicit mark"
+  MODE_UID = "uid"
+
+  @classmethod
+  def setUpClass(cls):
+    super(TCPAcceptTest, cls).setUpClass()
+
+    # Open a port so we can observe SYN+ACKs. Since it's a dual-stack socket it
+    # will accept both IPv4 and IPv6 connections. We do this here instead of in
+    # each test so we can use the same socket every time. That way, if a kernel
+    # bug causes incoming packets to mark the listening socket instead of the
+    # accepted socket, the test will fail as soon as the next address/interface
+    # combination is tried.
+    cls.listenport = 1234
+    cls.listensocket = net_test.IPv6TCPSocket()
+    cls.listensocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+    cls.listensocket.bind(("::", cls.listenport))
+    cls.listensocket.listen(100)
+
+  def BounceSocket(self, s):
+    """Attempts to invalidate a socket's destination cache entry."""
+    if s.family == AF_INET:
+      tos = s.getsockopt(SOL_IP, IP_TOS)
+      s.setsockopt(net_test.SOL_IP, IP_TOS, 53)
+      s.setsockopt(net_test.SOL_IP, IP_TOS, tos)
+    else:
+      # UDP, 8 bytes dstopts; PAD1, 4 bytes padding; 4 bytes zeros.
+      pad8 = "".join(["\x11\x00", "\x01\x04", "\x00" * 4])
+      s.setsockopt(net_test.SOL_IPV6, IPV6_DSTOPTS, pad8)
+      s.setsockopt(net_test.SOL_IPV6, IPV6_DSTOPTS, "")
+
+  def _SetTCPMarkAcceptSysctl(self, value):
+    self.SetSysctl(TCP_MARK_ACCEPT_SYSCTL, value)
+
+  def CheckTCPConnection(self, mode, listensocket, netid, version,
+                         myaddr, remoteaddr, packet, reply, msg):
+    establishing_ack = Packets.ACK(version, remoteaddr, myaddr, reply)[1]
+
+    # Attempt to confuse the kernel.
+    self.BounceSocket(listensocket)
+
     self.ReceivePacketOn(netid, establishing_ack)
-    s, _ = self.listensocket.accept()
+
+    # If we're using UID routing, the accept() call has to be run as a UID that
+    # is routed to the specified netid, because the UID of the socket returned
+    # by accept() is the effective UID of the process that calls it. It doesn't
+    # need to be the same UID; any UID that selects the same interface will do.
+    with RunAsUid(self.UidForNetid(netid)):
+      s, _ = listensocket.accept()
+
     try:
+      # Check that data sent on the connection goes out on the right interface.
+      desc, data = Packets.ACK(version, myaddr, remoteaddr, establishing_ack,
+                               payload=UDP_PAYLOAD)
+      s.send(UDP_PAYLOAD)
+      self.ExpectPacketOn(netid, msg + ": expecting %s" % desc, data)
+      self.BounceSocket(s)
+
+      # Keep up our end of the conversation.
+      ack = Packets.ACK(version, remoteaddr, myaddr, data)[1]
+      self.BounceSocket(listensocket)
+      self.ReceivePacketOn(netid, ack)
+
       mark = self.GetSocketMark(s)
     finally:
+      self.BounceSocket(s)
       s.close()
-    if sysctl_value:
+
+    if mode == self.MODE_INCOMING_MARK:
       self.assertEquals(netid, mark,
                         msg + ": Accepted socket: Expected mark %d, got %d" % (
                             netid, mark))
+    elif mode != self.MODE_EXPLICIT_MARK:
+      self.assertEquals(0, self.GetSocketMark(listensocket))
 
     # Check the FIN was sent on the right interface, and ack it. We don't expect
     # this to fail because by the time the connection is established things are
     # likely working, but a) extra tests are always good and b) extra packets
     # like the FIN (and retransmitted FINs) could cause later tests that expect
     # no packets to fail.
-    desc, fin = Packets.FIN(version, myaddr, remote_addr, establishing_ack)
+    desc, fin = Packets.FIN(version, myaddr, remoteaddr, ack)
     self.ExpectPacketOn(netid, msg + ": expecting %s after close" % desc, fin)
 
-    desc, finack = Packets.FIN(version, remote_addr, myaddr, fin)
+    desc, finack = Packets.FIN(version, remoteaddr, myaddr, fin)
     self.ReceivePacketOn(netid, finack)
 
-    desc, finackack = Packets.ACK(version, myaddr, remote_addr, finack)
-    self.ExpectPacketOn(netid, msg + ": expecting final ack", finackack)
+    # Since we called close() earlier, the userspace socket object is gone, so
+    # the socket has no UID. If we're doing UID routing, the ack might be routed
+    # incorrectly. Not much we can do here.
+    desc, finackack = Packets.ACK(version, myaddr, remoteaddr, finack)
+    if mode != self.MODE_UID:
+      self.ExpectPacketOn(netid, msg + ": expecting final ack", finackack)
+    else:
+      self.ClearTunQueues()
 
-  def CheckTCP(self, version, gen_packet, gen_reply):
+  def CheckTCP(self, version, modes):
     """Checks that incoming TCP connections work.
 
     Args:
       version: An integer, 4 or 6.
-      gen_packet: A function taking an IP version (an integer), a source
-        address and a destination address (strings), and returning a scapy
-        packet.
-      gen_reply: A function taking the same arguments as gen_packet,
-        plus a scapy packet, and returning a scapy packet.
-        packet, kernel reply, and a message.
+      modes: A list of modes to excercise.
     """
-    for netid, iif, ip_iface, myaddr, remote_addr in self.Combinations(version):
-      desc, packet = gen_packet(version, remote_addr, myaddr)
+    for syncookies in [0, 2]:
+      for mode in modes:
+        for netid, iif, ip_if, myaddr, remoteaddr in self.Combinations(version):
+          if mode == self.MODE_UID:
+            listensocket = self.BuildSocket(6, net_test.TCPSocket, netid, mode)
+            listensocket.listen(100)
+          else:
+            listensocket = self.listensocket
 
-      for sysctl_value in [0, 1]:
-        self._SetTCPMarkAcceptSysctl(sysctl_value)
+          listenport = listensocket.getsockname()[1]
 
-        # If we're testing accepting TCP connections, also check that
-        # SO_BINDTODEVICE correctly sets the interface the SYN+ACK is sent on.
-        # Since SO_BINDTODEVICE and the sysctl do the same thing, it doesn't
-        # really make sense to test with sysctl_value=1 and SO_BINDTODEVICE
-        # turned on at the same time.
-        if not sysctl_value:
-          bind_devices = [None, iif]
-        else:
-          bind_devices = [None]
+          if HAVE_TCP_MARK_ACCEPT:
+            accept_sysctl = 1 if mode == self.MODE_INCOMING_MARK else 0
+            self._SetTCPMarkAcceptSysctl(accept_sysctl)
 
-        for bound_dev in bind_devices:
-          # The socket is unbound in tearDown.
-          self.BindToDevice(self.listensocket, bound_dev)
+          bound_dev = iif if mode == self.MODE_BINDTODEVICE else None
+          self.BindToDevice(listensocket, bound_dev)
+
+          mark = netid if mode == self.MODE_EXPLICIT_MARK else 0
+          self.SetSocketMark(listensocket, mark)
 
           # Generate the packet here instead of in the outer loop, so
           # subsequent TCP connections use different source ports and
           # retransmissions from old connections don't confuse subsequent
           # tests.
-          desc, packet = gen_packet(version, remote_addr, myaddr)
+          desc, packet = Packets.SYN(listenport, version, remoteaddr, myaddr)
 
-          if bound_dev or sysctl_value:
-            reply_desc, reply = gen_reply(version, myaddr, remote_addr, packet)
+          if mode:
+            reply_desc, reply = Packets.SYNACK(version, myaddr, remoteaddr,
+                                               packet)
           else:
             reply_desc, reply = None, None
 
-          extra = "accept=%d, bound_dev=%s" % (sysctl_value, bound_dev)
-          msg = self._FormatMessage(iif, ip_iface, extra, desc, reply_desc)
+          extra = "mode=%s, syncookies=%d" % (mode, syncookies)
+          msg = self._FormatMessage(iif, ip_if, extra, desc, reply_desc)
           reply = self._ReceiveAndExpectResponse(netid, packet, reply, msg)
-
           if reply:
-            self.CheckTCPConnection(sysctl_value, netid, version,
-                                    myaddr, remote_addr,
-                                    packet, reply, msg)
+            self.CheckTCPConnection(mode, listensocket, netid, version, myaddr,
+                                    remoteaddr, packet, reply, msg)
+
+  def tearDown(self):
+    # Restore default syncookie behaviour.
+    self.SetSysctl(SYNCOOKIES_SYSCTL, 1)
+
+  def testBasicTCP(self):
+    self.CheckTCP(4, [None, self.MODE_BINDTODEVICE, self.MODE_EXPLICIT_MARK])
+    self.CheckTCP(6, [None, self.MODE_BINDTODEVICE, self.MODE_EXPLICIT_MARK])
 
   @unittest.skipUnless(HAVE_TCP_MARK_ACCEPT, "fwmark writeback not supported")
-  def testIPv4TCPConnections(self):
-    self.CheckTCP(4, self.SYNToOpenPort, Packets.SYNACK)
+  def testIPv4MarkAccept(self):
+    self.CheckTCP(4, [self.MODE_INCOMING_MARK])
 
   @unittest.skipUnless(HAVE_TCP_MARK_ACCEPT, "fwmark writeback not supported")
-  def testIPv6TCPConnections(self):
-    self.CheckTCP(6, self.SYNToOpenPort, Packets.SYNACK)
+  def testIPv6MarkAccept(self):
+    self.CheckTCP(6, [self.MODE_INCOMING_MARK])
 
-  @unittest.skipUnless(HAVE_TCP_MARK_ACCEPT, "fwmark writeback not supported")
-  def testTCPConnectionsWithSynCookies(self):
-    # Force SYN cookies on all connections.
-    self.SetSysctl(SYNCOOKIES_SYSCTL, 2)
-    try:
-      self.CheckTCP(4, self.SYNToOpenPort, Packets.SYNACK)
-      self.CheckTCP(6, self.SYNToOpenPort, Packets.SYNACK)
-    finally:
-      # Stop forcing SYN cookies on all connections.
-      self.SetSysctl(SYNCOOKIES_SYSCTL, 1)
+  @unittest.skipUnless(HAVE_EXPERIMENTAL_UID_ROUTING, "no UID routing")
+  def testIPv4UidAccept(self):
+    self.CheckTCP(4, [self.MODE_UID])
+
+  @unittest.skipUnless(HAVE_EXPERIMENTAL_UID_ROUTING, "no UID routing")
+  def testIPv6UidAccept(self):
+    self.CheckTCP(6, [self.MODE_UID])
+
+  def testIPv6ExplicitMark(self):
+    self.CheckTCP(6, [self.MODE_EXPLICIT_MARK])
 
 
 class RATest(MultiNetworkTest):
@@ -1323,7 +1384,6 @@ class UidRoutingTest(MultiNetworkTest):
 
   def testIPv6RouteGet(self):
     self.CheckGetRoute(6, net_test.IPV6_ADDR)
-
 
 if __name__ == "__main__":
   unittest.main()
