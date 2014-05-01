@@ -293,8 +293,9 @@ class IPRoute(object):
     Args:
       version: An integer, 4 or 6.
       is_add: True to add a rule, False to delete it.
-      table: The table to add/delete the rule from.
+      table: If nonzero, rule looks up this table. If 0, it returns ENETUNREACH.
       match_nlattr: A blob of struct nlattrs that express the match condition.
+        If None, match everything.
       priority: An integer, the priority.
 
     Raises:
@@ -303,11 +304,14 @@ class IPRoute(object):
     """
     # Create a struct rtmsg specifying the table and the given match attributes.
     family = self._AddressFamily(version)
+    rule_type = RTN_UNICAST if table else RTN_UNREACHABLE
     rtmsg = RTMsg((family, 0, 0, 0, RT_TABLE_UNSPEC,
-                   RTPROT_STATIC, RT_SCOPE_UNIVERSE, RTN_UNICAST, 0)).Pack()
+                   RTPROT_STATIC, RT_SCOPE_UNIVERSE, rule_type, 0)).Pack()
     rtmsg += self._NlAttrU32(FRA_PRIORITY, priority)
-    rtmsg += match_nlattr
-    rtmsg += self._NlAttrU32(FRA_TABLE, table)
+    if match_nlattr:
+      rtmsg += match_nlattr
+    if table:
+      rtmsg += self._NlAttrU32(FRA_TABLE, table)
 
     # Create a netlink request containing the rtmsg.
     command = RTM_NEWRULE if is_add else RTM_DELRULE
@@ -325,6 +329,9 @@ class IPRoute(object):
     nlattr = (self._NlAttrU32(EXPERIMENTAL_FRA_UID_START, start) +
               self._NlAttrU32(EXPERIMENTAL_FRA_UID_END, end))
     return self._Rule(version, is_add, table, nlattr, priority)
+
+  def UnreachableRule(self, version, is_add, priority):
+    return self._Rule(version, is_add, None, None, priority=priority)
 
   def _GetRTMsg(self, data):
     """Parses a RTMsg into a header and a dictionary of attributes."""
