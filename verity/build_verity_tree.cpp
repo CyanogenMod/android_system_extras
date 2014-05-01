@@ -212,7 +212,7 @@ int main(int argc, char **argv)
 
         ssize_t ret = read(random_fd, salt, salt_size);
         if (ret != (ssize_t)salt_size) {
-            FATAL("failed to read %d bytes from /dev/urandom: %d %d\n", salt_size, ret, errno);
+            FATAL("failed to read %zu bytes from /dev/urandom: %zd %d\n", salt_size, ret, errno);
         }
         close(random_fd);
     }
