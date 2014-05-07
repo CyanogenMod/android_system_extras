@@ -32,6 +32,7 @@ NLMsgHdr(length=44, type=33, flags=2, seq=0, pid=510)
 >>>
 """
 
+import ctypes
 import struct
 
 
@@ -108,6 +109,13 @@ def Struct(name, fmt, fields):
 
     def __repr__(self):
       return str(self)
+
+    def CPointer(self):
+      """Returns a C pointer to the serialized structure."""
+      buf = ctypes.create_string_buffer(self.Pack())
+      # Store the C buffer in the object so it doesn't get garbage collected.
+      super(CStruct, self).__setattr__("_buffer", buf)
+      return ctypes.addressof(self._buffer)
 
   return CStruct
 
