@@ -322,7 +322,7 @@ class IPRoute(object):
     return self._Rule(version, is_add, table, nlattr, priority)
 
   def OifRule(self, version, is_add, oif, table, priority=16383):
-    nlattr = self._NlAttr(FRA_OIFNAME, oif)
+    nlattr = self._NlAttr(FRA_OIFNAME, oif + "\x00")
     return self._Rule(version, is_add, table, nlattr, priority)
 
   def UidRangeRule(self, version, is_add, start, end, table, priority=16383):
@@ -470,4 +470,4 @@ if __name__ == "__main__":
   iproute = IPRoute()
   iproute.DEBUG = True
   iproute.DumpRules(6)
-  print iproute.GetRoutes("2001:4860:4860::8888", 0, 0, 0)
+  print iproute.GetRoutes("2001:4860:4860::8888", 0, 0, None)
