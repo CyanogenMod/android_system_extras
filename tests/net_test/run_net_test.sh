@@ -63,7 +63,18 @@ done
 # Enable the kernel config options listed in $OPTIONS.
 cmdline=${OPTIONS// / -e }
 ./scripts/config $cmdline
-make olddefconfig ARCH=um SUBARCH=x86_64 CROSS_COMPILE=
+
+# olddefconfig doesn't work on old kernels.
+if ! make olddefconfig ARCH=um SUBARCH=x86_64 CROSS_COMPILE= ; then
+  cat >&2 << EOF
+
+Warning: "make olddefconfig" failed.
+Perhaps this kernel is too old to support it.
+You may get asked lots of questions.
+Keep enter pressed to accept the defaults.
+
+EOF
+fi
 
 # Compile the kernel.
 make -j12 linux ARCH=um SUBARCH=x86_64 CROSS_COMPILE=
