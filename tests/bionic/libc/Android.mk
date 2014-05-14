@@ -142,11 +142,6 @@ sources := \
     other/test_sysconf.c \
     other/test_vfprintf_leak.c \
 
-ifeq ($(TARGET_ARCH),arm)
-sources += \
-    other/test_atomics.c
-endif
-
 $(call device-test, $(sources))
 
 # The relocations test is a bit special, since we need
