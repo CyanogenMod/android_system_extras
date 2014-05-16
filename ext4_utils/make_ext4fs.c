@@ -431,8 +431,11 @@ static char *canonicalize_slashes(const char *str, bool absolute)
 	int newlen = len;
 	char *ptr;
 
-	if (len == 0 && absolute) {
-		return strdup("/");
+	if (len == 0) {
+		if (absolute)
+			return strdup("/");
+		else
+			return strdup("");
 	}
 
 	if (str[0] != '/' && absolute) {
