@@ -150,23 +150,17 @@ int main(int argc, char **argv)
             memcpy(salt, optarg, salt_size);
             break;
         case 'A': {
-                size_t len = strlen(optarg);
-                if (len % 2 != 0) {
-                    FATAL("hex salt must be multiple of 2 characters long\n");
+                BIGNUM *bn = NULL;
+                if(!BN_hex2bn(&bn, optarg)) {
+                    FATAL("failed to convert salt from hex\n");
                 }
-                salt_size = len / 2;
+                salt_size = BN_num_bytes(bn);
                 salt = new unsigned char[salt_size]();
                 if (salt == NULL) {
                     FATAL("failed to allocate memory for salt\n");
                 }
-                for (size_t i = 0; i < salt_size; i++) {
-                    char buf[3] = {optarg[2*i], optarg[2*i+1], 0};
-                    char *endptr;
-                    unsigned long hex = strtoul(optarg + 2*i, &endptr, 16);
-                    if (endptr != buf + 2 || hex > 0xff) {
-                        FATAL("malformed hex salt\n");
-                    }
-                    salt[i] = hex;
+                if((size_t)BN_bn2bin(bn, salt) != salt_size) {
+                    FATAL("failed to convert salt to bytes\n");
                 }
             }
             break;
