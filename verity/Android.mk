@@ -14,6 +14,7 @@ LOCAL_SRC_FILES := VeritySigner.java
 LOCAL_MODULE := VeritySigner
 LOCAL_JAR_MANIFEST := VeritySigner.mf
 LOCAL_MODULE_TAGS := optional
+LOCAL_STATIC_JAVA_LIBRARIES := bouncycastle-host
 include $(BUILD_HOST_JAVA_LIBRARY)
 
 include $(CLEAR_VARS)
