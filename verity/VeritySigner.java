@@ -16,8 +16,8 @@
 
 package com.android.verity;
 
-import sun.misc.BASE64Decoder;
-import sun.misc.BASE64Encoder;
+import org.bouncycastle.util.encoders.Base64;
+
 import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -40,8 +40,7 @@ class VeritySigner {
     private static PKCS8EncodedKeySpec pemToDer(String pem) throws Exception {
         pem = pem.replaceAll("^-.*", "");
         String base64_der = pem.replaceAll("-.*$", "");
-        BASE64Decoder decoder = new BASE64Decoder();
-        byte[] der = decoder.decodeBuffer(base64_der);
+        byte[] der = Base64.decode(base64_der);
         return new PKCS8EncodedKeySpec(der);
     }
 
