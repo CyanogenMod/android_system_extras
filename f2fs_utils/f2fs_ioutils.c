@@ -136,7 +136,7 @@ static int dev_write_sparse(void *buf, __u64 byte_offset, size_t byte_len)
 	return 0;
 }
 
-void f2fs_finalize_device()
+void f2fs_finalize_device(struct f2fs_configuration *c)
 {
 }
 
