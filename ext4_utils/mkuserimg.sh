@@ -5,7 +5,7 @@
 function usage() {
 cat<<EOT
 Usage:
-mkuserimg.sh [-s] SRC_DIR OUTPUT_FILE EXT_VARIANT MOUNT_POINT SIZE [-T TIMESTAMP] [FILE_CONTEXTS]
+mkuserimg.sh [-s] SRC_DIR OUTPUT_FILE EXT_VARIANT MOUNT_POINT SIZE [-T TIMESTAMP] [-C FS_CONFIG] [FILE_CONTEXTS]
 EOT
 }
 
@@ -17,7 +17,7 @@ if [ "$1" = "-s" ]; then
   shift
 fi
 
-if [ $# -lt 5 -o $# -gt 8 ]; then
+if [ $# -lt 5 ]; then
   usage
   exit 1
 fi
@@ -39,6 +39,13 @@ if [[ "$1" == "-T" ]]; then
   TIMESTAMP=$2
   shift; shift
 fi
+
+FS_CONFIG=
+if [[ "$1" == "-C" ]]; then
+  FS_CONFIG=$2
+  shift; shift
+fi
+
 FC=$1
 
 case $EXT_VARIANT in
@@ -56,11 +63,15 @@ if [ -z $SIZE ]; then
   exit 2
 fi
 
+OPT=""
 if [ -n "$FC" ]; then
-    FCOPT="-S $FC"
+  OPT="$OPT -S $FC"
+fi
+if [ -n "$FS_CONFIG" ]; then
+  OPT="$OPT -C $FS_CONFIG"
 fi
 
-MAKE_EXT4FS_CMD="make_ext4fs $ENABLE_SPARSE_IMAGE -T $TIMESTAMP $FCOPT -l $SIZE -a $MOUNT_POINT $OUTPUT_FILE $SRC_DIR"
+MAKE_EXT4FS_CMD="make_ext4fs $ENABLE_SPARSE_IMAGE -T $TIMESTAMP $OPT -l $SIZE -a $MOUNT_POINT $OUTPUT_FILE $SRC_DIR"
 echo $MAKE_EXT4FS_CMD
 $MAKE_EXT4FS_CMD
 if [ $? -ne 0 ]; then

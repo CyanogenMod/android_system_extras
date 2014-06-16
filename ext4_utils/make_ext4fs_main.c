@@ -39,6 +39,7 @@ struct selabel_handle;
 
 #include "make_ext4fs.h"
 #include "ext4_utils.h"
+#include "canned_fs_config.h"
 
 #ifndef USE_MINGW /* O_BINARY is windows-specific flag */
 #define O_BINARY 0
@@ -52,7 +53,7 @@ static void usage(char *path)
 	fprintf(stderr, "%s [ -l <len> ] [ -j <journal size> ] [ -b <block_size> ]\n", basename(path));
 	fprintf(stderr, "    [ -g <blocks per group> ] [ -i <inodes> ] [ -I <inode size> ]\n");
 	fprintf(stderr, "    [ -L <label> ] [ -f ] [ -a <android mountpoint> ]\n");
-	fprintf(stderr, "    [ -S file_contexts ] [ -T timestamp ]\n");
+	fprintf(stderr, "    [ -S file_contexts ] [ -C fs_config ] [ -T timestamp ]\n");
 	fprintf(stderr, "    [ -z | -s ] [ -w ] [ -c ] [ -J ] [ -v ]\n");
 	fprintf(stderr, "    <filename> [<directory>]\n");
 }
@@ -64,6 +65,7 @@ int main(int argc, char **argv)
 	const char *directory = NULL;
 	char *mountpoint = NULL;
 	fs_config_func_t fs_config_func = NULL;
+	const char *fs_config_file = NULL;
 	int gzip = 0;
 	int sparse = 0;
 	int crc = 0;
@@ -77,7 +79,7 @@ int main(int argc, char **argv)
 	struct selinux_opt seopts[] = { { SELABEL_OPT_PATH, "" } };
 #endif
 
-	while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:S:T:fwzJsctv")) != -1) {
+	while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:S:T:C:fwzJsctv")) != -1) {
 		switch (opt) {
 		case 'l':
 			info.len = parse_num(optarg);
@@ -105,7 +107,6 @@ int main(int argc, char **argv)
 			break;
 		case 'a':
 #ifdef ANDROID
-			fs_config_func = fs_config;
 			mountpoint = optarg;
 #else
 			fprintf(stderr, "can't set android permissions - built without android support\n");
@@ -147,6 +148,9 @@ int main(int argc, char **argv)
 		case 'T':
 			fixed_time = strtoll(optarg, NULL, 0);
 			break;
+		case 'C':
+			fs_config_file = optarg;
+			break;
 		default: /* '?' */
 			usage(argv[0]);
 			exit(EXIT_FAILURE);
@@ -164,6 +168,16 @@ int main(int argc, char **argv)
 		}
 	}
 #endif
+
+	if (fs_config_file) {
+		if (load_canned_fs_config(fs_config_file) < 0) {
+			fprintf(stderr, "failed to load %s\n", fs_config_file);
+			exit(EXIT_FAILURE);
+		}
+		fs_config_func = canned_fs_config;
+	} else if (mountpoint) {
+		fs_config_func = fs_config;
+	}
 
 	if (wipe && sparse) {
 		fprintf(stderr, "Cannot specifiy both wipe and sparse\n");
