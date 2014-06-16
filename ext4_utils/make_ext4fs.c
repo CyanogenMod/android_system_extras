@@ -623,8 +623,9 @@ int make_ext4fs_internal(int fd, const char *_directory,
 			aux_info.sb->s_blocks_count_lo - aux_info.sb->s_free_blocks_count_lo,
 			aux_info.sb->s_blocks_count_lo);
 
-	if (wipe)
+	if (wipe && WIPE_IS_SUPPORTED) {
 		wipe_block_device(fd, info.len);
+	}
 
 	write_ext4_image(fd, gzip, sparse, crc);
 
