@@ -19,6 +19,15 @@
 
 #include "ext4_utils.h"
 
+/* Set WIPE_IS_SUPPORTED to 1 if the current platform supports
+ * wiping of block devices. 0 otherwise. For now, only Linux does.
+ */
+#ifdef __linux__
+#  define WIPE_IS_SUPPORTED 1
+#else
+#  define WIPE_IS_SUPPORTED 0
+#endif
+
 int wipe_block_device(int fd, s64 len);
 
 #endif

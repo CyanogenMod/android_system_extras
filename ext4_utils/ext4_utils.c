@@ -393,6 +393,20 @@ u64 get_block_device_size(int fd)
 	return size;
 }
 
+int is_block_device_fd(int fd)
+{
+#ifdef USE_MINGW
+	return 0;
+#else
+	struct stat st;
+	int ret = fstat(fd, &st);
+	if (ret < 0)
+		return 0;
+
+	return S_ISBLK(st.st_mode);
+#endif
+}
+
 u64 get_file_size(int fd)
 {
 	struct stat buf;
