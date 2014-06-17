@@ -113,13 +113,13 @@ int pm_kernel_pids(pm_kernel_t *ker, pid_t **pids_out, size_t *len) {
     return 0;
 }
 
-int pm_kernel_count(pm_kernel_t *ker, unsigned long pfn, uint64_t *count_out) {
-    off_t off;
+int pm_kernel_count(pm_kernel_t *ker, uint64_t pfn, uint64_t *count_out) {
+    off64_t off;
 
     if (!ker || !count_out)
         return -1;
 
-    off = lseek(ker->kpagecount_fd, pfn * sizeof(uint64_t), SEEK_SET);
+    off = lseek64(ker->kpagecount_fd, pfn * sizeof(uint64_t), SEEK_SET);
     if (off == (off_t)-1)
         return errno;
     if (read(ker->kpagecount_fd, count_out, sizeof(uint64_t)) <
@@ -129,13 +129,13 @@ int pm_kernel_count(pm_kernel_t *ker, unsigned long pfn, uint64_t *count_out) {
     return 0;
 }
 
-int pm_kernel_flags(pm_kernel_t *ker, unsigned long pfn, uint64_t *flags_out) {
-    off_t off;
+int pm_kernel_flags(pm_kernel_t *ker, uint64_t pfn, uint64_t *flags_out) {
+    off64_t off;
 
     if (!ker || !flags_out)
         return -1;
 
-    off = lseek(ker->kpageflags_fd, pfn * sizeof(uint64_t), SEEK_SET);
+    off = lseek64(ker->kpageflags_fd, pfn * sizeof(uint64_t), SEEK_SET);
     if (off == (off_t)-1)
         return errno;
     if (read(ker->kpageflags_fd, flags_out, sizeof(uint64_t)) <
