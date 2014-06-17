@@ -9,8 +9,6 @@ mkuserimg.sh [-s] SRC_DIR OUTPUT_FILE EXT_VARIANT MOUNT_POINT SIZE [-T TIMESTAMP
 EOT
 }
 
-echo "in mkuserimg.sh PATH=$PATH"
-
 ENABLE_SPARSE_IMAGE=
 if [ "$1" = "-s" ]; then
   ENABLE_SPARSE_IMAGE="-s"
