@@ -71,9 +71,9 @@ struct pm_process {
 struct pm_map {
     pm_process_t *proc;
 
-    unsigned long start;
-    unsigned long end;
-    unsigned long offset;
+    uint64_t start;
+    uint64_t end;
+    uint64_t offset;
     int flags;
 
     char *name;
@@ -91,11 +91,11 @@ int pm_kernel_pids(pm_kernel_t *ker, pid_t **pids_out, size_t *len);
 
 /* Get the map count (from /proc/kpagecount) of a physical frame.
  * The count is returned through *count_out. */
-int pm_kernel_count(pm_kernel_t *ker, unsigned long pfn, uint64_t *count_out);
+int pm_kernel_count(pm_kernel_t *ker, uint64_t pfn, uint64_t *count_out);
 
 /* Get the page flags (from /proc/kpageflags) of a physical frame.
  * The count is returned through *flags_out. */
-int pm_kernel_flags(pm_kernel_t *ker, unsigned long pfn, uint64_t *flags_out);
+int pm_kernel_flags(pm_kernel_t *ker, uint64_t pfn, uint64_t *flags_out);
 
 #define PM_PAGE_LOCKED     (1 <<  0)
 #define PM_PAGE_ERROR      (1 <<  1)
@@ -153,7 +153,7 @@ int pm_process_workingset(pm_process_t *proc, pm_memusage_t *ws_out, int reset);
  * The array of PFNs is returned through *range_out, and the caller has the 
  * responsibility to free it. */
 int pm_process_pagemap_range(pm_process_t *proc,
-                             unsigned long low, unsigned long hi,
+                             uint64_t low, uint64_t hi,
                              uint64_t **range_out, size_t *len);
 
 #define _BITS(x, offset, bits) (((x) >> offset) & ((1LL << (bits)) - 1))
