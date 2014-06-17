@@ -102,7 +102,7 @@ int pm_process_usage(pm_process_t *proc, pm_memusage_t *usage_out) {
 int pm_process_pagemap_range(pm_process_t *proc,
                              unsigned long low, unsigned long high,
                              uint64_t **range_out, size_t *len) {
-    int firstpage, numpages;
+    unsigned long firstpage, numpages;
     uint64_t *range;
     off_t off;
     int error;
