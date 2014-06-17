@@ -16,24 +16,25 @@
 
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <string.h>
-#include <fcntl.h>
 
 #include <pagemap/pagemap.h>
 
 struct proc_info {
     pid_t pid;
     pm_memusage_t usage;
-    unsigned long wss;
+    uint64_t wss;
 };
 
 static void usage(char *myname);
 static int getprocname(pid_t pid, char *buf, int len);
-static int numcmp(long long a, long long b);
+static int numcmp(uint64_t a, uint64_t b);
 
 #define declare_sort(field) \
     static int sort_by_ ## field (const void *a, const void *b)
@@ -85,7 +86,7 @@ void print_mem_info() {
             5,
             0
     };
-    long mem[] = { 0, 0, 0, 0, 0, 0 };
+    uint64_t mem[] = { 0, 0, 0, 0, 0, 0 };
 
     char* p = buffer;
     while (*p && numFound < 6) {
@@ -112,7 +113,8 @@ void print_mem_info() {
         if (*p) p++;
     }
 
-    printf("RAM: %ldK total, %ldK free, %ldK buffers, %ldK cached, %ldK shmem, %ldK slab\n",
+    printf("RAM: %" PRIu64 "K total, %" PRIu64 "K free, %" PRIu64 "K buffers, "
+            "%" PRIu64 "K cached, %" PRIu64 "K shmem, %" PRIu64 "K slab\n",
             mem[0], mem[1], mem[2], mem[3], mem[4], mem[5]);
 }
 
@@ -122,9 +124,9 @@ int main(int argc, char *argv[]) {
     pid_t *pids;
     struct proc_info **procs;
     size_t num_procs;
-    unsigned long total_pss;
-    unsigned long total_uss;
-    unsigned long total_swap;
+    uint64_t total_pss;
+    uint64_t total_uss;
+    uint64_t total_swap;
     char cmdline[256]; // this must be within the range of int
     int error;
     bool has_swap = false;
@@ -314,15 +316,15 @@ int main(int argc, char *argv[]) {
     /* Print the total line */
     printf("%5s  ", "");
     if (ws) {
-        printf("%7s  %6ldK  %6ldK  ",
+        printf("%7s  %6" PRIu64 "K  %" PRIu64 "K  ",
             "", total_pss / 1024, total_uss / 1024);
     } else {
-        printf("%8s  %7s  %6ldK  %6ldK  ",
+        printf("%8s  %7s  %6" PRIu64 "K  %6" PRIu64 "K  ",
             "", "", total_pss / 1024, total_uss / 1024);
     }
 
     if (has_swap) {
-        printf("%6ldK  ", total_swap);
+        printf("%6" PRIu64 "K  ", total_swap);
     }
 
     printf("TOTAL\n");
@@ -410,7 +412,7 @@ exit:
     return rc;
 }
 
-static int numcmp(long long a, long long b) {
+static int numcmp(uint64_t a, uint64_t b) {
     if (a < b) return -1;
     if (a > b) return 1;
     return 0;

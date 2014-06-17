@@ -16,6 +16,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -100,11 +101,12 @@ int pm_process_usage(pm_process_t *proc, pm_memusage_t *usage_out) {
 }
 
 int pm_process_pagemap_range(pm_process_t *proc,
-                             unsigned long low, unsigned long high,
+                             uint64_t low, uint64_t high,
                              uint64_t **range_out, size_t *len) {
-    unsigned long firstpage, numpages;
+    uint64_t firstpage;
+    uint64_t numpages;
     uint64_t *range;
-    off_t off;
+    off64_t off;
     int error;
 
     if (!proc || (low > high) || !range_out || !len)
@@ -123,7 +125,7 @@ int pm_process_pagemap_range(pm_process_t *proc,
     if (!range)
         return errno;
 
-    off = lseek(proc->pagemap_fd, firstpage * sizeof(uint64_t), SEEK_SET);
+    off = lseek64(proc->pagemap_fd, firstpage * sizeof(uint64_t), SEEK_SET);
     if (off == (off_t)-1) {
         error = errno;
         free(range);
@@ -281,7 +283,7 @@ static int read_maps(pm_process_t *proc) {
         map->proc = proc;
 
         name[0] = '\0';
-        sscanf(line, "%lx-%lx %s %lx %*s %*d %" S(MAX_LINE) "s",
+        sscanf(line, "%" SCNx64 "-%" SCNx64 " %s %" SCNx64 " %*s %*d %" S(MAX_LINE) "s",
                &map->start, &map->end, perms, &map->offset, name);
 
         map->name = malloc(strlen(name) + 1);
