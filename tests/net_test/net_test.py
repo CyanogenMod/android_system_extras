@@ -22,6 +22,8 @@ IPV6_FLOWINFO_SEND = 33
 ETH_P_IP = 0x0800
 ETH_P_IPV6 = 0x86dd
 
+IPPROTO_GRE = 47
+
 SIOCSIFHWADDR = 0x8924
 
 IPV6_FL_A_GET = 0
@@ -47,7 +49,8 @@ IPV6_SEQ_DGRAM_HEADER = ("  sl  "
                          "st tx_queue rx_queue tr tm->when retrnsmt"
                          "   uid  timeout inode ref pointer drops\n")
 
-IPPROTO_GRE = 47
+# Unix group to use if we want to open sockets as non-root.
+AID_INET = 3003
 
 
 def SetSocketTimeout(sock, ms):
