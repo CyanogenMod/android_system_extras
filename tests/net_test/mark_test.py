@@ -1398,8 +1398,8 @@ class RATest(MultiNetworkTest):
       msg = "After NA response, expecting %s" % desc
       self.ExpectPacketOn(netid, msg, expected)
 
-  @unittest.skipUnless(False, "Known bug: routing tables are never deleted")
-  def testNoLeftoverRoutes(self):
+  # This test documents a known issue: routing tables are never deleted.
+  def testLeftoverRoutes(self):
     def GetNumRoutes():
       return len(open("/proc/net/ipv6_route").readlines())
 
@@ -1411,7 +1411,7 @@ class RATest(MultiNetworkTest):
         self.tuns[i].close()
       finally:
         del self.tuns[i]
-    self.assertEquals(num_routes, GetNumRoutes())
+    self.assertLess(num_routes, GetNumRoutes())
 
 
 class PMTUTest(InboundMarkingTest):
