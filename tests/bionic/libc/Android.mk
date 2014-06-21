@@ -138,7 +138,6 @@ $(call device-test, $(sources))
 # Third, the other tests
 
 sources := \
-    other/test_arc4random.c \
     other/test_sysconf.c \
     other/test_vfprintf_leak.c \
 
