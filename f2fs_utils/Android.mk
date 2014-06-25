@@ -2,28 +2,7 @@
 
 LOCAL_PATH:= $(call my-dir)
 
-libf2fs_ioutils_src_files := \
-    f2fs_ioutils.c
-
-# ---------------------------------------
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES := $(libf2fs_ioutils_src_files)
-LOCAL_C_INCLUDES := external/f2fs-tools/include external/f2fs-tools/mkfs
-LOCAL_STATIC_LIBRARIES := \
-    libsparse_host \
-    libext2_uuid_host \
-    libz
-LOCAL_MODULE := libf2fs_ioutils_host
-include $(BUILD_HOST_STATIC_LIBRARY)
-
-# ---------------------------------------
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES := f2fs_dlutils.c
-LOCAL_C_INCLUDES := external/f2fs-tools/include external/f2fs-tools/mkfs
-# Will attempt to dlopen("libf2fs_fmt_host_dyn")
-LOCAL_LDLIBS := -ldl
-LOCAL_MODULE := libf2fs_dlutils_host
-include $(BUILD_HOST_STATIC_LIBRARY)
+ifeq ($(HOST_OS),linux)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libf2fs_utils_host
@@ -34,21 +13,36 @@ LOCAL_STATIC_LIBRARIES := \
 LOCAL_C_INCLUDES := external/f2fs-tools/include external/f2fs-tools/mkfs
 include $(BUILD_HOST_STATIC_LIBRARY)
 
-#
-# -- All host/targets excluding windows
-#
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := f2fs_ioutils.c
+LOCAL_C_INCLUDES := external/f2fs-tools/include external/f2fs-tools/mkfs
+LOCAL_STATIC_LIBRARIES := \
+    libsparse_host \
+    libext2_uuid_host \
+    libz
+LOCAL_MODULE := libf2fs_ioutils_host
+include $(BUILD_HOST_STATIC_LIBRARY)
 
-ifneq ($(HOST_OS),windows)
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := f2fs_dlutils.c
+LOCAL_C_INCLUDES := external/f2fs-tools/include external/f2fs-tools/mkfs
+# Will attempt to dlopen("libf2fs_fmt_host_dyn")
+LOCAL_LDLIBS := -ldl
+LOCAL_MODULE := libf2fs_dlutils_host
+include $(BUILD_HOST_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := make_f2fs_main.c
 LOCAL_MODULE := make_f2fs
-LOCAL_STATIC_LIBRARIES += \
-    libf2fs_utils_host \
-    libf2fs_dlutils_host
 # libf2fs_dlutils_host will dlopen("libf2fs_fmt_host_dyn")
-LOCAL_LDLIBS := -ldl
-LOCAL_SHARED_LIBRARIES := libf2fs_fmt_host_dyn
+LOCAL_LDFLAGS := -ldl -rdynamic
+# The following libf2fs_* are from system/extras/f2fs_utils,
+# and do not use code in external/f2fs-tools.
+LOCAL_STATIC_LIBRARIES := libf2fs_utils_host libf2fs_ioutils_host libf2fs_dlutils_host
+LOCAL_REQUIRED_MODULES := libf2fs_fmt_host_dyn
+LOCAL_STATIC_LIBRARIES += \
+    libsparse_host \
+    libz
 include $(BUILD_HOST_EXECUTABLE)
 
 include $(CLEAR_VARS)

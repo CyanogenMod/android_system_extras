@@ -52,7 +52,7 @@ void f2fs_init_configuration(struct f2fs_configuration *config) {
 int dlopenf2fs() {
 	void* f2fs_lib;
 
-	f2fs_lib = dlopen(F2FS_DYN_LIB, RTLD_LAZY);
+	f2fs_lib = dlopen(F2FS_DYN_LIB, RTLD_NOW);
 	if (!f2fs_lib) {
 		return -1;
 	}
