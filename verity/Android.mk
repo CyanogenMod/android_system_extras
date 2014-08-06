@@ -83,7 +83,7 @@ LOCAL_MODULE := keystore_signer
 LOCAL_MODULE_CLASS := EXECUTABLES
 LOCAL_IS_HOST_MODULE := true
 LOCAL_MODULE_TAGS := optional
-LOCAL_REQUIRED_MODULES := KeystoreSigner
+LOCAL_REQUIRED_MODULES := BootKeystoreSigner
 include $(BUILD_PREBUILT)
 
 include $(CLEAR_VARS)
