@@ -210,11 +210,11 @@ struct block_allocation* inode_allocate_file_extents(struct ext4_inode *inode, u
 	alloc = do_inode_allocate_extents(inode, len);
 	if (alloc == NULL) {
 		error("failed to allocate extents for %"PRIu64" bytes", len);
-		return;
+		return NULL;
 	}
 
 	extent_create_backing_file(alloc, len, filename);
-    return alloc;
+	return alloc;
 }
 
 /* Allocates enough blocks to hold len bytes and connects them to an inode */

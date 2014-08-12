@@ -194,10 +194,11 @@ u32 make_file(const char *filename, u64 len)
 
 	if (len > 0) {
 		struct block_allocation* alloc = inode_allocate_file_extents(inode, len, filename);
-
-		alloc->filename = strdup(filename);
-		alloc->next = saved_allocation_head;
-		saved_allocation_head = alloc;
+		if (alloc) {
+			alloc->filename = strdup(filename);
+			alloc->next = saved_allocation_head;
+			saved_allocation_head = alloc;
+		}
 	}
 
 	inode->i_mode = S_IFREG;
