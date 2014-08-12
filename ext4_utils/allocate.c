@@ -22,18 +22,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-struct region_list {
-	struct region *first;
-	struct region *last;
-	struct region *iter;
-	u32 partial_iter;
-};
-
-struct block_allocation {
-	struct region_list list;
-	struct region_list oob_list;
-};
-
 struct region {
 	u32 block;
 	u32 len;
@@ -76,6 +64,8 @@ struct block_allocation *create_allocation()
 	alloc->list.partial_iter = 0;
 	alloc->oob_list.iter = NULL;
 	alloc->oob_list.partial_iter = 0;
+	alloc->filename = NULL;
+	alloc->next = NULL;
 	return alloc;
 }
 
@@ -137,9 +127,7 @@ static void dump_starting_from(struct region *reg)
 {
 	for (; reg; reg = reg->next) {
 		printf("%p: Blocks %d-%d (%d)\n", reg,
-				reg->bg * info.blocks_per_group + reg->block,
-				reg->bg * info.blocks_per_group + reg->block + reg->len - 1,
-				reg->len);
+			   reg->block, reg->block + reg->len - 1, reg->len)
 	}
 }
 
@@ -152,6 +140,19 @@ static void dump_region_lists(struct block_allocation *alloc) {
 	dump_starting_from(alloc->oob_list.first);
 }
 #endif
+
+void print_blocks(FILE* f, struct block_allocation *alloc)
+{
+	struct region *reg;
+	for (reg = alloc->list.first; reg; reg = reg->next) {
+		if (reg->len == 1) {
+			fprintf(f, " %d", reg->block);
+		} else {
+			fprintf(f, " %d-%d", reg->block, reg->block + reg->len - 1);
+		}
+	}
+	fputc('\n', f);
+}
 
 void append_region(struct block_allocation *alloc,
 		u32 block, u32 len, int bg_num)

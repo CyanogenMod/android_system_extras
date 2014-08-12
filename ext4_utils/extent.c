@@ -202,7 +202,7 @@ u8 *inode_allocate_data_extents(struct ext4_inode *inode, u64 len,
 
 /* Allocates enough blocks to hold len bytes, queues them to be written
    from a file, and connects them to an inode. */
-void inode_allocate_file_extents(struct ext4_inode *inode, u64 len,
+struct block_allocation* inode_allocate_file_extents(struct ext4_inode *inode, u64 len,
 	const char *filename)
 {
 	struct block_allocation *alloc;
@@ -214,8 +214,7 @@ void inode_allocate_file_extents(struct ext4_inode *inode, u64 len,
 	}
 
 	extent_create_backing_file(alloc, len, filename);
-
-	free_alloc(alloc);
+    return alloc;
 }
 
 /* Allocates enough blocks to hold len bytes and connects them to an inode */

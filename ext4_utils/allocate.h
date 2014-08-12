@@ -21,7 +21,22 @@
 
 #include "ext4_utils.h"
 
-struct block_allocation;
+struct region;
+
+struct region_list {
+	struct region *first;
+	struct region *last;
+	struct region *iter;
+	u32 partial_iter;
+};
+
+struct block_allocation {
+	struct region_list list;
+	struct region_list oob_list;
+	char* filename;
+	struct block_allocation* next;
+};
+
 
 void block_allocator_init();
 void block_allocator_free();
@@ -54,5 +69,6 @@ void append_region(struct block_allocation *alloc,
 	u32 block, u32 len, int bg);
 struct block_allocation *create_allocation();
 int append_oob_allocation(struct block_allocation *alloc, u32 len);
+void print_blocks(FILE* f, struct block_allocation *alloc);
 
 #endif

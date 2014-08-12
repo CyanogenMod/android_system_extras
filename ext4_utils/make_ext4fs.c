@@ -396,7 +396,7 @@ int make_ext4fs_sparse_fd(int fd, long long len,
 	reset_ext4fs_info();
 	info.len = len;
 
-	return make_ext4fs_internal(fd, NULL, mountpoint, NULL, 0, 1, 0, 0, sehnd, 0, -1);
+	return make_ext4fs_internal(fd, NULL, mountpoint, NULL, 0, 1, 0, 0, sehnd, 0, -1, NULL);
 }
 
 int make_ext4fs(const char *filename, long long len,
@@ -414,7 +414,7 @@ int make_ext4fs(const char *filename, long long len,
 		return EXIT_FAILURE;
 	}
 
-	status = make_ext4fs_internal(fd, NULL, mountpoint, NULL, 0, 0, 0, 1, sehnd, 0, -1);
+	status = make_ext4fs_internal(fd, NULL, mountpoint, NULL, 0, 0, 0, 1, sehnd, 0, -1, NULL);
 	close(fd);
 
 	return status;
@@ -483,7 +483,8 @@ static char *canonicalize_rel_slashes(const char *str)
 int make_ext4fs_internal(int fd, const char *_directory,
 						 const char *_mountpoint, fs_config_func_t fs_config_func, int gzip,
 						 int sparse, int crc, int wipe,
-						 struct selabel_handle *sehnd, int verbose, time_t fixed_time)
+						 struct selabel_handle *sehnd, int verbose, time_t fixed_time,
+						 FILE* block_list_file)
 {
 	u32 root_inode_num;
 	u16 root_mode;
@@ -592,7 +593,7 @@ int make_ext4fs_internal(int fd, const char *_directory,
 #else
 	if (directory)
 		root_inode_num = build_directory_structure(directory, mountpoint, 0,
-				fs_config_func, sehnd, verbose, fixed_time);
+			fs_config_func, sehnd, verbose, fixed_time);
 	else
 		root_inode_num = build_default_directory_structure(mountpoint, sehnd);
 #endif
@@ -620,6 +621,23 @@ int make_ext4fs_internal(int fd, const char *_directory,
 	ext4_update_free();
 
 	ext4_queue_sb();
+
+	if (block_list_file) {
+		size_t dirlen = directory ? strlen(directory) : 0;
+		struct block_allocation* p = get_saved_allocation_chain();
+		while (p) {
+			if (directory && strncmp(p->filename, directory, dirlen) == 0) {
+				// substitute mountpoint for the leading directory in the filename, in the output file
+				fprintf(block_list_file, "%s%s", mountpoint, p->filename + dirlen);
+			} else {
+				fprintf(block_list_file, "%s", p->filename);
+			}
+			print_blocks(block_list_file, p);
+			struct block_allocation* pn = p->next;
+			free_alloc(p);
+			p = pn;
+		}
+	}
 
 	printf("Created filesystem with %d/%d inodes and %d/%d blocks\n",
 			aux_info.sb->s_inodes_count - aux_info.sb->s_free_inodes_count,

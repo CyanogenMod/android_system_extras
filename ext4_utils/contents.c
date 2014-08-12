@@ -38,6 +38,12 @@
 #define S_IFLNK 0  /* used by make_link, not needed under mingw */
 #endif
 
+static struct block_allocation* saved_allocation_head = NULL;
+
+struct block_allocation* get_saved_allocation_chain() {
+	return saved_allocation_head;
+}
+
 static u32 dentry_size(u32 entries, struct dentry *dentries)
 {
 	u32 len = 24;
@@ -186,8 +192,13 @@ u32 make_file(const char *filename, u64 len)
 		return EXT4_ALLOCATE_FAILED;
 	}
 
-	if (len > 0)
-		inode_allocate_file_extents(inode, len, filename);
+	if (len > 0) {
+		struct block_allocation* alloc = inode_allocate_file_extents(inode, len, filename);
+
+		alloc->filename = strdup(filename);
+		alloc->next = saved_allocation_head;
+		saved_allocation_head = alloc;
+	}
 
 	inode->i_mode = S_IFREG;
 	inode->i_links_count = 1;
@@ -476,4 +487,3 @@ int inode_set_capabilities(u32 inode_num, uint64_t capabilities) {
 	return xattr_add(inode_num, EXT4_XATTR_INDEX_SECURITY,
 		XATTR_CAPS_SUFFIX, &cap_data, sizeof(cap_data));
 }
-
