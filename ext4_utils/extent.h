@@ -21,8 +21,8 @@
 #include "ext4_utils.h"
 
 void inode_allocate_extents(struct ext4_inode *inode, u64 len);
-void inode_allocate_file_extents(struct ext4_inode *inode, u64 len,
-	const char *filename);
+struct block_allocation* inode_allocate_file_extents(
+	struct ext4_inode *inode, u64 len, const char *filename);
 u8 *inode_allocate_data_extents(struct ext4_inode *inode, u64 len,
 	u64 backing_len);
 void free_extent_blocks();
