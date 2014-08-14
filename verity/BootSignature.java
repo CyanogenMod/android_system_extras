@@ -60,7 +60,7 @@ public class BootSignature extends ASN1Object
         this.target = new DERPrintableString(target);
         this.length = new ASN1Integer(length);
         this.algorithmIdentifier = new AlgorithmIdentifier(
-                PKCSObjectIdentifiers.sha256WithRSAEncryption);
+                PKCSObjectIdentifiers.sha1WithRSAEncryption);
     }
 
     public ASN1Object getAuthenticatedAttributes() {
@@ -89,12 +89,7 @@ public class BootSignature extends ASN1Object
 
     public byte[] sign(byte[] image, PrivateKey key) throws Exception {
         byte[] signable = generateSignableImage(image);
-        byte[] signature = Utils.sign(key, signable);
-        byte[] signed = Arrays.copyOf(image, image.length + signature.length);
-        for (int i=0; i < signature.length; i++) {
-            signed[i+image.length] = signature[i];
-        }
-        return signed;
+        return Utils.sign(key, signable);
     }
 
     public ASN1Primitive toASN1Primitive() {
@@ -113,8 +108,13 @@ public class BootSignature extends ASN1Object
         byte[] image = Utils.read(imagePath);
         BootSignature bootsig = new BootSignature(target, image.length);
         PrivateKey key = Utils.loadPEMPrivateKeyFromFile(keyPath);
-        byte[] signature = bootsig.sign(image, key);
-        Utils.write(signature, outPath);
+        bootsig.setSignature(bootsig.sign(image, key));
+        byte[] encoded_bootsig = bootsig.getEncoded();
+        byte[] image_with_metadata = Arrays.copyOf(image, image.length + encoded_bootsig.length);
+        for (int i=0; i < encoded_bootsig.length; i++) {
+            image_with_metadata[i+image.length] = encoded_bootsig[i];
+        }
+        Utils.write(image_with_metadata, outPath);
     }
 
     // java -cp ../../../out/host/common/obj/JAVA_LIBRARIES/AndroidVerifiedBootSigner_intermediates/classes/ com.android.verity.AndroidVerifiedBootSigner boot ../../../out/target/product/flounder/boot.img ../../../build/target/product/security/verity_private_dev_key /tmp/boot.img.signed
