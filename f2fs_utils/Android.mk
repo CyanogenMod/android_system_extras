@@ -53,22 +53,6 @@ LOCAL_SHARED_LIBRARIES := libdl
 include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
-LOCAL_MODULE := libf2fs_sparseblock
-LOCAL_SRC_FILES := f2fs_sparseblock.c
-LOCAL_SHARED_LIBRARIES := libcutils
-LOCAL_C_INCLUDES := external/f2fs-tools/include \
-		system/core/include/log
-include $(BUILD_SHARED_LIBRARY)
-
-include $(CLEAR_VARS)
-LOCAL_MODULE := f2fs_sparseblock
-LOCAL_SRC_FILES := f2fs_sparseblock.c
-LOCAL_SHARED_LIBRARIES := libcutils
-LOCAL_C_INCLUDES := external/f2fs-tools/include \
-		system/core/include/log
-include $(BUILD_EXECUTABLE)
-
-include $(CLEAR_VARS)
 LOCAL_MODULE := libf2fs_dlutils_static
 LOCAL_SRC_FILES := f2fs_dlutils.c
 LOCAL_C_INCLUDES := external/f2fs-tools/include external/f2fs-tools/mkfs
@@ -84,6 +68,22 @@ LOCAL_STATIC_LIBRARIES := \
 include $(BUILD_STATIC_LIBRARY)
 
 endif
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := libf2fs_sparseblock
+LOCAL_SRC_FILES := f2fs_sparseblock.c
+LOCAL_SHARED_LIBRARIES := libcutils
+LOCAL_C_INCLUDES := external/f2fs-tools/include \
+		system/core/include/log
+include $(BUILD_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := f2fs_sparseblock
+LOCAL_SRC_FILES := f2fs_sparseblock.c
+LOCAL_SHARED_LIBRARIES := libcutils
+LOCAL_C_INCLUDES := external/f2fs-tools/include \
+		system/core/include/log
+include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := mkf2fsuserimg.sh
