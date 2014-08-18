@@ -323,14 +323,43 @@ static int gather_sit_info(int fd, struct f2fs_info *info)
     return 0;
 }
 
+static inline int is_set_ckpt_flags(struct f2fs_checkpoint *cp, unsigned int f)
+{
+    unsigned int ckpt_flags = le32_to_cpu(cp->ckpt_flags);
+    return !!(ckpt_flags & f);
+}
+
+static inline u64 sum_blk_addr(struct f2fs_checkpoint *cp, struct f2fs_info *info, int base, int type)
+{
+    return info->cp_valid_cp_blkaddr + le32_to_cpu(cp->cp_pack_total_block_count)
+                - (base + 1) + type;
+}
+
 static int get_sit_summary(int fd, struct f2fs_info *info, struct f2fs_checkpoint *cp)
 {
-    char buffer[4096];
-    read_structure_blk(fd, info->cp_valid_cp_blkaddr + le32_to_cpu(cp->cp_pack_start_sum), &buffer, 1);
+    char buffer[F2FS_BLKSIZE];
+
     info->sit_sums = calloc(1, sizeof(struct f2fs_summary_block));
     if (!info->sit_sums)
         return -1;
-    memcpy(&info->sit_sums->n_sits, &buffer[SUM_JOURNAL_SIZE], SUM_JOURNAL_SIZE);
+
+    /* CURSEG_COLD_DATA where the journaled SIT entries are. */
+    if (is_set_ckpt_flags(cp, CP_COMPACT_SUM_FLAG)) {
+        if (read_structure_blk(fd, info->cp_valid_cp_blkaddr + le32_to_cpu(cp->cp_pack_start_sum), buffer, 1))
+            return -1;
+        memcpy(&info->sit_sums->n_sits, &buffer[SUM_JOURNAL_SIZE], SUM_JOURNAL_SIZE);
+    } else {
+        u64 blk_addr;
+        if (is_set_ckpt_flags(cp, CP_UMOUNT_FLAG))
+            blk_addr = sum_blk_addr(cp, info, NR_CURSEG_TYPE, CURSEG_COLD_DATA);
+        else
+            blk_addr = sum_blk_addr(cp, info, NR_CURSEG_DATA_TYPE, CURSEG_COLD_DATA);
+
+        if (read_structure_blk(fd, blk_addr, buffer, 1))
+            return -1;
+
+        memcpy(info->sit_sums, buffer,  sizeof(struct f2fs_summary_block));
+    }
     return 0;
 }
 
