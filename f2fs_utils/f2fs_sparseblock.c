@@ -259,13 +259,13 @@ int get_valid_checkpoint_info(int fd, struct f2fs_super_block *sb, struct f2fs_c
 
     struct f2fs_checkpoint *cp1, *cp2, *cur_cp;
     int cur_cp_no;
-    unsigned long blk_size;// = 1<<le32_to_cpu(info->sb->log_blocksize);
+    unsigned long blk_size;
     unsigned long long cp1_version = 0, cp2_version = 0;
     unsigned long long cp1_start_blk_no;
     unsigned long long cp2_start_blk_no;
     u32 bmp_size;
 
-    blk_size = 1U<<le32_to_cpu(sb->log_blocksize);
+    blk_size = 1U << le32_to_cpu(sb->log_blocksize);
 
     /*
      * Find valid cp by reading both packs and finding most recent one.
@@ -486,7 +486,8 @@ int run_on_used_blocks(u64 startblock, struct f2fs_info *info, int (*func)(u64 p
     u64 block;
     unsigned int used, found, started = 0, i;
 
-    for (block=startblock; block<info->total_blocks; block++) {
+    block = startblock;
+    while (block < info->total_blocks) {
         /* TODO: Save only relevant portions of metadata */
         if (block < info->main_blkaddr) {
             if (func(block, data)) {
@@ -509,17 +510,24 @@ int run_on_used_blocks(u64 startblock, struct f2fs_info *info, int (*func)(u64 p
 
             /* get SIT entry from SIT section */
             if (!found) {
-                sit_block_num_cur = segnum/SIT_ENTRY_PER_BLOCK;
+                sit_block_num_cur = segnum / SIT_ENTRY_PER_BLOCK;
                 sit_entry = &info->sit_blocks[sit_block_num_cur].entries[segnum % SIT_ENTRY_PER_BLOCK];
             }
 
             block_offset = (block - info->main_blkaddr) % info->blocks_per_segment;
+
+            if (block_offset == 0 && GET_SIT_VBLOCKS(sit_entry) == 0) {
+                block += info->blocks_per_segment;
+                continue;
+            }
 
             used = f2fs_test_bit(block_offset, (char *)sit_entry->valid_map);
             if(used)
                 if (func(block, data))
                     return -1;
         }
+
+        block++;
     }
     return 0;
 }
@@ -545,7 +553,7 @@ int copy_used(u64 pos, void *data)
 {
     struct privdata *d = data;
     char *buf;
-    int pdone = (pos*100)/d->info->total_blocks;
+    int pdone = (pos * 100) / d->info->total_blocks;
     if (pdone > d->done) {
         d->done = pdone;
         printf("Done with %d percent\n", d->done);
@@ -559,7 +567,7 @@ int copy_used(u64 pos, void *data)
     }
 
     off64_t ret;
-    ret = lseek64(d->outfd, pos*F2FS_BLKSIZE, SEEK_SET);
+    ret = lseek64(d->outfd, pos * F2FS_BLKSIZE, SEEK_SET);
     if (ret < 0) {
         SLOGE("failed to seek\n");
         return ret;
