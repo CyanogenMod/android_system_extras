@@ -45,11 +45,12 @@
  * through the use of the -t command-line option.
  */
 
+#define _GNU_SOURCE
+
 #include <assert.h>
 #include <errno.h>
 #include <libgen.h>
 #include <math.h>
-#define _GNU_SOURCE
 #include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
