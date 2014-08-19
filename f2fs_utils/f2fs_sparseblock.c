@@ -23,6 +23,10 @@
       #member, le64_to_cpu((ptr)->member), le64_to_cpu((ptr)->member) );  \
   } while (0);
 
+#define segno_in_journal(sum, i)    (sum->sit_j.entries[i].segno)
+
+#define sit_in_journal(sum, i)      (sum->sit_j.entries[i].se)
+
 static void dbg_print_raw_sb_info(struct f2fs_super_block *sb)
 {
     SLOGD("\n");
@@ -130,6 +134,12 @@ static void dbg_print_info_struct(struct f2fs_info *info)
     SLOGD("blocks_per_sit: %"PRIu64, info->blocks_per_sit);
     SLOGD("sit_blocks loc: %p", info->sit_blocks);
     SLOGD("sit_sums loc: %p", info->sit_sums);
+    SLOGD("sit_sums num: %d", le16_to_cpu(info->sit_sums->n_sits));
+    unsigned int i;
+    for(i = 0; i < (le16_to_cpu(info->sit_sums->n_sits)); i++) {
+        SLOGD("entry %d in journal entries is for segment %d",i, le32_to_cpu(segno_in_journal(info->sit_sums, i)));
+    }
+
     SLOGD("cp_blkaddr: %"PRIu64, info->cp_blkaddr);
     SLOGD("cp_valid_cp_blkaddr: %"PRIu64, info->cp_valid_cp_blkaddr);
     SLOGD("sit_blkaddr: %"PRIu64, info->sit_blkaddr);
@@ -358,7 +368,7 @@ static int get_sit_summary(int fd, struct f2fs_info *info, struct f2fs_checkpoin
         if (read_structure_blk(fd, blk_addr, buffer, 1))
             return -1;
 
-        memcpy(info->sit_sums, buffer,  sizeof(struct f2fs_summary_block));
+        memcpy(info->sit_sums, buffer, sizeof(struct f2fs_summary_block));
     }
     return 0;
 }
@@ -469,14 +479,10 @@ int f2fs_test_bit(unsigned int nr, const char *p)
     return (mask & *addr) != 0;
 }
 
-#define segno_in_journal(sum, i)	(sum->sit_j.entries[i].segno)
-
-#define sit_in_journal(sum, i)		(sum->sit_j.entries[i].se)
-
 int run_on_used_blocks(u64 startblock, struct f2fs_info *info, int (*func)(u64 pos, void *data), void *data) {
     struct f2fs_sit_block sit_block_cache;
-    struct f2fs_sit_entry * sit_entry, *sit_entry1, *sit_entry2;
-    u64 sit_block_num_cur = 0, segnum=0, block_offset;
+    struct f2fs_sit_entry * sit_entry;
+    u64 sit_block_num_cur = 0, segnum = 0, block_offset;
     u64 block;
     unsigned int used, found, started = 0, i;
 
@@ -492,8 +498,8 @@ int run_on_used_blocks(u64 startblock, struct f2fs_info *info, int (*func)(u64 p
             segnum = (block - info->main_blkaddr)/info->blocks_per_segment;
 
             /* check the SIT entries in the journal */
-            found=0;
-            for(i = 0; i<SIT_JOURNAL_ENTRIES; i++) {
+            found = 0;
+            for(i = 0; i < le16_to_cpu(info->sit_sums->n_sits); i++) {
                 if (le32_to_cpu(segno_in_journal(info->sit_sums, i)) == segnum) {
                     sit_entry = &sit_in_journal(info->sit_sums, i);
                     found = 1;
@@ -508,11 +514,6 @@ int run_on_used_blocks(u64 startblock, struct f2fs_info *info, int (*func)(u64 p
             }
 
             block_offset = (block - info->main_blkaddr) % info->blocks_per_segment;
-
-            if (block_offset == 0 && GET_SIT_VBLOCKS(sit_entry) == 0) {
-                block += info->blocks_per_segment;
-                continue;
-            }
 
             used = f2fs_test_bit(block_offset, (char *)sit_entry->valid_map);
             if(used)
