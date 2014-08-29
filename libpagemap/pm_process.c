@@ -30,6 +30,8 @@ static int read_maps(pm_process_t *proc);
 
 #define MAX_FILENAME 64
 
+#define PFN_MASK 0x7fffffffffffff
+
 int pm_process_create(pm_kernel_t *ker, pid_t pid, pm_process_t **proc_out) {
     pm_process_t *proc;
     char filename[MAX_FILENAME];
@@ -100,6 +102,11 @@ int pm_process_usage(pm_process_t *proc, pm_memusage_t *usage_out) {
     return pm_process_usage_flags(proc, usage_out, 0, 0);
 }
 
+static inline uint64_t get_pfn(uint64_t p)
+{
+    return p & PFN_MASK;
+}
+
 int pm_process_pagemap_range(pm_process_t *proc,
                              uint64_t low, uint64_t high,
                              uint64_t **range_out, size_t *len) {
@@ -107,6 +114,7 @@ int pm_process_pagemap_range(pm_process_t *proc,
     uint64_t numpages;
     uint64_t *range;
     off64_t off;
+    uint64_t i;
     int error;
 
     if (!proc || (low > high) || !range_out || !len)
@@ -142,6 +150,10 @@ int pm_process_pagemap_range(pm_process_t *proc,
         error = (error < 0) ? errno : -1;
         free(range);
         return error;
+    }
+
+    for(i = 0; i < numpages; i++) {
+        range[i] = get_pfn(range[i]);
     }
 
     *range_out = range;
