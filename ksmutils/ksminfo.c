@@ -236,7 +236,7 @@ static int read_pages(struct ksm_pages *kp, pm_map_t **maps, size_t num_maps, ui
             continue;
         }
         for (j = 0; j < map_len; j++) {
-            error = pm_kernel_flags(ker, pagemap[j], &flags);
+            error = pm_kernel_flags(ker, PM_PAGEMAP_PFN(pagemap[j]), &flags);
             if (error) {
                 fprintf(stderr, "warning: could not read flags for pfn at address 0x%016" PRIx64 "\n",
                         pagemap[i]);
@@ -277,7 +277,7 @@ static int read_pages(struct ksm_pages *kp, pm_map_t **maps, size_t num_maps, ui
                     kp->pages = tmp;
                     kp->size += GROWTH_FACTOR;
                 }
-                rc = pm_kernel_count(ker, pagemap[j], &kp->pages[kp->len].count);
+                rc = pm_kernel_count(ker, PM_PAGEMAP_PFN(pagemap[j]), &kp->pages[kp->len].count);
                 if (rc) {
                     fprintf(stderr, "error reading page count\n");
                     free(pagemap);
