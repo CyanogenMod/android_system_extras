@@ -17,28 +17,25 @@
 LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
+LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
+
 LOCAL_MODULE_TAGS := eng tests
 LOCAL_MODULE_PATH := $(TARGET_OUT_DATA)/nativebenchmark
 
 LOCAL_STATIC_LIBRARIES += \
-    libgtest \
-    libgtest_main \
     libtestUtil
 
 LOCAL_SHARED_LIBRARIES += \
     libutils \
     liblog \
-    libstlport \
     libbinder
 
 LOCAL_C_INCLUDES += \
-    bionic \
-    bionic/libstdc++/include \
-    external/stlport/stlport \
-    external/gtest/include \
     system/extras/tests/include \
     frameworks/base/include
 
 LOCAL_MODULE := binderAddInts
 LOCAL_SRC_FILES := binderAddInts.cpp
+
+include external/stlport/libstlport.mk
 include $(BUILD_EXECUTABLE)
