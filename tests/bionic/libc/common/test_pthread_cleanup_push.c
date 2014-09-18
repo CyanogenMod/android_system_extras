@@ -25,14 +25,15 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
+
 #include <pthread.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-
-#define MAGIC1 0xcafebabeU
-#define MAGIC2 0x8badf00dU
-#define MAGIC3 0x12345667U
+#define MAGIC1 (void*)0xcafebabeU
+#define MAGIC2 (void*)0x8badf00dU
+#define MAGIC3 (void*)0x12345667U
 
 static int g_ok1 = 0;
 static int g_ok2 = 0;
@@ -41,7 +42,7 @@ static int g_ok3 = 0;
 static void
 cleanup1( void* arg )
 {
-    if ((unsigned)arg != MAGIC1)
+    if (arg != MAGIC1)
         g_ok1 = -1;
     else
         g_ok1 = +1;
@@ -50,7 +51,7 @@ cleanup1( void* arg )
 static void
 cleanup2( void* arg )
 {
-    if ((unsigned)arg != MAGIC2) {
+    if (arg != MAGIC2) {
         g_ok2 = -1;
     } else
         g_ok2 = +1;
@@ -59,7 +60,7 @@ cleanup2( void* arg )
 static void
 cleanup3( void* arg )
 {
-    if ((unsigned)arg != MAGIC3)
+    if (arg != MAGIC3)
         g_ok3 = -1;
     else
         g_ok3 = +1;
@@ -83,7 +84,7 @@ thread1_func( void* arg )
     return NULL;
 }
 
-static int test( int do_exit )
+static int test( uintptr_t do_exit )
 {
     pthread_t t;
 
