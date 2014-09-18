@@ -61,8 +61,6 @@ endef
 # First, the tests in 'common'
 
 sources := \
-    common/test_clock.c \
-    common/test_cpu_set.c \
     common/test_executable_destructor.c \
     common/test_getaddrinfo.c \
     common/test_gethostbyname.c \
@@ -130,7 +128,6 @@ sources :=  \
     bionic/test_getgrouplist.c \
     bionic/test_netinet_icmp.c \
     bionic/test_pthread_cond.c \
-    bionic/test_pthread_create.c \
     bionic/test_setjmp.c \
 
 $(call device-test, $(sources))
@@ -139,7 +136,6 @@ $(call device-test, $(sources))
 
 sources := \
     other/test_sysconf.c \
-    other/test_vfprintf_leak.c \
 
 $(call device-test, $(sources))
 

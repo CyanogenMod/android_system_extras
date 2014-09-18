@@ -12,7 +12,7 @@ static pthread_mutex_t test_lock = PTHREAD_MUTEX_INITIALIZER;
 static void *
 thread1_func(void* arg)
 {
-    printf("Thread 1 (arg=%d tid=%d) entered.\n", (unsigned)arg, gettid());
+    printf("Thread 1 (arg=%p tid=%d) entered.\n", arg, gettid());
     printf("1 waiting for cond1\n");
     pthread_mutex_lock(&test_lock);
     pthread_cond_wait(&cond1, &test_lock );
@@ -24,7 +24,7 @@ thread1_func(void* arg)
 static void *
 thread2_func(void* arg)
 {
-    printf("Thread 2 (arg=%d tid=%d) entered.\n", (unsigned)arg, gettid());
+    printf("Thread 2 (arg=%p tid=%d) entered.\n", arg, gettid());
     printf("2 waiting for cond2\n");
     pthread_mutex_lock(&test_lock);
     pthread_cond_wait(&cond2, &test_lock );
@@ -37,7 +37,7 @@ thread2_func(void* arg)
 static void *
 thread3_func(void* arg)
 {
-    printf("Thread 3 (arg=%d tid=%d) entered.\n", (unsigned)arg, gettid());
+    printf("Thread 3 (arg=%p tid=%d) entered.\n", arg, gettid());
     printf("3 waiting for cond1\n");
     pthread_mutex_lock(&test_lock);
     pthread_cond_wait(&cond1, &test_lock );
@@ -54,7 +54,7 @@ thread3_func(void* arg)
 static void *
 thread4_func(void* arg)
 {
-    printf("Thread 4 (arg=%d tid=%d) entered.\n", (unsigned)arg, gettid());
+    printf("Thread 4 (arg=%p tid=%d) entered.\n", arg, gettid());
     printf("4 Sleeping\n");
     sleep(5);
 
@@ -64,7 +64,7 @@ thread4_func(void* arg)
     return 0;
 }
 
-int main(int argc, const char *argv[])
+int main(int argc __unused, const char *argv[] __unused)
 {
     pthread_t t[4];
 
