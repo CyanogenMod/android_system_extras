@@ -1,9 +1,5 @@
 This directory contains a set of tests for Android's Bionic C library.
 
-These sources are not distributed with Bionic itself because some of
-these tests come from the GNU C Library, and are licensed under the
-GNU Lesser General Public License (LGPL)
-
 You must define the BIONIC_TESTS environment variable to build these
 test programs. For example, do:
 
@@ -18,10 +14,6 @@ The directory layout is simple:
   common/
     Contains tests that can be compiled either with Bionic or another
     C library.
-
-  glibc/
-    Contains tests that come from the GNU C Library. However, they can
-    be compiled with Bionic too.
 
   bionic/
     Contains tests that can *only* be compiled against Bionic
