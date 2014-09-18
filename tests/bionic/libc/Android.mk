@@ -70,8 +70,6 @@ sources := \
     common/test_pthread_mutex.c \
     common/test_pthread_rwlock.c \
     common/test_pthread_once.c \
-    common/test_semaphore.c \
-    common/test_sem_post.c \
     common/test_seteuid.c \
     common/test_static_cpp_mutex.cpp \
     common/test_udp.c \
