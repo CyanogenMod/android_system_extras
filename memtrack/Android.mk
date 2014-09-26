@@ -30,7 +30,7 @@ LOCAL_C_INCLUDES += $(includes)
 LOCAL_SHARED_LIBRARIES := \
 	liblog \
 
-include external/stlport/libstlport.mk
+LOCAL_CXX_STL := stlport
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
@@ -45,8 +45,7 @@ LOCAL_FORCE_STATIC_EXECUTABLE := true
 LOCAL_STATIC_LIBRARIES := \
 	libc \
 	libstdc++ \
-	libstlport_static \
 	liblog \
 
-include external/stlport/libstlport.mk
+LOCAL_CXX_STL := stlport_static
 include $(BUILD_EXECUTABLE)
