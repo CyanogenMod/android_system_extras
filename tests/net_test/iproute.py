@@ -41,6 +41,7 @@ NLA_ALIGNTO = 4
 # Message types.
 RTM_NEWADDR = 20
 RTM_DELADDR = 21
+RTM_GETADDR = 22
 RTM_NEWROUTE = 24
 RTM_DELROUTE = 25
 RTM_GETROUTE = 26
@@ -93,14 +94,25 @@ RTACacheinfo = cstruct.Struct(
 # Interface address attributes.
 IFA_ADDRESS = 1
 IFA_LOCAL = 2
+IFA_CACHEINFO = 6
 
 # Address flags.
+IFA_F_SECONDARY = 0x01
+IFA_F_TEMPORARY = IFA_F_SECONDARY
+IFA_F_NODAD = 0x02
+IFA_F_OPTIMISTIC = 0x04
+IFA_F_DADFAILED = 0x08
+IFA_F_HOMEADDRESS = 0x10
+IFA_F_DEPRECATED = 0x20
+IFA_F_TENTATIVE = 0x40
 IFA_F_PERMANENT = 0x80
 
 # Data structure formats.
 IfAddrMsg = cstruct.Struct(
     "IfAddrMsg", "=BBBBI",
     "family prefixlen flags scope index")
+IFACacheinfo = cstruct.Struct(
+    "IFACacheinfo", "=IIII", "prefered valid cstamp tstamp")
 
 
 ### Neighbour table entry constants. See include/uapi/linux/neighbour.h.
@@ -207,6 +219,8 @@ class IPRoute(object):
 
     if command == -RTA_METRICS:
       name = self._GetConstantName(nla_type, "RTAX_")
+    elif CommandSubject(command) == "ADDR":
+      name = self._GetConstantName(nla_type, "IFA_")
     elif CommandSubject(command) == "RULE":
       name = self._GetConstantName(nla_type, "FRA_")
     elif CommandSubject(command) == "ROUTE":
@@ -219,8 +233,8 @@ class IPRoute(object):
                 "FRA_EXPERIMENTAL_UID_START", "FRA_EXPERIMENTAL_UID_END",
                 "RTA_OIF", "RTA_PRIORITY", "RTA_TABLE", "RTA_MARK"]:
       data = struct.unpack("=I", nla_data)[0]
-    elif name in ["RTA_DST", "RTA_SRC", "RTA_GATEWAY", "RTA_PREFSRC",
-                  "RTA_EXPERIMENTAL_UID"]:
+    elif name in ["IFA_ADDRESS", "IFA_LOCAL", "RTA_DST", "RTA_SRC",
+                  "RTA_GATEWAY", "RTA_PREFSRC", "RTA_EXPERIMENTAL_UID"]:
       data = socket.inet_ntop(family, nla_data)
     elif name in ["FRA_IIFNAME", "FRA_OIFNAME"]:
       data = nla_data.strip("\x00")
@@ -228,6 +242,8 @@ class IPRoute(object):
       data = self._ParseAttributes(-RTA_METRICS, family, nla_data)
     elif name == "RTA_CACHEINFO":
       data = RTACacheinfo(nla_data)
+    elif name == "IFA_CACHEINFO":
+      data = IFACacheinfo(nla_data)
     else:
       data = nla_data
 
@@ -390,9 +406,8 @@ class IPRoute(object):
   def UnreachableRule(self, version, is_add, priority):
     return self._Rule(version, is_add, None, None, priority=priority)
 
-  def _GetRTMsg(self, data):
-    """Parses a RTMsg into a header and a dictionary of attributes."""
-    # Parse the netlink and rtmsg headers.
+  def _ParseNLMsg(self, data, msgtype):
+    """Parses a Netlink message into a header and a dictionary of attributes."""
     nlmsghdr, data = cstruct.Read(data, NLMsgHdr)
     self._Debug("  %s" % nlmsghdr)
 
@@ -400,20 +415,20 @@ class IPRoute(object):
       print "done"
       return None, data
 
-    rtmsg, data = cstruct.Read(data, RTMsg)
-    self._Debug("    %s" % rtmsg)
+    nlmsg, data = cstruct.Read(data, msgtype)
+    self._Debug("    %s" % nlmsg)
 
-    # Parse the attributes in the rtmsg.
-    attrlen = nlmsghdr.length - len(nlmsghdr) - len(rtmsg)
-    attributes = self._ParseAttributes(nlmsghdr.type, rtmsg.family,
+    # Parse the attributes in the nlmsg.
+    attrlen = nlmsghdr.length - len(nlmsghdr) - len(nlmsg)
+    attributes = self._ParseAttributes(nlmsghdr.type, nlmsg.family,
                                        data[:attrlen])
     data = data[attrlen:]
-    return (rtmsg, attributes), data
+    return (nlmsg, attributes), data
 
   def _GetRTMsgList(self, data, expect_done):
     out = []
     while data:
-      msg, data = self._GetRTMsg(data)
+      msg, data = self._ParseNLMsg(data, RTMsg)
       if msg is None:
         break
       out.append(msg)
@@ -437,24 +452,35 @@ class IPRoute(object):
     data = self._Recv()
     return self._GetRTMsgList(data, True)
 
-  def _Address(self, version, is_add, addr, prefixlen, flags, scope, ifindex):
+  def _Address(self, version, command, addr, prefixlen, flags, scope, ifindex):
     """Adds or deletes an IP address."""
     family = self._AddressFamily(version)
     ifaddrmsg = IfAddrMsg((family, prefixlen, flags, scope, ifindex)).Pack()
     ifaddrmsg += self._NlAttrIPAddress(IFA_ADDRESS, family, addr)
     if version == 4:
       ifaddrmsg += self._NlAttrIPAddress(IFA_LOCAL, family, addr)
-    command = RTM_NEWADDR if is_add else RTM_DELADDR
     self._SendNlRequest(command, ifaddrmsg)
 
   def AddAddress(self, address, prefixlen, ifindex):
-    version = 6 if ":" in address else 4
-    return self._Address(version, True, address, prefixlen, IFA_F_PERMANENT,
-                         RT_SCOPE_UNIVERSE, ifindex)
+    self._Address(6 if ":" in address else 4,
+                  RTM_NEWADDR, address, prefixlen,
+                  IFA_F_PERMANENT, RT_SCOPE_UNIVERSE, ifindex)
 
   def DelAddress(self, address, prefixlen, ifindex):
-    version = 6 if ":" in address else 4
-    return self._Address(version, False, address, prefixlen, 0, 0, ifindex)
+    self._Address(6 if ":" in address else 4,
+                  RTM_DELADDR, address, prefixlen, 0, 0, ifindex)
+
+  def GetAddress(self, address, ifindex=0):
+    if ":" not in address:
+      # The address is likely an IPv4 address.  RTM_GETADDR without the
+      # NLM_F_DUMP flag is not supported by the kernel.  We do not currently
+      # implement parsing dump results.
+      raise NotImplementedError("IPv4 RTM_GETADDR not implemented.")
+    self._Address(6, RTM_GETADDR, address, 0, 0, RT_SCOPE_UNIVERSE, ifindex)
+    data = self._Recv()
+    if NLMsgHdr(data).type == NLMSG_ERROR:
+      self._ParseAck(data)
+    return self._ParseNLMsg(data, IfAddrMsg)
 
   def _Route(self, version, command, table, dest, prefixlen, nexthop, dev,
              mark, uid):
@@ -492,7 +518,7 @@ class IPRoute(object):
     version = 6 if ":" in dest else 4
     prefixlen = {4: 32, 6: 128}[version]
     self._Route(version, RTM_GETROUTE, 0, dest, prefixlen, None, oif, mark, uid)
-    data = self. _Recv()
+    data = self._Recv()
     # The response will either be an error or a list of routes.
     if NLMsgHdr(data).type == NLMSG_ERROR:
       self._ParseAck(data)
