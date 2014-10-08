@@ -6,6 +6,8 @@ from socket import *  # pylint: disable=wildcard-import
 import time
 import unittest
 
+from scapy import all as scapy
+
 import iproute
 import mark_test
 import net_test
@@ -68,16 +70,20 @@ class IPv6SourceAddressSelectionTest(mark_test.MultiNetworkTest):
     return sendmsg.Sendmsg(s, (net_test.IPV6_ADDR, 53), "Hello", cmsgs, 0)
 
   def assertAddressUsable(self, address, netid):
-    self.assertEquals(address, self.GetSourceIP(netid))
     self.BindToAddress(address)
     self.SendWithSourceAddress(address, netid)
     # No exceptions? Good.
 
   def assertAddressNotUsable(self, address, netid):
-    self.assertNotEquals(address, self.GetSourceIP(netid))
     self.assertRaisesErrno(errno.EADDRNOTAVAIL, self.BindToAddress, address)
     self.assertRaisesErrno(errno.EINVAL,
                            self.SendWithSourceAddress, address, netid)
+
+  def assertAddressSelected(self, address, netid):
+    self.assertEquals(address, self.GetSourceIP(netid))
+
+  def assertAddressNotSelected(self, address, netid):
+    self.assertNotEquals(address, self.GetSourceIP(netid))
 
   def WaitForDad(self, address):
     for _ in xrange(20):
@@ -125,13 +131,15 @@ class TentativeAddressTest(MultiInterfaceSourceAddressSelectionTest):
     # Even though the interface has an IPv6 address, its tentative nature
     # prevents it from being selected.
     self.assertAddressNotUsable(self.test_ip, self.test_netid)
+    self.assertAddressNotSelected(self.test_ip, self.test_netid)
 
     # Busy wait for DAD to complete (should be less than 1 second).
     self.WaitForDad(self.test_ip)
 
-    # The test_ip should have completely DAD by now, and should be the
+    # The test_ip should have completed DAD by now, and should be the
     # chosen source address, eligible to bind to, etc.
     self.assertAddressUsable(self.test_ip, self.test_netid)
+    self.assertAddressSelected(self.test_ip, self.test_netid)
 
 
 class OptimisticAddressTest(MultiInterfaceSourceAddressSelectionTest):
@@ -142,20 +150,24 @@ class OptimisticAddressTest(MultiInterfaceSourceAddressSelectionTest):
     self.SetOptimisticDAD(self.test_ifname, 1)
     # Send a RA to start SLAAC and subsequent DAD.
     self.SendRA(self.test_netid, 0)
-    # Get flags and prove tentative-ness.
+    # Get flags and prove optimism.
     self.assertAddressHasExpectedAttributes(
         self.test_ip, self.test_ifindex, iproute.IFA_F_OPTIMISTIC)
 
-    # Even though the interface has an IPv6 address, its optimistic nature
-    # prevents it from being selected.
-    self.assertAddressNotUsable(self.test_ip, self.test_netid)
+    # Optimistic addresses are usable but are not selected.
+    if mark_test.LinuxVersion() >= (3, 19, 0):
+      # The version checked in to android kernels <= 3.10 requires the
+      # use_optimistic sysctl to be turned on.
+      self.assertAddressUsable(self.test_ip, self.test_netid)
+    self.assertAddressNotSelected(self.test_ip, self.test_netid)
 
     # Busy wait for DAD to complete (should be less than 1 second).
     self.WaitForDad(self.test_ip)
 
-    # The test_ip should have completely DAD by now, and should be the
+    # The test_ip should have completed DAD by now, and should be the
     # chosen source address.
     self.assertAddressUsable(self.test_ip, self.test_netid)
+    self.assertAddressSelected(self.test_ip, self.test_netid)
 
 
 class OptimisticAddressOkayTest(MultiInterfaceSourceAddressSelectionTest):
@@ -174,6 +186,7 @@ class OptimisticAddressOkayTest(MultiInterfaceSourceAddressSelectionTest):
     # The interface has an IPv6 address and, despite its optimistic nature,
     # the use_optimistic option allows it to be selected.
     self.assertAddressUsable(self.test_ip, self.test_netid)
+    self.assertAddressSelected(self.test_ip, self.test_netid)
 
 
 class ValidBeforeOptimisticTest(MultiInterfaceSourceAddressSelectionTest):
@@ -193,16 +206,49 @@ class ValidBeforeOptimisticTest(MultiInterfaceSourceAddressSelectionTest):
     self.SetUseOptimistic(self.test_ifname, 1)
     # Send a RA to start SLAAC and subsequent DAD.
     self.SendRA(self.test_netid, 0)
-    # Get flags and prove optimistism.
+    # Get flags and prove optimism.
     self.assertAddressHasExpectedAttributes(
         self.test_ip, self.test_ifindex, iproute.IFA_F_OPTIMISTIC)
 
     # Since the interface has another IPv6 address, the optimistic address
     # is not selected--the other, valid address is chosen.
-    self.assertNotEquals(self.test_ip, self.GetSourceIP(self.test_netid))
-    self.assertEquals(preferred_ip, self.GetSourceIP(self.test_netid))
+    self.assertAddressUsable(self.test_ip, self.test_netid)
+    self.assertAddressNotSelected(self.test_ip, self.test_netid)
+    self.assertAddressSelected(preferred_ip, self.test_netid)
 
-# TODO(ek): add use_tempaddrs test.
+
+class DadFailureTest(MultiInterfaceSourceAddressSelectionTest):
+
+  def testDadFailure(self):
+    # [3]  Get an IPv6 address back, in optimistic DAD start-up.
+    self.SetDAD(self.test_ifname, 1)  # Enable DAD
+    self.SetOptimisticDAD(self.test_ifname, 1)
+    self.SetUseOptimistic(self.test_ifname, 1)
+    # Send a RA to start SLAAC and subsequent DAD.
+    self.SendRA(self.test_netid, 0)
+    # Prove optimism and usability.
+    self.assertAddressHasExpectedAttributes(
+        self.test_ip, self.test_ifindex, iproute.IFA_F_OPTIMISTIC)
+    self.assertAddressUsable(self.test_ip, self.test_netid)
+    self.assertAddressSelected(self.test_ip, self.test_netid)
+
+    # Send a NA for the optimistic address, indicating address conflict
+    # ("DAD defense").
+    conflict_macaddr = "02:00:0b:ad:d0:0d"
+    dad_defense = (scapy.Ether(src=conflict_macaddr, dst="33:33:33:00:00:01") /
+                   scapy.IPv6(src=self.test_ip, dst="ff02::1") /
+                   scapy.ICMPv6ND_NA(tgt=self.test_ip, R=0, S=0, O=1) /
+                   scapy.ICMPv6NDOptDstLLAddr(lladdr=conflict_macaddr))
+    self.ReceiveEtherPacketOn(self.test_netid, dad_defense)
+
+    # The address should have failed DAD, and therefore no longer be usable.
+    self.assertAddressNotUsable(self.test_ip, self.test_netid)
+    self.assertAddressNotSelected(self.test_ip, self.test_netid)
+
+    # TODO(ek): verify that an RTM_DELADDR issued for the DAD-failed address.
+
+
+# TODO(ek): add tests listening for netlink events.
 
 
 if __name__ == "__main__":
