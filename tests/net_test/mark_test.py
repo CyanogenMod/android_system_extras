@@ -428,11 +428,17 @@ class MultiNetworkTest(net_test.NetworkTest):
     return f
 
   @classmethod
-  def SendRA(cls, netid):
+  def SendRA(cls, netid, retranstimer=None):
     validity = 300                 # seconds
     validity_ms = validity * 1000  # milliseconds
     macaddr = cls.RouterMacAddress(netid)
     lladdr = cls._RouterAddress(netid, 6)
+
+    if retranstimer is None:
+      # If no retrans timer was specified, pick one that's as long as the
+      # router lifetime. This ensures that no spurious ND retransmits
+      # will interfere with test expectations.
+      retranstimer = validity
 
     # We don't want any routes in the main table. If the kernel doesn't support
     # putting RA routes into per-interface tables, configure routing manually.
@@ -440,7 +446,7 @@ class MultiNetworkTest(net_test.NetworkTest):
 
     ra = (scapy.Ether(src=macaddr, dst="33:33:00:00:00:01") /
           scapy.IPv6(src=lladdr, hlim=255) /
-          scapy.ICMPv6ND_RA(retranstimer=validity_ms,
+          scapy.ICMPv6ND_RA(retranstimer=retranstimer,
                             routerlifetime=routerlifetime) /
           scapy.ICMPv6NDOptSrcLLAddr(lladdr=macaddr) /
           scapy.ICMPv6NDOptPrefixInfo(prefix=cls.IPv6Prefix(netid),
@@ -611,7 +617,7 @@ class MultiNetworkTest(net_test.NetworkTest):
     elif mode == "ucast_oif":
       self.SetUnicastInterface(s, self.ifindices.get(netid, 0))
     else:
-      raise ValueError("Unkown interface selection mode %s" % mode)
+      raise ValueError("Unknown interface selection mode %s" % mode)
 
   def BuildSocket(self, version, constructor, netid, routing_mode):
     uid = self.UidForNetid(netid) if routing_mode == "uid" else None
