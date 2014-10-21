@@ -62,7 +62,6 @@ endef
 
 sources := \
     common/test_executable_destructor.c \
-    common/test_gethostbyname.c \
     common/test_gethostname.c \
     common/test_pthread_mutex.c \
     common/test_pthread_rwlock.c \
