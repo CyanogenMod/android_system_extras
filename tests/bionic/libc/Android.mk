@@ -97,25 +97,6 @@ LOCAL_MODULE_TAGS := tests
 LOCAL_LDFLAGS := -static
 include $(BUILD_HOST_EXECUTABLE)
 
-# The 'test_dlopen_null' tests requires specific linker flags
-#
-# The -Wl,--export-dynamic ensures that dynamic symbols are
-# exported from the executable.
-#
-# -Wl,-u,foo is used to ensure that symbol "foo" is not
-# garbage-collected by the gold linker, since the function
-# appears to be unused.
-#
-sources := common/test_dlopen_null.c \
-
-EXTRA_LDLIBS := -ldl -Wl,--export-dynamic -Wl,-u,foo
-EXTRA_CFLAGS := -DHOST
-$(call host-test, $(sources))
-
-EXTRA_LDLIBS := -ldl -Wl,--export-dynamic -Wl,-u,foo
-$(call device-test, $(sources))
-
-
 # Second, the Bionic-specific tests
 
 sources :=  \
