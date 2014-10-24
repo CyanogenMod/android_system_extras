@@ -116,24 +116,6 @@ sources := \
 
 $(call device-test, $(sources))
 
-# The relocations test is a bit special, since we need
-# to build one shared object and one executable that depends
-# on it.
-
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES := bionic/lib_relocs.c
-LOCAL_MODULE    := libtest_relocs
-
-LOCAL_MODULE_TAGS := tests
-include $(BUILD_SHARED_LIBRARY)
-
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES := bionic/test_relocs.c
-LOCAL_MODULE    := test_relocs
-LOCAL_SHARED_LIBRARIES := libtest_relocs
-LOCAL_MODULE_TAGS := tests
-include $(BUILD_EXECUTABLE)
-
 # This test tries to see if the static constructors in a
 # shared library are only called once. We thus need to
 # build a shared library, then call it from another
