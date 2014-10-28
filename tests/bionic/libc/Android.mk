@@ -88,13 +88,6 @@ sources :=  \
 
 $(call device-test, $(sources))
 
-# Third, the other tests
-
-sources := \
-    other/test_sysconf.c \
-
-$(call device-test, $(sources))
-
 # This test tries to see if the static constructors in a
 # shared library are only called once. We thus need to
 # build a shared library, then call it from another
