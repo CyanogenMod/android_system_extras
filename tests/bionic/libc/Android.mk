@@ -66,7 +66,6 @@ sources := \
     common/test_pthread_rwlock.c \
     common/test_pthread_once.c \
     common/test_seteuid.c \
-    common/test_static_cpp_mutex.cpp \
     common/test_udp.c \
 
 # _XOPEN_SOURCE=600 is needed to get pthread_mutexattr_settype() on GLibc
