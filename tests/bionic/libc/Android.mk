@@ -82,25 +82,6 @@ sources :=  \
 
 $(call device-test, $(sources))
 
-# This test tries to see if the static constructors in a
-# shared library are only called once. We thus need to
-# build a shared library, then call it from another
-# program.
-#
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES := bionic/lib_static_init.cpp
-LOCAL_MODULE    := libtest_static_init
-
-LOCAL_MODULE_TAGS := tests
-include $(BUILD_SHARED_LIBRARY)
-
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES := bionic/test_static_init.cpp
-LOCAL_MODULE    := test_static_init
-LOCAL_SHARED_LIBRARIES := libtest_static_init
-LOCAL_MODULE_TAGS := tests
-include $(BUILD_EXECUTABLE)
-
 # TODO: Add a variety of GLibc test programs too...
 
 # Hello World to test libstdc++ support
