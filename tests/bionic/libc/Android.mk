@@ -82,14 +82,4 @@ sources :=  \
 
 $(call device-test, $(sources))
 
-# TODO: Add a variety of GLibc test programs too...
-
-# Hello World to test libstdc++ support
-
-sources := \
-    common/hello_world.cpp \
-
-EXTRA_CFLAGS := -mandroid
-#$(call device-test, $(sources))
-
 endif  # BIONIC_TESTS
