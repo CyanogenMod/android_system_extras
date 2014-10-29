@@ -153,32 +153,6 @@ LOCAL_SHARED_LIBRARIES := libtest_static_init
 LOCAL_MODULE_TAGS := tests
 include $(BUILD_EXECUTABLE)
 
-# This test tries to see if static destructors are called
-# on dlclose(). We thus need to generate a C++ shared library
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES := bionic/libdlclosetest1.cpp
-LOCAL_MODULE := libdlclosetest1
-
-LOCAL_MODULE_TAGS := tests
-include $(BUILD_SHARED_LIBRARY)
-
-# And this one does the same with __attribute__((constructor))
-# and __attribute__((destructor))
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES := bionic/libdlclosetest2.c
-LOCAL_MODULE := libdlclosetest2
-
-LOCAL_MODULE_TAGS := tests
-include $(BUILD_SHARED_LIBRARY)
-
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES := bionic/test_dlclose_destruction.c
-LOCAL_MODULE := test_dlclose_destruction
-LOCAL_LDFLAGS := -ldl
-#LOCAL_SHARED_LIBRARIES := libdlclosetest1 libdlclosetest2
-LOCAL_MODULE_TAGS := tests
-include $(BUILD_EXECUTABLE)
-
 # TODO: Add a variety of GLibc test programs too...
 
 # Hello World to test libstdc++ support
