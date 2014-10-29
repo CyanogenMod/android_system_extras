@@ -61,7 +61,6 @@ endef
 # First, the tests in 'common'
 
 sources := \
-    common/test_executable_destructor.c \
     common/test_gethostname.c \
     common/test_pthread_mutex.c \
     common/test_pthread_rwlock.c \
@@ -76,24 +75,6 @@ EXTRA_LDLIBS := -lpthread -lrt
 EXTRA_CFLAGS := -D_XOPEN_SOURCE=600 -DHOST
 $(call host-test, $(sources))
 $(call device-test, $(sources))
-
-# The 'test_static_executable_destructor is the same than
-# test_executable_destructor except that the generated program
-# is statically linked instead.
-include $(CLEAR_VARS)
-LOCAL_MODULE := test_static_executable_destructor
-LOCAL_SRC_FILES := common/test_executable_destructor.c
-LOCAL_MODULE_TAGS := tests
-LOCAL_STATIC_LIBRARIES := libc
-LOCAL_FORCE_STATIC_EXECUTABLE := true
-include $(BUILD_EXECUTABLE)
-
-include $(CLEAR_VARS)
-LOCAL_MODULE := test_static_executable_destructor
-LOCAL_SRC_FILES := common/test_executable_destructor.c
-LOCAL_MODULE_TAGS := tests
-LOCAL_LDFLAGS := -static
-include $(BUILD_HOST_EXECUTABLE)
 
 # Second, the Bionic-specific tests
 
