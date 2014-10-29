@@ -81,7 +81,6 @@ sources :=  \
     bionic/test_mutex.c \
     bionic/test_cond.c \
     bionic/test_getgrouplist.c \
-    bionic/test_netinet_icmp.c \
     bionic/test_pthread_cond.c \
     bionic/test_setjmp.c \
 
