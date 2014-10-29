@@ -63,7 +63,6 @@ endef
 sources := \
     common/test_pthread_mutex.c \
     common/test_pthread_rwlock.c \
-    common/test_pthread_once.c \
     common/test_seteuid.c \
     common/test_udp.c \
 
