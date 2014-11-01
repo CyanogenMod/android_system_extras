@@ -113,7 +113,8 @@ class BootKeystore extends ASN1Object
         byte[] innerKeystore = getInnerKeystore();
         byte[] rawSignature = Utils.sign(privateKey, innerKeystore);
         signature = new BootSignature("keystore", innerKeystore.length);
-        signature.setSignature(rawSignature);
+        signature.setSignature(rawSignature,
+                new AlgorithmIdentifier(PKCSObjectIdentifiers.sha1WithRSAEncryption));
     }
 
     public void dump() throws Exception {
