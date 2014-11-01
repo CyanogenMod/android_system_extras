@@ -226,6 +226,21 @@ public class Utils {
         return new AlgorithmIdentifier(new ASN1ObjectIdentifier(id));
     }
 
+    static boolean verify(PublicKey key, byte[] input, byte[] signature,
+            AlgorithmIdentifier algId) throws Exception {
+        String algName = ID_TO_ALG.get(algId.getObjectId().getId());
+
+        if (algName == null) {
+            throw new IllegalArgumentException("Unsupported algorithm " + algId.getObjectId());
+        }
+
+        Signature verifier = Signature.getInstance(algName);
+        verifier.initVerify(key);
+        verifier.update(input);
+
+        return verifier.verify(signature);
+    }
+
     static byte[] sign(PrivateKey privateKey, byte[] input) throws Exception {
         Signature signer = Signature.getInstance(getSignatureAlgorithm(privateKey));
         signer.initSign(privateKey);
