@@ -19,6 +19,7 @@ package com.android.verity;
 import java.io.IOException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.security.Security;
 import java.security.Signature;
 import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1EncodableVector;
@@ -32,6 +33,7 @@ import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.asn1.pkcs.RSAPublicKey;
 import org.bouncycastle.asn1.util.ASN1Dump;
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 /**
  * AndroidVerifiedBootKeystore DEFINITIONS ::=
@@ -114,7 +116,7 @@ class BootKeystore extends ASN1Object
         byte[] rawSignature = Utils.sign(privateKey, innerKeystore);
         signature = new BootSignature("keystore", innerKeystore.length);
         signature.setSignature(rawSignature,
-                new AlgorithmIdentifier(PKCSObjectIdentifiers.sha1WithRSAEncryption));
+                Utils.getSignatureAlgorithmIdentifier(privateKey));
     }
 
     public void dump() throws Exception {
@@ -126,13 +128,14 @@ class BootKeystore extends ASN1Object
     // EG:
     //     java -cp ../../../out/host/common/obj/JAVA_LIBRARIES/AndroidVerifiedBootKeystoreSigner_intermediates/classes/ com.android.verity.AndroidVerifiedBootKeystoreSigner ../../../build/target/product/security/verity_private_dev_key /tmp/keystore.out /tmp/k
     public static void main(String[] args) throws Exception {
+        Security.addProvider(new BouncyCastleProvider());
         String privkeyFname = args[0];
         String outfileFname = args[1];
         BootKeystore ks = new BootKeystore();
         for (int i=2; i < args.length; i++) {
             ks.addPublicKey(Utils.read(args[i]));
         }
-        ks.sign(Utils.loadPEMPrivateKeyFromFile(privkeyFname));
+        ks.sign(Utils.loadDERPrivateKeyFromFile(privkeyFname));
         Utils.write(ks.getEncoded(), outfileFname);
     }
 }
