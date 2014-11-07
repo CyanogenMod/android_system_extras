@@ -588,6 +588,7 @@ int copy_used(u64 pos, void *data)
     return 0;
 }
 
+#ifndef STATIC_LIB
 int main(int argc, char **argv)
 {
     if (argc != 3)
@@ -631,3 +632,4 @@ int main(int argc, char **argv)
     close(outfd);
     return 0;
 }
+#endif
