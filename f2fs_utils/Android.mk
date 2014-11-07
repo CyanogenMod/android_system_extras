@@ -76,6 +76,15 @@ endif
 include $(CLEAR_VARS)
 LOCAL_MODULE := libf2fs_sparseblock
 LOCAL_SRC_FILES := f2fs_sparseblock.c
+LOCAL_CFLAGS += -DSTATIC_LIB
+LOCAL_STATIC_LIBRARIES := libcutils
+LOCAL_C_INCLUDES := external/f2fs-tools/include \
+		system/core/include/log
+include $(BUILD_STATIC_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := libf2fs_sparseblock
+LOCAL_SRC_FILES := f2fs_sparseblock.c
 LOCAL_SHARED_LIBRARIES := libcutils
 LOCAL_C_INCLUDES := external/f2fs-tools/include \
 		system/core/include/log
