@@ -17,6 +17,8 @@
 package com.android.verity;
 
 import java.security.PrivateKey;
+import java.security.Security;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 public class VeritySigner {
 
@@ -25,8 +27,9 @@ public class VeritySigner {
     // To verify that this has correct output:
     //     openssl rsautl -raw -inkey <key.pem> -encrypt -in <sigfile> > /tmp/dump
     public static void main(String[] args) throws Exception {
+        Security.addProvider(new BouncyCastleProvider());
         byte[] content = Utils.read(args[0]);
-        PrivateKey privateKey = Utils.loadPEMPrivateKey(Utils.read(args[1]));
+        PrivateKey privateKey = Utils.loadDERPrivateKey(Utils.read(args[1]));
         byte[] signature = Utils.sign(privateKey, content);
         Utils.write(signature, args[2]);
     }
