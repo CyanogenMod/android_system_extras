@@ -108,6 +108,66 @@ out:
     return ret;
 }
 
+static int convert_x509(const char *pem_file, const char *key_file)
+{
+    int ret = -1;
+    FILE *f = NULL;
+    EVP_PKEY *pkey = NULL;
+    RSA *rsa = NULL;
+    X509 *cert = NULL;
+
+    if (!pem_file || !key_file) {
+        goto out;
+    }
+
+    f = fopen(pem_file, "r");
+    if (!f) {
+        printf("Failed to open '%s'\n", pem_file);
+        goto out;
+    }
+
+    cert = PEM_read_X509(f, &cert, NULL, NULL);
+    if (!cert) {
+        printf("Failed to read PEM certificate from file '%s'\n", pem_file);
+        goto out;
+    }
+
+    pkey = X509_get_pubkey(cert);
+    if (!pkey) {
+        printf("Failed to extract public key from certificate '%s'\n", pem_file);
+        goto out;
+    }
+
+    rsa = EVP_PKEY_get1_RSA(pkey);
+    if (!rsa) {
+        printf("Failed to get the RSA public key from '%s'\n", pem_file);
+        goto out;
+    }
+
+    if (write_public_keyfile(rsa, key_file) < 0) {
+        printf("Failed to write public key\n");
+        goto out;
+    }
+
+    ret = 0;
+
+out:
+    if (f) {
+        fclose(f);
+    }
+    if (cert) {
+        X509_free(cert);
+    }
+    if (pkey) {
+        EVP_PKEY_free(pkey);
+    }
+    if (rsa) {
+        RSA_free(rsa);
+    }
+
+    return ret;
+}
+
 static int generate_key(const char *file)
 {
     int ret = -1;
@@ -153,13 +213,16 @@ out:
 }
 
 static void usage(){
-    printf("Usage: generate_verity_key <path-to-key>");
+    printf("Usage: generate_verity_key <path-to-key> | -convert <path-to-x509-pem> <path-to-key>\n");
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 2) {
+    if (argc == 2) {
+        return generate_key(argv[1]);
+    } else if (argc == 4 && !strcmp(argv[1], "-convert")) {
+        return convert_x509(argv[2], argv[3]);
+    } else {
         usage();
         exit(-1);
     }
-    return generate_key(argv[1]);
 }
