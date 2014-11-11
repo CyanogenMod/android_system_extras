@@ -13,7 +13,8 @@ libext4_utils_src_files := \
     sha1.c \
     wipe.c \
     crc16.c \
-    ext4_sb.c
+    ext4_sb.c \
+    canned_fs_config.c
 
 #
 # -- All host/targets including windows
@@ -32,7 +33,7 @@ include $(BUILD_HOST_STATIC_LIBRARY)
 
 
 include $(CLEAR_VARS)
-LOCAL_SRC_FILES := make_ext4fs_main.c canned_fs_config.c
+LOCAL_SRC_FILES := make_ext4fs_main.c
 LOCAL_MODULE := make_ext4fs
 LOCAL_SHARED_LIBRARIES += libcutils
 LOCAL_STATIC_LIBRARIES += \
@@ -93,7 +94,7 @@ include $(BUILD_STATIC_LIBRARY)
 
 
 include $(CLEAR_VARS)
-LOCAL_SRC_FILES := make_ext4fs_main.c canned_fs_config.c
+LOCAL_SRC_FILES := make_ext4fs_main.c
 LOCAL_MODULE := make_ext4fs
 LOCAL_SHARED_LIBRARIES := \
     libcutils \
