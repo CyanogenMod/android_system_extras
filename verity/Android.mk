@@ -10,6 +10,14 @@ LOCAL_C_INCLUDES += external/openssl/include
 include $(BUILD_HOST_EXECUTABLE)
 
 include $(CLEAR_VARS)
+LOCAL_SRC_FILES := VerityVerifier.java Utils.java
+LOCAL_MODULE := VerityVerifier
+LOCAL_JAR_MANIFEST := VerityVerifier.mf
+LOCAL_MODULE_TAGS := optional
+LOCAL_STATIC_JAVA_LIBRARIES := bouncycastle-host
+include $(BUILD_HOST_JAVA_LIBRARY)
+
+include $(CLEAR_VARS)
 LOCAL_SRC_FILES := VeritySigner.java Utils.java
 LOCAL_MODULE := VeritySigner
 LOCAL_JAR_MANIFEST := VeritySigner.mf
@@ -32,6 +40,15 @@ LOCAL_JAR_MANIFEST := KeystoreSigner.mf
 LOCAL_MODULE_TAGS := optional
 LOCAL_STATIC_JAVA_LIBRARIES := bouncycastle-host
 include $(BUILD_HOST_JAVA_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := verity_verifier
+LOCAL_MODULE := verity_verifier
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_IS_HOST_MODULE := true
+LOCAL_MODULE_TAGS := optional
+LOCAL_REQUIRED_MODULES := VerityVerifier
+include $(BUILD_PREBUILT)
 
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := verity_signer
