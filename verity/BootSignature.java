@@ -17,50 +17,58 @@
 package com.android.verity;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.security.PrivateKey;
+import java.security.Security;
+import java.security.cert.X509Certificate;
+import java.security.cert.CertificateEncodingException;
 import java.util.Arrays;
 import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.ASN1Integer;
 import org.bouncycastle.asn1.ASN1Object;
 import org.bouncycastle.asn1.ASN1Primitive;
+import org.bouncycastle.asn1.ASN1InputStream;
 import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.DERPrintableString;
 import org.bouncycastle.asn1.DERSequence;
-import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.asn1.util.ASN1Dump;
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 /**
  *    AndroidVerifiedBootSignature DEFINITIONS ::=
  *    BEGIN
- *        FormatVersion ::= INTEGER
- *        AlgorithmIdentifier ::=  SEQUENCE {
+ *        formatVersion ::= INTEGER
+ *        certificate ::= Certificate
+ *        algorithmIdentifier ::= SEQUENCE {
  *            algorithm OBJECT IDENTIFIER,
  *            parameters ANY DEFINED BY algorithm OPTIONAL
  *        }
- *        AuthenticatedAttributes ::= SEQUENCE {
+ *        authenticatedAttributes ::= SEQUENCE {
  *            target CHARACTER STRING,
  *            length INTEGER
  *        }
- *        Signature ::= OCTET STRING
+ *        signature ::= OCTET STRING
  *     END
  */
 
 public class BootSignature extends ASN1Object
 {
     private ASN1Integer             formatVersion;
+    private ASN1Encodable           certificate;
     private AlgorithmIdentifier     algorithmIdentifier;
     private DERPrintableString      target;
     private ASN1Integer             length;
     private DEROctetString          signature;
 
+    private static final int FORMAT_VERSION = 1;
+
     public BootSignature(String target, int length) {
-        this.formatVersion = new ASN1Integer(0);
+        this.formatVersion = new ASN1Integer(FORMAT_VERSION);
         this.target = new DERPrintableString(target);
         this.length = new ASN1Integer(length);
-        this.algorithmIdentifier = new AlgorithmIdentifier(
-                PKCSObjectIdentifiers.sha1WithRSAEncryption);
     }
 
     public ASN1Object getAuthenticatedAttributes() {
@@ -74,8 +82,15 @@ public class BootSignature extends ASN1Object
         return getAuthenticatedAttributes().getEncoded();
     }
 
-    public void setSignature(byte[] sig) {
+    public void setSignature(byte[] sig, AlgorithmIdentifier algId) {
+        algorithmIdentifier = algId;
         signature = new DEROctetString(sig);
+    }
+
+    public void setCertificate(X509Certificate cert)
+            throws Exception, IOException, CertificateEncodingException {
+        ASN1InputStream s = new ASN1InputStream(cert.getEncoded());
+        certificate = s.readObject();
     }
 
     public byte[] generateSignableImage(byte[] image) throws IOException {
@@ -95,30 +110,93 @@ public class BootSignature extends ASN1Object
     public ASN1Primitive toASN1Primitive() {
         ASN1EncodableVector v = new ASN1EncodableVector();
         v.add(formatVersion);
+        v.add(certificate);
         v.add(algorithmIdentifier);
         v.add(getAuthenticatedAttributes());
         v.add(signature);
         return new DERSequence(v);
     }
 
+    public static int getSignableImageSize(byte[] data) throws Exception {
+        if (!Arrays.equals(Arrays.copyOfRange(data, 0, 8),
+                "ANDROID!".getBytes("US-ASCII"))) {
+            throw new IllegalArgumentException("Invalid image header: missing magic");
+        }
+
+        ByteBuffer image = ByteBuffer.wrap(data);
+        image.order(ByteOrder.LITTLE_ENDIAN);
+
+        image.getLong(); // magic
+        int kernelSize = image.getInt();
+        image.getInt(); // kernel_addr
+        int ramdskSize = image.getInt();
+        image.getInt(); // ramdisk_addr
+        int secondSize = image.getInt();
+        image.getLong(); // second_addr + tags_addr
+        int pageSize = image.getInt();
+
+        int length = pageSize // include the page aligned image header
+                + ((kernelSize + pageSize - 1) / pageSize) * pageSize
+                + ((ramdskSize + pageSize - 1) / pageSize) * pageSize
+                + ((secondSize + pageSize - 1) / pageSize) * pageSize;
+
+        length = ((length + pageSize - 1) / pageSize) * pageSize;
+
+        if (length <= 0) {
+            throw new IllegalArgumentException("Invalid image header: invalid length");
+        }
+
+        return length;
+    }
+
     public static void doSignature( String target,
                                     String imagePath,
                                     String keyPath,
+                                    String certPath,
                                     String outPath) throws Exception {
+
         byte[] image = Utils.read(imagePath);
+        int signableSize = getSignableImageSize(image);
+
+        if (signableSize < image.length) {
+            System.err.println("NOTE: truncating file " + imagePath +
+                    " from " + image.length + " to " + signableSize + " bytes");
+            image = Arrays.copyOf(image, signableSize);
+        } else if (signableSize > image.length) {
+            throw new IllegalArgumentException("Invalid image: too short, expected " +
+                    signableSize + " bytes");
+        }
+
         BootSignature bootsig = new BootSignature(target, image.length);
-        PrivateKey key = Utils.loadPEMPrivateKeyFromFile(keyPath);
-        bootsig.setSignature(bootsig.sign(image, key));
+
+        X509Certificate cert = Utils.loadPEMCertificate(certPath);
+        bootsig.setCertificate(cert);
+
+        PrivateKey key = Utils.loadDERPrivateKeyFromFile(keyPath);
+        bootsig.setSignature(bootsig.sign(image, key),
+            Utils.getSignatureAlgorithmIdentifier(key));
+
         byte[] encoded_bootsig = bootsig.getEncoded();
         byte[] image_with_metadata = Arrays.copyOf(image, image.length + encoded_bootsig.length);
-        for (int i=0; i < encoded_bootsig.length; i++) {
-            image_with_metadata[i+image.length] = encoded_bootsig[i];
-        }
+
+        System.arraycopy(encoded_bootsig, 0, image_with_metadata,
+                image.length, encoded_bootsig.length);
+
         Utils.write(image_with_metadata, outPath);
     }
 
-    // java -cp ../../../out/host/common/obj/JAVA_LIBRARIES/AndroidVerifiedBootSigner_intermediates/classes/ com.android.verity.AndroidVerifiedBootSigner boot ../../../out/target/product/flounder/boot.img ../../../build/target/product/security/verity_private_dev_key /tmp/boot.img.signed
+    /* java -cp
+        ../../../out/host/common/obj/JAVA_LIBRARIES/BootSignature_intermediates/\
+            classes/com.android.verity.BootSignature \
+        boot \
+        ../../../out/target/product/flounder/boot.img \
+        ../../../build/target/product/security/verity_private_dev_key \
+        ../../../build/target/product/security/verity.pk8 \
+        ../../../build/target/product/security/verity.x509.pem \
+        /tmp/boot.img.signed
+    */
     public static void main(String[] args) throws Exception {
-        doSignature(args[0], args[1], args[2], args[3]);
+        Security.addProvider(new BouncyCastleProvider());
+        doSignature(args[0], args[1], args[2], args[3], args[4]);
     }
 }
