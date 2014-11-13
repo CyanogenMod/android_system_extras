@@ -16,19 +16,26 @@
 
 package com.android.verity;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.security.Security;
 import java.security.cert.X509Certificate;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
 import java.security.cert.CertificateEncodingException;
 import java.util.Arrays;
 import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.ASN1Integer;
 import org.bouncycastle.asn1.ASN1Object;
+import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import org.bouncycastle.asn1.ASN1OctetString;
 import org.bouncycastle.asn1.ASN1Primitive;
+import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.ASN1InputStream;
 import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.DERPrintableString;
@@ -62,13 +69,52 @@ public class BootSignature extends ASN1Object
     private DERPrintableString      target;
     private ASN1Integer             length;
     private DEROctetString          signature;
+    private PublicKey               publicKey;
 
     private static final int FORMAT_VERSION = 1;
 
+    /**
+     * Initializes the object for signing an image file
+     * @param target Target name, included in the signed data
+     * @param length Length of the image, included in the signed data
+     */
     public BootSignature(String target, int length) {
         this.formatVersion = new ASN1Integer(FORMAT_VERSION);
         this.target = new DERPrintableString(target);
         this.length = new ASN1Integer(length);
+    }
+
+    /**
+     * Initializes the object for verifying a signed image file
+     * @param signature Signature footer
+     */
+    public BootSignature(byte[] signature)
+            throws Exception {
+        ASN1InputStream stream = new ASN1InputStream(signature);
+        ASN1Sequence sequence = (ASN1Sequence) stream.readObject();
+
+        formatVersion = (ASN1Integer) sequence.getObjectAt(0);
+        if (formatVersion.getValue().intValue() != FORMAT_VERSION) {
+            throw new IllegalArgumentException("Unsupported format version");
+        }
+
+        certificate = sequence.getObjectAt(1);
+        byte[] encoded = ((ASN1Object) certificate).getEncoded();
+        ByteArrayInputStream bis = new ByteArrayInputStream(encoded);
+
+        CertificateFactory cf = CertificateFactory.getInstance("X.509");
+        X509Certificate c = (X509Certificate) cf.generateCertificate(bis);
+        publicKey = c.getPublicKey();
+
+        ASN1Sequence algId = (ASN1Sequence) sequence.getObjectAt(2);
+        algorithmIdentifier = new AlgorithmIdentifier(
+            (ASN1ObjectIdentifier) algId.getObjectAt(0));
+
+        ASN1Sequence attrs = (ASN1Sequence) sequence.getObjectAt(3);
+        target = (DERPrintableString) attrs.getObjectAt(0);
+        length = (ASN1Integer) attrs.getObjectAt(1);
+
+        this.signature = (DEROctetString) sequence.getObjectAt(4);
     }
 
     public ASN1Object getAuthenticatedAttributes() {
@@ -105,6 +151,16 @@ public class BootSignature extends ASN1Object
     public byte[] sign(byte[] image, PrivateKey key) throws Exception {
         byte[] signable = generateSignableImage(image);
         return Utils.sign(key, signable);
+    }
+
+    public boolean verify(byte[] image) throws Exception {
+        if (length.getValue().intValue() != image.length) {
+            throw new IllegalArgumentException("Invalid image length");
+        }
+
+        byte[] signable = generateSignableImage(image);
+        return Utils.verify(publicKey, signable, signature.getOctets(),
+                    algorithmIdentifier);
     }
 
     public ASN1Primitive toASN1Primitive() {
@@ -185,6 +241,30 @@ public class BootSignature extends ASN1Object
         Utils.write(image_with_metadata, outPath);
     }
 
+    public static void verifySignature(String imagePath) throws Exception {
+        byte[] image = Utils.read(imagePath);
+        int signableSize = getSignableImageSize(image);
+
+        if (signableSize >= image.length) {
+            throw new IllegalArgumentException("Invalid image: not signed");
+        }
+
+        byte[] signature = Arrays.copyOfRange(image, signableSize, image.length);
+        BootSignature bootsig = new BootSignature(signature);
+
+        try {
+            if (bootsig.verify(Arrays.copyOf(image, signableSize))) {
+                System.err.println("Signature is VALID");
+                System.exit(0);
+            } else {
+                System.err.println("Signature is INVALID");
+            }
+        } catch (Exception e) {
+            e.printStackTrace(System.err);
+        }
+        System.exit(1);
+    }
+
     /* java -cp
         ../../../out/host/common/obj/JAVA_LIBRARIES/BootSignature_intermediates/\
             classes/com.android.verity.BootSignature \
@@ -197,6 +277,11 @@ public class BootSignature extends ASN1Object
     */
     public static void main(String[] args) throws Exception {
         Security.addProvider(new BouncyCastleProvider());
-        doSignature(args[0], args[1], args[2], args[3], args[4]);
+
+        if ("-verify".equals(args[0])) {
+            verifySignature(args[1]);
+        } else {
+            doSignature(args[0], args[1], args[2], args[3], args[4]);
+        }
     }
 }
