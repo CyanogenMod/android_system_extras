@@ -265,22 +265,29 @@ public class BootSignature extends ASN1Object
         System.exit(1);
     }
 
-    /* java -cp
-        ../../../out/host/common/obj/JAVA_LIBRARIES/BootSignature_intermediates/\
-            classes/com.android.verity.BootSignature \
-        boot \
-        ../../../out/target/product/flounder/boot.img \
-        ../../../build/target/product/security/verity_private_dev_key \
-        ../../../build/target/product/security/verity.pk8 \
-        ../../../build/target/product/security/verity.x509.pem \
-        /tmp/boot.img.signed
+    /* Example usage for signing a boot image using dev keys:
+        java -cp \
+            ../../../out/host/common/obj/JAVA_LIBRARIES/BootSignature_intermediates/ \
+                classes/com.android.verity.BootSignature \
+            /boot \
+            ../../../out/target/product/$PRODUCT/boot.img \
+            ../../../build/target/product/security/verity.pk8 \
+            ../../../build/target/product/security/verity.x509.pem \
+            /tmp/boot.img.signed
     */
     public static void main(String[] args) throws Exception {
         Security.addProvider(new BouncyCastleProvider());
 
         if ("-verify".equals(args[0])) {
+            /* args[1] is the path to a signed boot image */
             verifySignature(args[1]);
         } else {
+            /* args[0] is the target name, typically /boot
+               args[1] is the path to a boot image to sign
+               args[2] is the path to a private key
+               args[3] is the path to the matching public key certificate
+               args[4] is the path where to output the signed boot image
+            */
             doSignature(args[0], args[1], args[2], args[3], args[4]);
         }
     }
