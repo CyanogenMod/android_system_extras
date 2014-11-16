@@ -17,6 +17,8 @@
 #ifndef __BANDWIDTH_H__
 #define __BANDWIDTH_H__
 
+#include <stdlib.h>
+
 #include "memtest.h"
 
 // Bandwidth Class definitions.

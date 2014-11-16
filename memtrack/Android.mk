@@ -15,7 +15,7 @@
 LOCAL_PATH:= $(call my-dir)
 
 src_files := \
-	memtrack.cpp
+    memtrack.cpp
 
 include $(CLEAR_VARS)
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
@@ -28,9 +28,8 @@ LOCAL_MODULE := memtrack_share
 
 LOCAL_C_INCLUDES += $(includes)
 LOCAL_SHARED_LIBRARIES := \
-	liblog \
+    liblog \
 
-LOCAL_CXX_STL := stlport
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
@@ -43,9 +42,10 @@ LOCAL_MODULE := memtrack
 
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 LOCAL_STATIC_LIBRARIES := \
-	libc \
-	libstdc++ \
-	liblog \
+    libc \
+    liblog \
+    libc++abi \
+    libdl \
 
-LOCAL_CXX_STL := stlport_static
+LOCAL_CXX_STL := libc++_static
 include $(BUILD_EXECUTABLE)
