@@ -37,5 +37,4 @@ LOCAL_C_INCLUDES += \
 LOCAL_MODULE := binderAddInts
 LOCAL_SRC_FILES := binderAddInts.cpp
 
-include external/stlport/libstlport.mk
 include $(BUILD_EXECUTABLE)

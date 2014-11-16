@@ -14,6 +14,5 @@ LOCAL_MODULE:= memtest
 LOCAL_MODULE_TAGS := optional
 LOCAL_CFLAGS += -fomit-frame-pointer
 
-include external/stlport/libstlport.mk
 include $(BUILD_EXECUTABLE)
 endif

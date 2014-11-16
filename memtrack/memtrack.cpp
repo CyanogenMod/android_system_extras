@@ -14,23 +14,23 @@
  * limitations under the License.
  */
 
-#include <stdio.h>
-#include <limits.h>
-#include <ctype.h>
-#include <unistd.h>
+#include "memtrack.h"
 
-#include <signal.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
+#include <ctype.h>
 #include <dirent.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include <cutils/log.h>
 
 #include <algorithm>
 #include <vector>
-
-#include "memtrack.h"
 
 #ifdef LOG_TAG
 #undef LOG_TAG
