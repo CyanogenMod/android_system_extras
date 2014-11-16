@@ -14,17 +14,17 @@
  * limitations under the License.
  */
 
+#include "bandwidth.h"
+
+#include <ctype.h>
 #include <pthread.h>
 #include <sched.h>
-#include <sys/time.h>
 #include <sys/resource.h>
+#include <sys/time.h>
 #include <unistd.h>
-#include <ctype.h>
 
 #include <map>
 #include <vector>
-
-#include "bandwidth.h"
 
 
 typedef struct {
