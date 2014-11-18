@@ -128,6 +128,18 @@ public class BootSignature extends ASN1Object
         return getAuthenticatedAttributes().getEncoded();
     }
 
+    public AlgorithmIdentifier getAlgorithmIdentifier() {
+        return algorithmIdentifier;
+    }
+
+    public PublicKey getPublicKey() {
+        return publicKey;
+    }
+
+    public byte[] getSignature() {
+        return signature.getOctets();
+    }
+
     public void setSignature(byte[] sig, AlgorithmIdentifier algId) {
         algorithmIdentifier = algId;
         signature = new DEROctetString(sig);
