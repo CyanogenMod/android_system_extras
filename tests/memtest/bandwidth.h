@@ -19,6 +19,7 @@
 
 #include <stdlib.h>
 
+#include "utils/Compat.h"
 #include "memtest.h"
 
 // Bandwidth Class definitions.
@@ -92,8 +93,8 @@ protected:
 
 private:
     // Static constants
-    static const double _NUM_NS_PER_SEC = 1000000000.0;
-    static const double _BYTES_PER_MB = 1024.0* 1024.0;
+    static const CONSTEXPR double _NUM_NS_PER_SEC = 1000000000.0;
+    static const CONSTEXPR double _BYTES_PER_MB = 1024.0* 1024.0;
 };
 
 class CopyBandwidthBenchmark : public BandwidthBenchmark {
