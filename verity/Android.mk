@@ -1,6 +1,15 @@
 LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
+LOCAL_MODULE := verify_boot_signature
+LOCAL_SRC_FILES := verify_boot_signature.c
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_MODULE_TAGS := optional
+LOCAL_SHARED_LIBRARIES := libcrypto-host
+LOCAL_C_INCLUDES += external/openssl/include system/extras/ext4_utils system/core/mkbootimg
+include $(BUILD_HOST_EXECUTABLE)
+
+include $(CLEAR_VARS)
 LOCAL_MODULE := generate_verity_key
 LOCAL_SRC_FILES := generate_verity_key.c
 LOCAL_MODULE_CLASS := EXECUTABLES
