@@ -203,7 +203,7 @@ protected:
         valid_tag2 = ((uint64_t)my_pid << 48) | ((uint64_t)testRand() << 32);
         valid_tag2 &= 0xffffff00ffffffffllu;  // Leave some room to make counts visible.
         testPrintI("* start: pid=%lu uid=%lu uid1=0x%lx/%lu uid2=0x%lx/%lu"
-                   " tag1=0x%" PRIx64 "/%" PRIu64 " tag2=0x%" PRIx64 "/% "PRIu64,
+                   " tag1=0x%" PRIx64 "/%" PRIu64 " tag2=0x%" PRIx64 "/% " PRIu64,
                    (unsigned long)my_pid, (unsigned long)my_uid,
                    (unsigned long)fake_uid, (unsigned long)fake_uid,
                    (unsigned long)fake_uid2, (unsigned long)fake_uid2,
