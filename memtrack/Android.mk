@@ -46,4 +46,11 @@ LOCAL_STATIC_LIBRARIES := \
     libdl \
 
 LOCAL_CXX_STL := libc++_static
+
+# Bug: 18389563 - Today, libc++_static and libgcc have duplicate sybols for
+# __aeabi_uidiv(). Allowing multiple definitions lets the build proceed, but
+# updating compiler-rt to be a superset of libgcc will allow this WAR to be
+# removed.
+LOCAL_LDFLAGS := -Wl,-z,muldefs
+
 include $(BUILD_EXECUTABLE)
