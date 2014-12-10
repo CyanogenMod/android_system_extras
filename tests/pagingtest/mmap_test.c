@@ -1,8 +1,10 @@
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/mman.h>
-#include <errno.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/time.h>
+
 #include "pagingtest.h"
 
 int mmap_test(int test_runs, unsigned long long alloc_size) {
