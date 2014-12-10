@@ -1,13 +1,13 @@
+#include "pagingtest.h"
+
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
-#include <unistd.h>
 #include <sys/mman.h>
-#include <sys/types.h>
 #include <sys/stat.h>
-#include <fcntl.h>
-#include "pagingtest.h"
+#include <sys/types.h>
+#include <unistd.h>
 
 #define TEST_RUNS 10
 #define ALLOC_SIZE (10 * 1024 * 1024)
