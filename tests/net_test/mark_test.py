@@ -491,9 +491,15 @@ class MultiNetworkTest(net_test.NetworkTest):
           cls.iproute.AddNeighbour(version, router, macaddr, ifindex)
         if do_routing:
           cls.iproute.AddRoute(version, table, "default", 0, router, ifindex)
+          if version == 6:
+            cls.iproute.AddRoute(version, table,
+                                 cls.IPv6Prefix(netid), 64, None, ifindex)
       else:
         if do_routing:
           cls.iproute.DelRoute(version, table, "default", 0, router, ifindex)
+          if version == 6:
+            cls.iproute.DelRoute(version, table,
+                                 cls.IPv6Prefix(netid), 64, None, ifindex)
         if version == 4:
           cls.iproute.DelNeighbour(version, router, macaddr, ifindex)
           cls.iproute.DelAddress(cls._MyIPv4Address(netid), 24, ifindex)
@@ -1374,7 +1380,6 @@ class RATest(MultiNetworkTest):
         self.SendRA(netid)
       CheckIPv6Connectivity(True)
 
-  @unittest.skipUnless(HAVE_AUTOCONF_TABLE, "our manual routing doesn't do PIO")
   def testOnlinkCommunication(self):
     """Checks that on-link communication goes direct and not through routers."""
     for netid in self.tuns:
@@ -1413,6 +1418,7 @@ class RATest(MultiNetworkTest):
       self.ExpectPacketOn(netid, msg, expected)
 
   # This test documents a known issue: routing tables are never deleted.
+  @unittest.skipUnless(HAVE_AUTOCONF_TABLE, "no support for per-table autoconf")
   def testLeftoverRoutes(self):
     def GetNumRoutes():
       return len(open("/proc/net/ipv6_route").readlines())
