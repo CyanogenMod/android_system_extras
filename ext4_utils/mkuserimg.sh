@@ -6,7 +6,7 @@ function usage() {
 cat<<EOT
 Usage:
 mkuserimg.sh [-s] SRC_DIR OUTPUT_FILE EXT_VARIANT MOUNT_POINT SIZE
-             [-T TIMESTAMP] [-C FS_CONFIG] [-B BLOCK_LIST_FILE] [FILE_CONTEXTS]
+             [-T TIMESTAMP] [-C FS_CONFIG] [-B BLOCK_LIST_FILE] [-L LABEL] [FILE_CONTEXTS]
 EOT
 }
 
@@ -51,6 +51,12 @@ if [[ "$1" == "-B" ]]; then
   shift; shift
 fi
 
+LABEL=
+if [[ "$1" == "-L" ]]; then
+  LABEL=$2
+  shift; shift
+fi
+
 FC=$1
 
 case $EXT_VARIANT in
@@ -77,6 +83,9 @@ if [ -n "$FS_CONFIG" ]; then
 fi
 if [ -n "$BLOCK_LIST" ]; then
   OPT="$OPT -B $BLOCK_LIST"
+fi
+if [ -n "$LABEL" ]; then
+  OPT="$OPT -L $LABEL"
 fi
 
 MAKE_EXT4FS_CMD="make_ext4fs $ENABLE_SPARSE_IMAGE -T $TIMESTAMP $OPT -l $SIZE -a $MOUNT_POINT $OUTPUT_FILE $SRC_DIR"
