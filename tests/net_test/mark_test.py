@@ -67,7 +67,7 @@ def HaveUidRouting():
   # Dump all the rules. If we find a rule using the UID range selector, then the
   # kernel supports UID range routing.
   rules = iproute.IPRoute().DumpRules(6)
-  result = any("FRA_EXPERIMENTAL_UID_START" in attrs for rule, attrs in rules)
+  result = any("FRA_UID_START" in attrs for rule, attrs in rules)
 
   # Delete the rule.
   iproute.IPRoute().UidRangeRule(6, False, 1000, 2000, 100)
@@ -96,7 +96,7 @@ HAVE_AUTOCONF_TABLE = os.path.isfile(AUTOCONF_TABLE_SYSCTL)
 HAVE_MARK_REFLECT = os.path.isfile(IPV4_MARK_REFLECT_SYSCTL)
 HAVE_TCP_MARK_ACCEPT = os.path.isfile(TCP_MARK_ACCEPT_SYSCTL)
 
-HAVE_EXPERIMENTAL_UID_ROUTING = HaveUidRouting()
+HAVE_UID_ROUTING = HaveUidRouting()
 
 # The IP[V6]UNICAST_IF socket option was added between 3.1 and 3.4.
 HAVE_UNICAST_IF = LINUX_VERSION >= (3, 4, 0)
@@ -467,7 +467,7 @@ class MultiNetworkTest(net_test.NetworkTest):
       table = cls._TableForNetid(netid)
 
       # Set up routing rules.
-      if HAVE_EXPERIMENTAL_UID_ROUTING:
+      if HAVE_UID_ROUTING:
         start, end = cls.UidRangeForNetid(netid)
         cls.iproute.UidRangeRule(version, is_add, start, end, table,
                                  priority=100)
@@ -966,7 +966,7 @@ class OutgoingTest(MultiNetworkTest):
     """Checks that socket marking selects the right outgoing interface."""
     self.CheckOutgoingPackets("mark")
 
-  @unittest.skipUnless(HAVE_EXPERIMENTAL_UID_ROUTING, "no UID routing")
+  @unittest.skipUnless(HAVE_UID_ROUTING, "no UID routing")
   def testUidRouting(self):
     """Checks that UID routing selects the right outgoing interface."""
     self.CheckOutgoingPackets("uid")
@@ -1340,11 +1340,11 @@ class TCPAcceptTest(InboundMarkingTest):
   def testIPv6MarkAccept(self):
     self.CheckTCP(6, [self.MODE_INCOMING_MARK])
 
-  @unittest.skipUnless(HAVE_EXPERIMENTAL_UID_ROUTING, "no UID routing")
+  @unittest.skipUnless(HAVE_UID_ROUTING, "no UID routing")
   def testIPv4UidAccept(self):
     self.CheckTCP(4, [self.MODE_UID])
 
-  @unittest.skipUnless(HAVE_EXPERIMENTAL_UID_ROUTING, "no UID routing")
+  @unittest.skipUnless(HAVE_UID_ROUTING, "no UID routing")
   def testIPv6UidAccept(self):
     self.CheckTCP(6, [self.MODE_UID])
 
@@ -1534,12 +1534,12 @@ class PMTUTest(InboundMarkingTest):
     self.CheckPMTU(6, True, ["mark", "oif"])
     self.CheckPMTU(6, False, ["mark", "oif"])
 
-  @unittest.skipUnless(HAVE_EXPERIMENTAL_UID_ROUTING, "no UID routing")
+  @unittest.skipUnless(HAVE_UID_ROUTING, "no UID routing")
   def testIPv4UIDPMTU(self):
     self.CheckPMTU(4, True, ["uid"])
     self.CheckPMTU(4, False, ["uid"])
 
-  @unittest.skipUnless(HAVE_EXPERIMENTAL_UID_ROUTING, "no UID routing")
+  @unittest.skipUnless(HAVE_UID_ROUTING, "no UID routing")
   def testIPv6UIDPMTU(self):
     self.CheckPMTU(6, True, ["uid"])
     self.CheckPMTU(6, False, ["uid"])
@@ -1566,7 +1566,7 @@ class PMTUTest(InboundMarkingTest):
       self.SetMarkReflectSysctls(0)
 
 
-@unittest.skipUnless(HAVE_EXPERIMENTAL_UID_ROUTING, "no UID routing")
+@unittest.skipUnless(HAVE_UID_ROUTING, "no UID routing")
 class UidRoutingTest(MultiNetworkTest):
 
   def GetRulesAtPriority(self, version, priority):
@@ -1580,8 +1580,8 @@ class UidRoutingTest(MultiNetworkTest):
     for priority in [0, 32766, 32767]:
       rules.extend(self.GetRulesAtPriority(version, priority))
     for _, attributes in rules:
-      self.assertNotIn("FRA_EXPERIMENTAL_UID_START", attributes)
-      self.assertNotIn("FRA_EXPERIMENTAL_UID_END", attributes)
+      self.assertNotIn("FRA_UID_START", attributes)
+      self.assertNotIn("FRA_UID_END", attributes)
 
   def testIPv4InitialTablesHaveNoUIDs(self):
     self.CheckInitialTablesHaveNoUIDs(4)
@@ -1605,8 +1605,8 @@ class UidRoutingTest(MultiNetworkTest):
       self.assertTrue(rules)
       _, attributes = rules[-1]
       self.assertEquals(priority, attributes["FRA_PRIORITY"])
-      self.assertEquals(start, attributes["FRA_EXPERIMENTAL_UID_START"])
-      self.assertEquals(end, attributes["FRA_EXPERIMENTAL_UID_END"])
+      self.assertEquals(start, attributes["FRA_UID_START"])
+      self.assertEquals(end, attributes["FRA_UID_END"])
       self.assertEquals(table, attributes["FRA_TABLE"])
     finally:
       self.iproute.UidRangeRule(version, False, start, end, table,
