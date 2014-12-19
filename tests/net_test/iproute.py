@@ -378,13 +378,14 @@ class IPRoute(object):
     if flags & NLM_F_ACK:
       self._ExpectAck()
 
-  def _Rule(self, version, is_add, table, match_nlattr, priority):
+  def _Rule(self, version, is_add, rule_type, table, match_nlattr, priority):
     """Python equivalent of "ip rule <add|del> <match_cond> lookup <table>".
 
     Args:
       version: An integer, 4 or 6.
       is_add: True to add a rule, False to delete it.
-      table: If nonzero, rule looks up this table. If 0, it returns ENETUNREACH.
+      rule_type: Type of rule, e.g., RTN_UNICAST or RTN_UNREACHABLE.
+      table: If nonzero, rule looks up this table.
       match_nlattr: A blob of struct nlattrs that express the match condition.
         If None, match everything.
       priority: An integer, the priority.
@@ -395,7 +396,6 @@ class IPRoute(object):
     """
     # Create a struct rtmsg specifying the table and the given match attributes.
     family = self._AddressFamily(version)
-    rule_type = RTN_UNICAST if table else RTN_UNREACHABLE
     rtmsg = RTMsg((family, 0, 0, 0, RT_TABLE_UNSPEC,
                    RTPROT_STATIC, RT_SCOPE_UNIVERSE, rule_type, 0)).Pack()
     rtmsg += self._NlAttrU32(FRA_PRIORITY, priority)
@@ -422,21 +422,24 @@ class IPRoute(object):
         else:
           raise
 
-  def FwmarkRule(self, version, is_add, fwmark, table, priority=16383):
+  def FwmarkRule(self, version, is_add, fwmark, table, priority):
     nlattr = self._NlAttrU32(FRA_FWMARK, fwmark)
-    return self._Rule(version, is_add, table, nlattr, priority)
+    return self._Rule(version, is_add, RTN_UNICAST, table, nlattr, priority)
 
-  def OifRule(self, version, is_add, oif, table, priority=16383):
+  def OifRule(self, version, is_add, oif, table, priority):
     nlattr = self._NlAttr(FRA_OIFNAME, oif + "\x00")
-    return self._Rule(version, is_add, table, nlattr, priority)
+    return self._Rule(version, is_add, RTN_UNICAST, table, nlattr, priority)
 
-  def UidRangeRule(self, version, is_add, start, end, table, priority=16383):
+  def UidRangeRule(self, version, is_add, start, end, table, priority):
     nlattr = (self._NlAttrU32(FRA_UID_START, start) +
               self._NlAttrU32(FRA_UID_END, end))
-    return self._Rule(version, is_add, table, nlattr, priority)
+    return self._Rule(version, is_add, RTN_UNICAST, table, nlattr, priority)
 
   def UnreachableRule(self, version, is_add, priority):
-    return self._Rule(version, is_add, None, None, priority=priority)
+    return self._Rule(version, is_add, RTN_UNREACHABLE, None, None, priority)
+
+  def DefaultRule(self, version, is_add, table, priority):
+    return self.FwmarkRule(version, is_add, 0, table, priority)
 
   def _ParseNLMsg(self, data, msgtype):
     """Parses a Netlink message into a header and a dictionary of attributes."""
