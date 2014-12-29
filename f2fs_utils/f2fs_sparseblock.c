@@ -4,6 +4,7 @@
 
 
 #include <cutils/log.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <f2fs_fs.h>
 #include <linux/types.h>
