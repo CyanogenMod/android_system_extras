@@ -378,8 +378,18 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 	if (full_path) {
 		entries = scandir(full_path, &namelist, filter_dot, (void*)alphasort);
 		if (entries < 0) {
-			error_errno("scandir");
-			return EXT4_ALLOCATE_FAILED;
+#ifdef __GLIBC__
+			/* The scandir function implemented in glibc has a bug that makes it
+			   erroneously fail with ENOMEM under certain circumstances.
+			   As a workaround we can retry the scandir call with the same arguments.
+			   GLIBC BZ: https://sourceware.org/bugzilla/show_bug.cgi?id=17804 */
+			if (errno == ENOMEM)
+				entries = scandir(full_path, &namelist, filter_dot, (void*)alphasort);
+#endif
+			if (entries < 0) {
+				error_errno("scandir");
+				return EXT4_ALLOCATE_FAILED;
+			}
 		}
 	}
 
