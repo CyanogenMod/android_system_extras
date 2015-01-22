@@ -1,3 +1,4 @@
+#include <openssl/bn.h>
 #include <openssl/evp.h>
 #include <sparse/sparse.h>
 
