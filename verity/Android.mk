@@ -6,7 +6,6 @@ LOCAL_SRC_FILES := generate_verity_key.c
 LOCAL_MODULE_CLASS := EXECUTABLES
 LOCAL_MODULE_TAGS := optional
 LOCAL_SHARED_LIBRARIES := libcrypto-host
-LOCAL_C_INCLUDES += external/openssl/include
 include $(BUILD_HOST_EXECUTABLE)
 
 include $(CLEAR_VARS)
@@ -74,6 +73,5 @@ LOCAL_SRC_FILES := build_verity_tree.cpp
 LOCAL_MODULE_TAGS := optional
 LOCAL_STATIC_LIBRARIES := libsparse_host libz
 LOCAL_SHARED_LIBRARIES := libcrypto-host
-LOCAL_C_INCLUDES := external/openssl/include
 LOCAL_CFLAGS += -Wall -Werror
 include $(BUILD_HOST_EXECUTABLE)
