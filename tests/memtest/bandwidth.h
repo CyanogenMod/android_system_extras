@@ -18,6 +18,7 @@
 #define __BANDWIDTH_H__
 
 #include <stdlib.h>
+#include <string.h>
 
 #include "utils/Compat.h"
 #include "memtest.h"
