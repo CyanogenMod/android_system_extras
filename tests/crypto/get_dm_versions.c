@@ -4,6 +4,7 @@
 #include <sys/ioctl.h>
 #include <linux/dm-ioctl.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define DM_CRYPT_BUF_SIZE 4096
 

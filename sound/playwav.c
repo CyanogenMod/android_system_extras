@@ -5,8 +5,10 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
+#include <unistd.h>
 
 #include <linux/ioctl.h>
 
