@@ -8,6 +8,8 @@
 #include <fcntl.h>
 #include <f2fs_fs.h>
 #include <linux/types.h>
+#include <malloc.h>
+#include <string.h>
 #include <sys/stat.h>
 #include "f2fs_sparseblock.h"
 
