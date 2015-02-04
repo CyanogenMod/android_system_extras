@@ -26,6 +26,8 @@ set -e
 # Check if we need to uncompress the disk image.
 # We use xz because it compresses better: to 42M vs 72M (gzip) / 62M (bzip2).
 if [ $ROOTFS.xz -nt $ROOTFS ]; then
+  echo "Deleting $ROOTFS" >&2
+  rm -f $ROOTFS
   echo "Uncompressing $ROOTFS.xz" >&2
   unxz --keep $ROOTFS.xz
 fi
