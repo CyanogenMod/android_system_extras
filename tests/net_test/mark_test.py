@@ -8,6 +8,7 @@ import random
 import re
 from socket import *  # pylint: disable=wildcard-import
 import struct
+import time           # pylint: disable=unused-import
 import unittest
 
 from scapy import all as scapy
@@ -177,9 +178,9 @@ class Packets(object):
   @classmethod
   def ICMPPacketTooBig(cls, version, srcaddr, dstaddr, packet):
     if version == 4:
-      # Linux hardcodes the ToS on ICMP errors to 0xc0 or greater because of
-      # RFC 1812 4.3.2.5 (!).
-      raise NotImplementedError
+      return ("ICMPv4 fragmentation needed",
+              scapy.IP(src=srcaddr, dst=dstaddr, proto=1) /
+              scapy.ICMPerror(type=3, code=4, unused=1280) / str(packet)[:64])
     else:
       udp = packet.getlayer("UDP")
       udp.payload = str(udp.payload)[:1280-40-8]
@@ -320,6 +321,9 @@ class MultiNetworkTest(net_test.NetworkTest):
     else:
       return prefix + "%x:%x" % (random.randint(0, 65535),
                                  random.randint(0, 65535))
+
+  def GetProtocolFamily(self, version):
+    return {4: AF_INET, 6: AF_INET6}[version]
 
   @classmethod
   def CreateTunInterface(cls, netid):
@@ -694,12 +698,9 @@ class MarkTest(MultiNetworkTest):
   def _GetRemoteAddress(self, version):
     return {4: self.IPV4_ADDR, 6: self.IPV6_ADDR}[version]
 
-  def _GetProtocolFamily(self, version):
-    return {4: AF_INET, 6: AF_INET6}[version]
-
   def BuildSocket(self, version, constructor, mark, uid, oif, ucast_oif):
     with RunAsUid(uid):
-      family = self._GetProtocolFamily(version)
+      family = self.GetProtocolFamily(version)
       s = constructor(family)
     if mark:
       self.SetSocketMark(s, mark)
@@ -817,7 +818,7 @@ class MarkTest(MultiNetworkTest):
     self.CheckOutgoingPackets("ucast_oif")
 
   def CheckRemarking(self, version):
-    s = net_test.UDPSocket(self._GetProtocolFamily(version))
+    s = net_test.UDPSocket(self.GetProtocolFamily(version))
 
     # Figure out what packets to expect.
     unspec = {4: "0.0.0.0", 6: "::"}[version]
@@ -1102,34 +1103,66 @@ class RATest(MultiNetworkTest):
 
 class PMTUTest(MultiNetworkTest):
 
+  PAYLOAD_SIZE = 1400
+  IP_MTU_DISCOVER = 10
+  IP_MTU = 14
+  IP_PMTUDISC_DO = 1
   IPV6_PATHMTU = 61
   IPV6_DONTFRAG = 62
 
-  def GetSocketMTU(self, s):
-    ip6_mtuinfo = s.getsockopt(net_test.SOL_IPV6, self.IPV6_PATHMTU, 32)
-    mtu = struct.unpack("=28sI", ip6_mtuinfo)
-    return mtu[1]
+  def GetSocketMTU(self, version, s):
+    if version == 6:
+      ip6_mtuinfo = s.getsockopt(net_test.SOL_IPV6, self.IPV6_PATHMTU, 32)
+      mtu = struct.unpack("=28sI", ip6_mtuinfo)
+      return mtu[1]
+    else:
+      return s.getsockopt(net_test.SOL_IP, self.IP_MTU)
 
-  def testIPv6PMTU(self):
-    for netid in self.tuns:
-      s = net_test.Socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP)
+  def SetDontFragment(self, version, s):
+    if version == 6:
       s.setsockopt(net_test.SOL_IPV6, self.IPV6_DONTFRAG, 1)
       s.setsockopt(net_test.SOL_IPV6, net_test.IPV6_RECVERR, 1)
+    else:
+      s.setsockopt(net_test.SOL_IP, self.IP_MTU_DISCOVER, self.IP_PMTUDISC_DO)
+      s.setsockopt(net_test.SOL_IP, net_test.IP_RECVERR, 1)
 
-      srcaddr = self.MyAddress(6, netid)
-      dstaddr = self.GetRandomDestination("2001:db8::")
-      intermediate = "2001:db8::1"
+  def CheckPMTU(self, version):
+    for netid in self.tuns:
+      s = net_test.UDPSocket(self.GetProtocolFamily(version))
+      self.SetDontFragment(version, s)
 
-      self.SetSocketMark(s, netid)  # So the packet has somewhere to go.
+      srcaddr = self.MyAddress(version, netid)
+      dst_prefix, intermediate = {
+          4: ("172.19.", "172.16.9.12"),
+          6: ("2001:db8::", "2001:db8::1")
+      }[version]
+      dstaddr = self.GetRandomDestination(dst_prefix)
+
+      # So the packet has somewhere to go.
+      self.SetSocketMark(s, netid)
       s.connect((dstaddr, 1234))
-      self.assertEquals(1500, self.GetSocketMTU(s))
+      self.assertEquals(1500, self.GetSocketMTU(version, s))
 
-      s.send(1400 * "a")
+      s.send(self.PAYLOAD_SIZE * "a")
       packets = self.ReadAllPacketsOn(netid)
       self.assertEquals(1, len(packets))
-      toobig = Packets.ICMPPacketTooBig(6, intermediate, srcaddr, packets[0])[1]
+      _, toobig = Packets.ICMPPacketTooBig(version, intermediate, srcaddr,
+                                           packets[0])
       self.ReceivePacketOn(netid, toobig)
-      self.assertEquals(1280, self.GetSocketMTU(s))
+      self.assertEquals(1280, self.GetSocketMTU(version, s))
+      s.close()
+
+      # Open another socket to ensure the path MTU is cached.
+      s2 = net_test.UDPSocket(self.GetProtocolFamily(version))
+      self.BindToDevice(s2, self.GetInterfaceName(netid))
+      s2.connect((dstaddr, 1234))
+      self.assertEquals(1280, self.GetSocketMTU(version, s2))
+
+  def testIPv4PMTU(self):
+    self.CheckPMTU(4)
+
+  def testIPv6PMTU(self):
+    self.CheckPMTU(6)
 
 
 @unittest.skipUnless(HAVE_EXPERIMENTAL_UID_ROUTING, "no UID routing")
