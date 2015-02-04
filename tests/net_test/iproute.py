@@ -78,7 +78,7 @@ RTA_METRICS = 8
 RTA_CACHEINFO = 12
 RTA_TABLE = 15
 RTA_MARK = 16
-RTA_EXPERIMENTAL_UID = 18
+RTA_UID = 18
 
 # Route metric attributes.
 RTAX_MTU = 2
@@ -135,8 +135,8 @@ FRA_PRIORITY = 6
 FRA_FWMARK = 10
 FRA_TABLE = 15
 FRA_OIFNAME = 17
-FRA_EXPERIMENTAL_UID_START = 18
-FRA_EXPERIMENTAL_UID_END = 19
+FRA_UID_START = 18
+FRA_UID_END = 19
 
 
 def CommandVerb(command):
@@ -243,11 +243,11 @@ class IPRoute(object):
       name = nla_type
 
     if name in ["FRA_PRIORITY", "FRA_FWMARK", "FRA_TABLE",
-                "FRA_EXPERIMENTAL_UID_START", "FRA_EXPERIMENTAL_UID_END",
+                "FRA_UID_START", "FRA_UID_END",
                 "RTA_OIF", "RTA_PRIORITY", "RTA_TABLE", "RTA_MARK"]:
       data = struct.unpack("=I", nla_data)[0]
     elif name in ["IFA_ADDRESS", "IFA_LOCAL", "RTA_DST", "RTA_SRC",
-                  "RTA_GATEWAY", "RTA_PREFSRC", "RTA_EXPERIMENTAL_UID",
+                  "RTA_GATEWAY", "RTA_PREFSRC", "RTA_UID",
                   "NDA_DST"]:
       data = socket.inet_ntop(family, nla_data)
     elif name in ["FRA_IIFNAME", "FRA_OIFNAME"]:
@@ -417,8 +417,8 @@ class IPRoute(object):
     return self._Rule(version, is_add, table, nlattr, priority)
 
   def UidRangeRule(self, version, is_add, start, end, table, priority=16383):
-    nlattr = (self._NlAttrU32(FRA_EXPERIMENTAL_UID_START, start) +
-              self._NlAttrU32(FRA_EXPERIMENTAL_UID_END, end))
+    nlattr = (self._NlAttrU32(FRA_UID_START, start) +
+              self._NlAttrU32(FRA_UID_END, end))
     return self._Rule(version, is_add, table, nlattr, priority)
 
   def UnreachableRule(self, version, is_add, priority):
@@ -540,7 +540,7 @@ class IPRoute(object):
     if mark is not None:
       rtmsg += self._NlAttrU32(RTA_MARK, mark)
     if uid is not None:
-      rtmsg += self._NlAttrU32(RTA_EXPERIMENTAL_UID, uid)
+      rtmsg += self._NlAttrU32(RTA_UID, uid)
     self._SendNlRequest(command, rtmsg)
 
   def AddRoute(self, version, table, dest, prefixlen, nexthop, dev):
