@@ -396,16 +396,6 @@ class MultiNetworkTest(net_test.NetworkTest):
       router = cls._RouterAddress(netid, version)
       table = cls._TableForNetid(netid)
 
-      # Run iptables to set up incoming packet marking.
-      add_del = "-A" if is_add else "-D"
-      iptables = {4: "iptables", 6: "ip6tables"}[version]
-      args = "%s %s INPUT -t mangle -i %s -j MARK --set-mark %d" % (
-          iptables, add_del, iface, netid)
-      iptables = "/sbin/" + iptables
-      ret = os.spawnvp(os.P_WAIT, iptables, args.split(" "))
-      if ret:
-        raise ConfigurationError("Setup command failed: %s" % args)
-
       # Set up routing rules.
       if HAVE_EXPERIMENTAL_UID_ROUTING:
         start, end = cls.UidRangeForNetid(netid)
@@ -737,17 +727,36 @@ class MultiNetworkTest(net_test.NetworkTest):
       return None
 
 
-class MarkTest(MultiNetworkTest):
+class InboundMarkingTest(MultiNetworkTest):
 
-  # How many times to run outgoing packet tests.
-  ITERATIONS = 5
+  @classmethod
+  def _SetInboundMarking(cls, netid, is_add):
+    for version in [4, 6]:
+      # Run iptables to set up incoming packet marking.
+      iface = cls.GetInterfaceName(netid)
+      add_del = "-A" if is_add else "-D"
+      iptables = {4: "iptables", 6: "ip6tables"}[version]
+      args = "%s %s INPUT -t mangle -i %s -j MARK --set-mark %d" % (
+          iptables, add_del, iface, netid)
+      iptables = "/sbin/" + iptables
+      ret = os.spawnvp(os.P_WAIT, iptables, args.split(" "))
+      if ret:
+        raise ConfigurationError("Setup command failed: %s" % args)
 
   @classmethod
   def setUpClass(cls):
-    super(MarkTest, cls).setUpClass()
+    super(InboundMarkingTest, cls).setUpClass()
+    for netid in cls.tuns:
+      cls._SetInboundMarking(netid, True)
 
   @classmethod
-  def _SetMarkReflectSysctls(cls, value):
+  def tearDownClass(cls):
+    for netid in cls.tuns:
+      cls._SetInboundMarking(netid, False)
+    super(InboundMarkingTest, cls).tearDownClass()
+
+  @classmethod
+  def SetMarkReflectSysctls(cls, value):
     cls.SetSysctl(IPV4_MARK_REFLECT_SYSCTL, value)
     try:
       cls.SetSysctl(IPV6_MARK_REFLECT_SYSCTL, value)
@@ -755,6 +764,12 @@ class MarkTest(MultiNetworkTest):
       # This does not exist if we use the version of the patch that uses a
       # common sysctl for IPv4 and IPv6.
       pass
+
+
+class MarkTest(InboundMarkingTest):
+
+  # How many times to run outgoing packet tests.
+  ITERATIONS = 5
 
   def setUp(self):
     self.ClearTunQueues()
@@ -949,7 +964,7 @@ class MarkTest(MultiNetworkTest):
 
       # Test with mark reflection enabled and disabled.
       for reflect in [0, 1]:
-        self._SetMarkReflectSysctls(reflect)
+        self.SetMarkReflectSysctls(reflect)
         # HACK: IPv6 ping replies always do a routing lookup with the
         # interface the ping came in on. So even if mark reflection is not
         # working, IPv6 ping replies will be properly reflected. Don't
@@ -991,7 +1006,7 @@ class MarkTest(MultiNetworkTest):
     self.CheckReflection(6, self.SYNToClosedPort, Packets.RST)
 
 
-class TCPAcceptTest(MultiNetworkTest):
+class TCPAcceptTest(InboundMarkingTest):
 
   MODE_BINDTODEVICE = "SO_BINDTODEVICE"
   MODE_INCOMING_MARK = "incoming mark"
