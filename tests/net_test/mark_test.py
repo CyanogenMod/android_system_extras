@@ -659,6 +659,8 @@ class MultiNetworkTest(net_test.NetworkTest):
     while True:
       try:
         packet = posix.read(self.tuns[netid].fileno(), 4096)
+        if len(packet) == 0:
+          break
         ether = scapy.Ether(packet)
         # Multicast frames are frames where the first byte of the destination
         # MAC address has 1 in the least-significant bit.
