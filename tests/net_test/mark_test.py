@@ -89,13 +89,16 @@ IPV6_MARK_REFLECT_SYSCTL = "/proc/sys/net/ipv6/fwmark_reflect"
 SYNCOOKIES_SYSCTL = "/proc/sys/net/ipv4/tcp_syncookies"
 TCP_MARK_ACCEPT_SYSCTL = "/proc/sys/net/ipv4/tcp_fwmark_accept"
 
+LINUX_VERSION = LinuxVersion()
+
 HAVE_AUTOCONF_TABLE = os.path.isfile(AUTOCONF_TABLE_SYSCTL)
 HAVE_MARK_REFLECT = os.path.isfile(IPV4_MARK_REFLECT_SYSCTL)
 HAVE_TCP_MARK_ACCEPT = os.path.isfile(TCP_MARK_ACCEPT_SYSCTL)
 
 HAVE_EXPERIMENTAL_UID_ROUTING = HaveUidRouting()
 
-LINUX_VERSION = LinuxVersion()
+# The IP[V6]UNICAST_IF socket option was added between 3.1 and 3.4.
+HAVE_UNICAST_IF = LINUX_VERSION >= (3, 4, 0)
 
 
 class ConfigurationError(AssertionError):
@@ -958,6 +961,7 @@ class OutgoingTest(MultiNetworkTest):
     """Checks that oif routing selects the right outgoing interface."""
     self.CheckOutgoingPackets("oif")
 
+  @unittest.skipUnless(HAVE_UNICAST_IF, "no support for UNICAST_IF")
   def testUcastOifRouting(self):
     """Checks that ucast oif routing selects the right outgoing interface."""
     self.CheckOutgoingPackets("ucast_oif")
@@ -967,7 +971,9 @@ class OutgoingTest(MultiNetworkTest):
     if use_connect:
       modes = ["oif"]
     else:
-      modes = ["mark", "oif", "ucast_oif"]
+      modes = ["mark", "oif"]
+      if HAVE_UNICAST_IF:
+        modes += ["ucast_oif"]
 
     for mode in modes:
       s = net_test.UDPSocket(self.GetProtocolFamily(version))
@@ -1380,6 +1386,7 @@ class RATest(MultiNetworkTest):
       mymac = self.MyMacAddress(netid)
       desc, expected = Packets.NS(myaddr, dstaddr, mymac)
       msg = "Sending UDP packet to on-link destination: expecting %s" % desc
+      time.sleep(0.0001)  # Required to make the test work on kernel 3.1(!)
       self.ExpectPacketOn(netid, msg, expected)
 
       # Send an NA.
