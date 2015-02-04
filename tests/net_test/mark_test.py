@@ -1491,6 +1491,15 @@ class PMTUTest(InboundMarkingTest):
         s2.connect((dstaddr, 1234))
         self.assertEquals(1280, self.GetSocketMTU(version, s2))
 
+        # Also check the MTU reported by ip route get, this time using the oif.
+        routes = self.iproute.GetRoutes(dstaddr, self.ifindices[netid], 0, None)
+        self.assertTrue(routes)
+        route = routes[0]
+        rtmsg, attributes = route
+        self.assertEquals(iproute.RTN_UNICAST, rtmsg.type)
+        metrics = attributes[iproute.RTA_METRICS]
+        self.assertEquals(metrics[iproute.RTAX_MTU], 1280)
+
   def testIPv4BasicPMTU(self):
     self.CheckPMTU(4, True, ["mark", "oif"])
     self.CheckPMTU(4, False, ["mark", "oif"])
@@ -1505,7 +1514,7 @@ class PMTUTest(InboundMarkingTest):
     self.CheckPMTU(4, False, ["uid"])
 
   @unittest.skipUnless(HAVE_EXPERIMENTAL_UID_ROUTING, "no UID routing")
-  def testIPv6ConnectedSocketUIDPMTU(self):
+  def testIPv6UIDPMTU(self):
     self.CheckPMTU(6, True, ["uid"])
     self.CheckPMTU(6, False, ["uid"])
 
