@@ -175,6 +175,19 @@ class Packets(object):
               scapy.ICMPv6DestUnreach(code=4) / packet)
 
   @classmethod
+  def ICMPPacketTooBig(cls, version, srcaddr, dstaddr, packet):
+    if version == 4:
+      # Linux hardcodes the ToS on ICMP errors to 0xc0 or greater because of
+      # RFC 1812 4.3.2.5 (!).
+      raise NotImplementedError
+    else:
+      udp = packet.getlayer("UDP")
+      udp.payload = str(udp.payload)[:1280-40-8]
+      return ("ICMPv6 Packet Too Big",
+              scapy.IPv6(src=srcaddr, dst=dstaddr) /
+              scapy.ICMPv6PacketTooBig() / str(packet)[:1232])
+
+  @classmethod
   def ICMPEcho(cls, version, srcaddr, dstaddr):
     ip = cls._GetIpLayer(version)
     icmp = {4: scapy.ICMP, 6: scapy.ICMPv6EchoRequest}[version]
@@ -230,7 +243,7 @@ class MultiNetworkTest(net_test.NetworkTest):
 
   @classmethod
   def _TableForNetid(cls, netid):
-    if cls.AUTOCONF_TABLE_OFFSET:
+    if cls.AUTOCONF_TABLE_OFFSET and netid in cls.ifindices:
       return cls.ifindices[netid] + (-cls.AUTOCONF_TABLE_OFFSET)
     else:
       return netid
@@ -270,7 +283,7 @@ class MultiNetworkTest(net_test.NetworkTest):
             6: cls._MyIPv6Address(netid)}[version]
 
   @classmethod
-  def _CreateTunInterface(cls, netid):
+  def CreateTunInterface(cls, netid):
     iface = cls.GetInterfaceName(netid)
     f = open("/dev/net/tun", "r+b")
     ifr = struct.pack("16sH", iface, IFF_TAP | IFF_NO_PI)
@@ -285,7 +298,7 @@ class MultiNetworkTest(net_test.NetworkTest):
     return f
 
   @classmethod
-  def _SendRA(cls, netid):
+  def SendRA(cls, netid):
     validity = 300                 # seconds
     validity_ms = validity * 1000  # milliseconds
     macaddr = cls.RouterMacAddress(netid)
@@ -324,12 +337,15 @@ class MultiNetworkTest(net_test.NetworkTest):
     ]
 
     for version, iptables in zip([4, 6], ["iptables", "ip6tables"]):
-
       table = cls._TableForNetid(netid)
       uid = cls.UidForNetid(netid)
+      iface = cls.GetInterfaceName(netid)
       if HAVE_EXPERIMENTAL_UID_ROUTING:
         cls.iproute.UidRule(version, is_add, uid, table, priority=100)
       cls.iproute.FwmarkRule(version, is_add, netid, table, priority=200)
+
+      if cls.DEBUG:
+        os.spawnvp(os.P_WAIT, "/sbin/ip", ["ip", "-6", "rule", "list"])
 
       if version == 6:
         if cls.AUTOCONF_TABLE_OFFSET is None:
@@ -349,7 +365,7 @@ class MultiNetworkTest(net_test.NetworkTest):
       cmds = str("\n".join(cmds) % {
           "add_del": "add" if is_add else "del",
           "append_delete": "-A" if is_add else "-D",
-          "iface": cls.GetInterfaceName(netid),
+          "iface": iface,
           "iptables": iptables,
           "ipv4addr": cls._MyIPv4Address(netid),
           "macaddr": cls.RouterMacAddress(netid),
@@ -411,12 +427,11 @@ class MultiNetworkTest(net_test.NetworkTest):
       cls._SetICMPRatelimit(version, 0)
 
     for netid in cls.NETIDS:
-      cls.tuns[netid] = cls._CreateTunInterface(netid)
-
+      cls.tuns[netid] = cls.CreateTunInterface(netid)
       iface = cls.GetInterfaceName(netid)
       cls.ifindices[netid] = net_test.GetInterfaceIndex(iface)
 
-      cls._SendRA(netid)
+      cls.SendRA(netid)
       cls._RunSetupCommands(netid, True)
 
     # Uncomment to look around at interface and rule configuration while
@@ -442,6 +457,25 @@ class MultiNetworkTest(net_test.NetworkTest):
     mymac = self.MyMacAddress(netid)
     packet = scapy.Ether(src=routermac, dst=mymac) / ip_packet
     posix.write(self.tuns[netid].fileno(), str(packet))
+
+  def ReadAllPacketsOn(self, netid):
+    packets = []
+    while True:
+      try:
+        packet = posix.read(self.tuns[netid].fileno(), 4096)
+        ether = scapy.Ether(packet)
+        # Skip multicast frames, i.e., frames where the first byte of the
+        # destination MAC address has 1 in the least-significant bit.
+        if not int(ether.dst.split(":")[0], 16) & 0x1:
+          packets.append(ether.payload)
+      except OSError, e:
+        # EAGAIN means there are no more packets waiting.
+        if re.match(e.message, os.strerror(errno.EAGAIN)):
+          break
+        # Anything else is unexpected.
+        else:
+          raise e
+    return packets
 
   def ClearTunQueues(self):
     # Keep reading packets on all netids until we get no packets on any of them.
@@ -556,25 +590,6 @@ class MarkTest(MultiNetworkTest):
       return True
     except AssertionError:
       return False
-
-  def ReadAllPacketsOn(self, netid):
-    packets = []
-    while True:
-      try:
-        packet = posix.read(self.tuns[netid].fileno(), 4096)
-        ether = scapy.Ether(packet)
-        # Skip multicast frames, i.e., frames where the first byte of the
-        # destination MAC address has 1 in the least-significant bit.
-        if not int(ether.dst.split(":")[0], 16) & 0x1:
-          packets.append(ether.payload)
-      except OSError, e:
-        # EAGAIN means there are no more packets waiting.
-        if re.match(e.message, os.strerror(errno.EAGAIN)):
-          break
-        # Anything else is unexpected.
-        else:
-          raise e
-    return packets
 
   def ExpectNoPacketsOn(self, netid, msg, expected):
     packets = self.ReadAllPacketsOn(netid)
@@ -854,6 +869,90 @@ class MarkTest(MultiNetworkTest):
     finally:
       # Stop forcing SYN cookies on all connections.
       self.SetSysctl(SYNCOOKIES_SYSCTL, 1)
+
+
+class RATest(MultiNetworkTest):
+
+  def testDoesNotHaveObsoleteSysctl(self):
+    self.assertFalse(os.path.isfile(
+        "/proc/sys/net/ipv6/route/autoconf_table_offset"))
+
+  def testPurgeDefaultRouters(self):
+
+    def CheckIPv6Connectivity(expect_connectivity):
+      for netid in self.NETIDS:
+        s = net_test.UDPSocket(AF_INET6)
+        self.SetSocketMark(s, netid)
+        if expect_connectivity:
+          self.assertEquals(5, s.sendto("hello", (net_test.IPV6_ADDR, 1234)))
+        else:
+          self.assertRaisesErrno(errno.ENETUNREACH,
+                                 s.sendto, "hello", (net_test.IPV6_ADDR, 1234))
+
+    try:
+      CheckIPv6Connectivity(True)
+      self.SetSysctl("/proc/sys/net/ipv6/conf/all/forwarding", 1)
+      CheckIPv6Connectivity(False)
+    finally:
+      self.SetSysctl("/proc/sys/net/ipv6/conf/all/forwarding", 0)
+      for netid in self.NETIDS:
+        self.SendRA(netid)
+      CheckIPv6Connectivity(True)
+
+  @unittest.skipUnless(False, "Known bug: routing tables are never deleted")
+  def testNoLeftoverRoutes(self):
+    def GetNumRoutes():
+      return len(open("/proc/net/ipv6_route").readlines())
+
+    num_routes = GetNumRoutes()
+    for i in xrange(10, 20):
+      try:
+        self.tuns[i] = self.CreateTunInterface(i)
+        self.SendRA(i)
+        self.tuns[i].close()
+      finally:
+        del self.tuns[i]
+    self.assertEquals(num_routes, GetNumRoutes())
+
+
+class RedirectAndPMTUTest(MultiNetworkTest):
+
+  IPV6_PATHMTU = 61
+  IPV6_DONTFRAG = 62
+
+  def GetRandomDestination(self, version):
+    if version == 4:
+      return "172.16.%d.%d" % (random.randint(0, 31), random.randint(0, 255))
+    else:
+      return "2001:db8::%x:%x" % (random.randint(0, 65535),
+                                  random.randint(0, 65535))
+
+  def GetSocketMTU(self, s):
+    ip6_mtuinfo = s.getsockopt(net_test.SOL_IPV6, self.IPV6_PATHMTU, 32)
+    mtu = struct.unpack("=28sI", ip6_mtuinfo)
+    return mtu[1]
+
+  def testIPv6PMTU(self):
+    s = net_test.Socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP)
+    s.setsockopt(net_test.SOL_IPV6, self.IPV6_DONTFRAG, 1)
+    s.setsockopt(net_test.SOL_IPV6, net_test.IPV6_RECVERR, 1)
+    netid = self.NETIDS[2]  # Just pick an arbitrary one.
+
+    srcaddr = self.MyAddress(6, netid)
+    dstaddr = self.GetRandomDestination(6)
+    intermediate = "2001:db8::1"
+
+    self.SetSocketMark(s, netid)  # So the packet has somewhere to go.
+    s.connect((dstaddr, 1234))
+    self.assertEquals(1500, self.GetSocketMTU(s))
+
+    self.ClearTunQueues()
+    s.send(1400 * "a")
+    packets = self.ReadAllPacketsOn(netid)
+    self.assertEquals(1, len(packets))
+    toobig = Packets.ICMPPacketTooBig(6, intermediate, srcaddr, packets[0])[1]
+    self.ReceivePacketOn(netid, toobig)
+    self.assertEquals(1280, self.GetSocketMTU(s))
 
 
 if __name__ == "__main__":
