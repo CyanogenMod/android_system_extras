@@ -18,6 +18,7 @@ import iproute
 import net_test
 import sendmsg
 
+
 IFF_TUN = 1
 IFF_TAP = 2
 IFF_NO_PI = 0x1000

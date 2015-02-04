@@ -471,6 +471,8 @@ class IPRoute(object):
                   RTM_DELADDR, address, prefixlen, 0, 0, ifindex)
 
   def GetAddress(self, address, ifindex=0):
+    """Returns an (ifaddrmsg, attributes) tuple for the requested address.
+    """
     if ":" not in address:
       # The address is likely an IPv4 address.  RTM_GETADDR without the
       # NLM_F_DUMP flag is not supported by the kernel.  We do not currently
@@ -480,7 +482,7 @@ class IPRoute(object):
     data = self._Recv()
     if NLMsgHdr(data).type == NLMSG_ERROR:
       self._ParseAck(data)
-    return self._ParseNLMsg(data, IfAddrMsg)
+    return self._ParseNLMsg(data, IfAddrMsg)[0]
 
   def _Route(self, version, command, table, dest, prefixlen, nexthop, dev,
              mark, uid):
