@@ -295,7 +295,7 @@ class MultiNetworkTest(net_test.NetworkTest):
     # Give ourselves a predictable MAC address.
     net_test.SetInterfaceHWAddr(iface, cls.MyMacAddress(netid))
     # Disable DAD so we don't have to wait for it.
-    open("/proc/sys/net/ipv6/conf/%s/dad_transmits" % iface, "w").write("0")
+    cls.SetSysctl("/proc/sys/net/ipv6/conf/%s/accept_dad" % iface, 0)
     net_test.SetInterfaceUp(iface)
     net_test.SetNonBlocking(f)
     return f
@@ -401,7 +401,10 @@ class MultiNetworkTest(net_test.NetworkTest):
   @classmethod
   def _RestoreSysctls(cls):
     for sysctl, value in cls.saved_sysctls.iteritems():
-      open(sysctl, "w").write(value)
+      try:
+        open(sysctl, "w").write(value)
+      except IOError:
+        pass
 
   @classmethod
   def _ICMPRatelimitFilename(cls, version):
@@ -990,11 +993,6 @@ class PMTUTest(MultiNetworkTest):
     self.assertEquals(1500, self.GetSocketMTU(s))
 
     self.ClearTunQueues()
-    # XXX why is this needed? It seems that if this is not there, the packet
-    # won't even make it to icmpv6_rcv. Perhaps the local delivery route for
-    # our IP address has not been set up yet? But why should that take 0.5s?
-    # DAD is disabled, so we're not waiting for DAD...
-    time.sleep(0.5)
     s.send(1400 * "a")
     packets = self.ReadAllPacketsOn(netid)
     self.assertEquals(1, len(packets))
