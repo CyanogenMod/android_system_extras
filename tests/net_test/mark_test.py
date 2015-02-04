@@ -459,6 +459,9 @@ class MultiNetworkTest(net_test.NetworkTest):
   def GetSocketMark(self, s):
     return s.getsockopt(SOL_SOCKET, net_test.SO_MARK)
 
+  def ClearSocketMark(self, s):
+    self.SetSocketMark(s, 0)
+
   def BindToDevice(self, s, iface):
     if not iface:
       iface = ""
@@ -643,17 +646,19 @@ class MarkTest(MultiNetworkTest):
   def _GetProtocolFamily(self, version):
     return {4: AF_INET, 6: AF_INET6}[version]
 
-  def BuildSocket(self, version, constructor, mark, uid):
+  def BuildSocket(self, version, constructor, mark, uid, oif):
     with RunAsUid(uid):
       family = self._GetProtocolFamily(version)
       s = constructor(family)
     if mark:
       self.SetSocketMark(s, mark)
+    if oif:
+      self.BindToDevice(s, oif)
     return s
 
-  def CheckPingPacket(self, version, mark, uid, dstaddr, packet,
+  def CheckPingPacket(self, version, mark, uid, oif, dstaddr, packet,
                       expected_netid):
-    s = self.BuildSocket(version, net_test.PingSocket, mark, uid)
+    s = self.BuildSocket(version, net_test.PingSocket, mark, uid, oif)
 
     myaddr = self.MyAddress(version, expected_netid)
     s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
@@ -662,14 +667,14 @@ class MarkTest(MultiNetworkTest):
 
     desc, expected = Packets.ICMPEcho(version, myaddr, dstaddr)
 
-    self.ClearTunQueues()
     s.sendto(packet + PING_PAYLOAD, (dstaddr, 19321))
     msg = "IPv%d ping: expected %s on %s" % (
         version, desc, self.GetInterfaceName(expected_netid))
     self.ExpectPacketOn(expected_netid, msg, expected)
 
-  def CheckTCPSYNPacket(self, version, mark, uid, dstaddr, expected_netid):
-    s = self.BuildSocket(version, net_test.TCPSocket, mark, uid)
+
+  def CheckTCPSYNPacket(self, version, mark, uid, oif, dstaddr, expected_netid):
+    s = self.BuildSocket(version, net_test.TCPSocket, mark, uid, oif)
 
     if version == 6 and dstaddr.startswith("::ffff"):
       version = 4
@@ -677,7 +682,6 @@ class MarkTest(MultiNetworkTest):
     desc, expected = Packets.SYN(53, version, myaddr, dstaddr,
                                  sport=None, seq=None)
 
-    self.ClearTunQueues()
     # Non-blocking TCP connects always return EINPROGRESS.
     self.assertRaisesErrno(errno.EINPROGRESS, s.connect, (dstaddr, 53))
     msg = "IPv%s TCP connect: expected %s on %s" % (
@@ -685,8 +689,8 @@ class MarkTest(MultiNetworkTest):
     self.ExpectPacketOn(expected_netid, msg, expected)
     s.close()
 
-  def CheckUDPPacket(self, version, mark, uid, dstaddr, expected_netid):
-    s = self.BuildSocket(version, net_test.UDPSocket, mark, uid)
+  def CheckUDPPacket(self, version, mark, uid, oif, dstaddr, expected_netid):
+    s = self.BuildSocket(version, net_test.UDPSocket, mark, uid, oif)
 
     if version == 6 and dstaddr.startswith("::ffff"):
       version = 4
@@ -695,53 +699,55 @@ class MarkTest(MultiNetworkTest):
     msg = "IPv%s UDP %%s: expected %s on %s" % (
         version, desc, self.GetInterfaceName(expected_netid))
 
-    self.ClearTunQueues()
     s.sendto(UDP_PAYLOAD, (dstaddr, 53))
     self.ExpectPacketOn(expected_netid, msg % "sendto", expected)
 
-    self.ClearTunQueues()
     s.connect((dstaddr, 53))
     s.send(UDP_PAYLOAD)
     self.ExpectPacketOn(expected_netid, msg % "connect/send", expected)
     s.close()
 
-  def testMarkRouting(self):
-    """Checks that socket marking selects the right outgoing interface."""
+  def CheckOutgoingPackets(self, mode):
+    v4addr = self.IPV4_ADDR
+    v6addr = self.IPV6_ADDR
+
     for _ in xrange(self.ITERATIONS):
       for netid in self.tuns:
-        self.CheckPingPacket(4, netid, 0, self.IPV4_ADDR, self.IPV4_PING, netid)
-        self.CheckPingPacket(6, netid, 0, self.IPV6_ADDR, self.IPV6_PING, netid)
 
-      for netid in self.tuns:
-        self.CheckTCPSYNPacket(4, netid, 0, self.IPV4_ADDR, netid)
-        self.CheckTCPSYNPacket(6, netid, 0, self.IPV6_ADDR, netid)
-        self.CheckTCPSYNPacket(6, netid, 0, "::ffff:" + self.IPV4_ADDR, netid)
+        if mode == "mark":
+          mark, uid, oif = (netid, 0, 0)
+        elif mode == "uid":
+          mark, uid, oif = (0, self.UidForNetid(netid), 0)
+        elif mode == "oif":
+          mark, uid, oif = (0, 0, self.GetInterfaceName(netid))
+        else:
+          raise ValueError("Unkown routing mode %s" % mode)
 
-      for netid in self.tuns:
-        self.CheckUDPPacket(4, netid, 0, self.IPV4_ADDR, netid)
-        self.CheckUDPPacket(6, netid, 0, self.IPV6_ADDR, netid)
-        self.CheckUDPPacket(6, netid, 0, "::ffff:" + self.IPV4_ADDR, netid)
+        self.CheckPingPacket(4, mark, uid, oif, v4addr, self.IPV4_PING, netid)
+        # Kernel bug.
+        if mode != "oif":
+          self.CheckPingPacket(6, mark, uid, oif, v6addr, self.IPV6_PING, netid)
+
+        self.CheckTCPSYNPacket(4, mark, uid, oif, v4addr, netid)
+        self.CheckTCPSYNPacket(6, mark, uid, oif, v6addr, netid)
+        self.CheckTCPSYNPacket(6, mark, uid, oif, "::ffff:" + v4addr, netid)
+
+        self.CheckUDPPacket(4, mark, uid, oif, v4addr, netid)
+        self.CheckUDPPacket(6, mark, uid, oif, v6addr, netid)
+        self.CheckUDPPacket(6, mark, uid, oif, "::ffff:" + v4addr, netid)
+
+  def testMarkRouting(self):
+    """Checks that socket marking selects the right outgoing interface."""
+    self.CheckOutgoingPackets("mark")
 
   @unittest.skipUnless(HAVE_EXPERIMENTAL_UID_ROUTING, "no UID routing")
   def testUidRouting(self):
     """Checks that UID routing selects the right outgoing interface."""
-    for _ in xrange(self.ITERATIONS):
-      for netid in self.tuns:
-        uid = self.UidForNetid(netid)
-        self.CheckPingPacket(4, 0, uid, self.IPV4_ADDR, self.IPV4_PING, netid)
-        self.CheckPingPacket(6, 0, uid, self.IPV6_ADDR, self.IPV6_PING, netid)
+    self.CheckOutgoingPackets("uid")
 
-      for netid in self.tuns:
-        uid = self.UidForNetid(netid)
-        self.CheckTCPSYNPacket(4, 0, uid, self.IPV4_ADDR, netid)
-        self.CheckTCPSYNPacket(6, 0, uid, self.IPV6_ADDR, netid)
-        self.CheckTCPSYNPacket(6, 0, uid, "::ffff:" + self.IPV4_ADDR, netid)
-
-      for netid in self.tuns:
-        uid = self.UidForNetid(netid)
-        self.CheckUDPPacket(4, 0, uid, self.IPV4_ADDR, netid)
-        self.CheckUDPPacket(6, 0, uid, self.IPV6_ADDR, netid)
-        self.CheckUDPPacket(6, 0, uid, "::ffff:" + self.IPV4_ADDR, netid)
+  def testOifRouting(self):
+    """Checks that oif routing selects the right outgoing interface."""
+    self.CheckOutgoingPackets("oif")
 
   def CheckReflection(self, version, packet_generator, reply_generator,
                       mark_behaviour, callback=None):
@@ -813,7 +819,6 @@ class MarkTest(MultiNetworkTest):
                 desc, iif, dest_ip_iface, mark_behaviour, sysctl_value,
                 bound_dev)
             sysctl_function(sysctl_value)
-            self.ClearTunQueues()
 
             # Cause the kernel to receive packet on iif_netid.
             self.ReceivePacketOn(iif_netid, packet)
@@ -923,6 +928,7 @@ class RATest(MultiNetworkTest):
     self.assertFalse(os.path.isfile(
         "/proc/sys/net/ipv6/route/autoconf_table_offset"))
 
+  @unittest.skipUnless(HAVE_AUTOCONF_TABLE, "no support for per-table autoconf")
   def testPurgeDefaultRouters(self):
 
     def CheckIPv6Connectivity(expect_connectivity):
@@ -992,7 +998,6 @@ class PMTUTest(MultiNetworkTest):
     s.connect((dstaddr, 1234))
     self.assertEquals(1500, self.GetSocketMTU(s))
 
-    self.ClearTunQueues()
     s.send(1400 * "a")
     packets = self.ReadAllPacketsOn(netid)
     self.assertEquals(1, len(packets))
