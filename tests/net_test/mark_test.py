@@ -42,7 +42,8 @@ IPV6_FLOWINFO = 11
 IPV6_PKTINFO = 50
 IPV6_HOPLIMIT = 52  # Different from IPV6_UNICAST_HOPS, this is cmsg only.
 
-# Data structures
+# Data structures.
+# These aren't constants, they're classes. So, pylint: disable=invalid-name
 InPktinfo = cstruct.Struct("in_pktinfo", "@i4s4s", "ifindex spec_dst addr")
 In6Pktinfo = cstruct.Struct("in6_pktinfo", "@16si", "addr ifindex")
 
@@ -291,6 +292,18 @@ class RunAsUid(object):
   def __exit__(self, unused_type, unused_value, unused_traceback):
     if self.uid:
       os.seteuid(self.saved_uid)
+
+
+def MakePktInfo(version, addr, ifindex):
+  family = {4: AF_INET, 6: AF_INET6}[version]
+  if not addr:
+    addr = {4: "0.0.0.0", 6: "::"}[version]
+  if addr:
+    addr = inet_pton(family, addr)
+  if version == 6:
+    return In6Pktinfo((addr, ifindex)).Pack()
+  else:
+    return InPktinfo((ifindex, addr, "\x00" * 4)).Pack()
 
 
 class MultiNetworkTest(net_test.NetworkTest):
@@ -591,6 +604,15 @@ class MultiNetworkTest(net_test.NetworkTest):
       self.SelectInterface(s, netid, routing_mode)
 
     return s
+
+  def SendOnNetid(self, version, s, dstaddr, dstport, netid, payload, cmsgs):
+    if netid is not None:
+      pktinfo = MakePktInfo(version, None, self.ifindices[netid])
+      cmsg_level, cmsg_name = {
+          4: (net_test.SOL_IP, IP_PKTINFO),
+          6: (net_test.SOL_IPV6, IPV6_PKTINFO)}[version]
+      cmsgs.append((cmsg_level, cmsg_name, pktinfo))
+    sendmsg.Sendmsg(s, (dstaddr, dstport), payload, cmsgs, sendmsg.MSG_CONFIRM)
 
   def ReceiveEtherPacketOn(self, netid, packet):
     posix.write(self.tuns[netid].fileno(), str(packet))
@@ -972,15 +994,6 @@ class OutgoingTest(MultiNetworkTest):
     self.CheckRemarking(6, False)
     self.CheckRemarking(6, True)
 
-  def _MakePktInfo(self, version, addr, ifindex):
-    version = 6 if ":" in addr else 4
-    family = {4: AF_INET, 6: AF_INET6}[version]
-    addr = inet_pton(family, addr)
-    if version == 6:
-      return In6Pktinfo((addr, ifindex)).Pack()
-    else:
-      return InPktinfo((ifindex, addr, "\x00" * 4)).Pack()
-
   def testIPv6StickyPktinfo(self):
     for _ in xrange(self.ITERATIONS):
       for netid in self.tuns:
@@ -1001,7 +1014,7 @@ class OutgoingTest(MultiNetworkTest):
         s.setsockopt(net_test.SOL_IPV6, IPV6_DSTOPTS, dstopts)
         s.setsockopt(net_test.SOL_IPV6, IPV6_UNICAST_HOPS, 255)
 
-        pktinfo = self._MakePktInfo(6, "::", self.ifindices[netid])
+        pktinfo = MakePktInfo(6, None, self.ifindices[netid])
 
         # Set the sticky pktinfo option.
         s.setsockopt(net_test.SOL_IPV6, IPV6_PKTINFO, pktinfo)
@@ -1029,33 +1042,28 @@ class OutgoingTest(MultiNetworkTest):
         family = self.GetProtocolFamily(version)
         s = net_test.UDPSocket(family)
 
-        srcaddr = self.MyAddress(version, netid)
-        dstaddr = self.GetRemoteAddress(version)
-
         if version == 6:
           # Create a flowlabel so we can use it.
           net_test.SetFlowLabel(s, net_test.IPV6_ADDR, 0xbeef)
 
-          # Specify an interface and some arbitrary options.
-          pktinfo = self._MakePktInfo(6, "::", self.ifindices[netid])
-          cmsg_opts = [
-              (net_test.IPPROTO_IPV6, IPV6_HOPLIMIT, 39),
-              (net_test.IPPROTO_IPV6, IPV6_TCLASS, 0x83),
-              (net_test.IPPROTO_IPV6, IPV6_FLOWINFO, int(htonl(0xbeef))),
-              (net_test.IPPROTO_IPV6, IPV6_PKTINFO, pktinfo)
+          # Specify some arbitrary options.
+          cmsgs = [
+              (net_test.SOL_IPV6, IPV6_HOPLIMIT, 39),
+              (net_test.SOL_IPV6, IPV6_TCLASS, 0x83),
+              (net_test.SOL_IPV6, IPV6_FLOWINFO, int(htonl(0xbeef))),
           ]
         else:
-          pktinfo = self._MakePktInfo(4, "0.0.0.0", self.ifindices[netid])
-          cmsg_opts = [
-              (net_test.IPPROTO_IP, IP_TTL, 39),
-              (net_test.IPPROTO_IP, IP_TOS, 0x83),
-              (net_test.IPPROTO_IP, IP_PKTINFO, pktinfo),
-          ]
+          # Support for setting IPv4 TOS and TTL via cmsg only appeared in 3.13.
+          cmsgs = []
+          s.setsockopt(net_test.SOL_IP, IP_TTL, 39)
+          s.setsockopt(net_test.SOL_IP, IP_TOS, 0x83)
 
-        sendmsg.Sendmsg(s, (dstaddr, 53), UDP_PAYLOAD, cmsg_opts,
-                        sendmsg.MSG_CONFIRM)
+        dstaddr = self.GetRemoteAddress(version)
+        self.SendOnNetid(version, s, dstaddr, 53, netid, UDP_PAYLOAD, cmsgs)
 
         sport = s.getsockname()[1]
+        srcaddr = self.MyAddress(version, netid)
+
         desc, expected = Packets.UDPWithOptions(version, srcaddr, dstaddr,
                                                 sport=sport)
 
