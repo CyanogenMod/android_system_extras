@@ -4,8 +4,8 @@
 
 # pylint: disable=g-bad-todo
 
-import os
 import errno
+import os
 import socket
 import struct
 
