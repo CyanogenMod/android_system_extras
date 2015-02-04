@@ -431,7 +431,6 @@ class MultiNetworkTest(net_test.NetworkTest):
   @classmethod
   def SendRA(cls, netid, retranstimer=None):
     validity = 300                 # seconds
-    validity_ms = validity * 1000  # milliseconds
     macaddr = cls.RouterMacAddress(netid)
     lladdr = cls._RouterAddress(netid, 6)
 
@@ -1464,6 +1463,13 @@ class PMTUTest(InboundMarkingTest):
       s.setsockopt(net_test.SOL_IPV6, net_test.IPV6_RECVERR, 1)
 
   def CheckPMTU(self, version, use_connect, modes):
+
+    def SendBigPacket(version, s, dstaddr, netid, payload):
+      if use_connect:
+        s.send(payload)
+      else:
+        self.SendOnNetid(version, s, dstaddr, 1234, netid, payload, [])
+
     for netid in self.tuns:
       for mode in modes:
         s = self.BuildSocket(version, net_test.UDPSocket, netid, mode)
@@ -1481,14 +1487,8 @@ class PMTUTest(InboundMarkingTest):
 
         payload = self.PAYLOAD_SIZE * "a"
 
-        def SendBigPacket():
-          if use_connect:
-            s.send(payload)
-          else:
-            self.SendOnNetid(version, s, dstaddr, 1234, netid, payload, [])
-
         # Send a packet and receive a packet too big.
-        SendBigPacket()
+        SendBigPacket(version, s, dstaddr, netid, payload)
         packets = self.ReadAllPacketsOn(netid)
         self.assertEquals(1, len(packets))
         _, toobig = Packets.ICMPPacketTooBig(version, intermediate, srcaddr,
@@ -1496,7 +1496,9 @@ class PMTUTest(InboundMarkingTest):
         self.ReceivePacketOn(netid, toobig)
 
         # Check that another send on the same socket returns EMSGSIZE.
-        self.assertRaisesErrno(errno.EMSGSIZE, SendBigPacket)
+        self.assertRaisesErrno(
+            errno.EMSGSIZE,
+            SendBigPacket, version, s, dstaddr, netid, payload)
 
         # If this is a connected socket, make sure the socket MTU was set.
         # Note that in IPv4 this only started working in Linux 3.6!

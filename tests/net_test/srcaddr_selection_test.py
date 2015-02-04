@@ -46,17 +46,15 @@ class IPv6SourceAddressSelectionTest(mark_test.MultiNetworkTest):
 
   def assertAddressHasExpectedAttributes(
       self, address, expected_ifindex, expected_flags):
-    (ifa_msg, attributes) = self.iproute.GetAddress(address)
-    self.assertEquals(AF_INET6 if ":" in address else AF_INET,
-                      ifa_msg.family)
+    ifa_msg = self.iproute.GetAddress(address)[0]
+    self.assertEquals(AF_INET6 if ":" in address else AF_INET, ifa_msg.family)
     self.assertEquals(64, ifa_msg.prefixlen)
     self.assertEquals(iproute.RT_SCOPE_UNIVERSE, ifa_msg.scope)
     self.assertEquals(expected_ifindex, ifa_msg.index)
-    self.assertEquals(address, attributes["IFA_ADDRESS"])
     self.assertEquals(expected_flags, ifa_msg.flags & expected_flags)
 
   def AddressIsTentative(self, address):
-    ifa_msg, _ = self.iproute.GetAddress(address)
+    ifa_msg = self.iproute.GetAddress(address)[0]
     return ifa_msg.flags & iproute.IFA_F_TENTATIVE
 
   def BindToAddress(self, address):

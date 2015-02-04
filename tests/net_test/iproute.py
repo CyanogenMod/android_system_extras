@@ -506,8 +506,7 @@ class IPRoute(object):
                   RTM_DELADDR, address, prefixlen, 0, 0, ifindex)
 
   def GetAddress(self, address, ifindex=0):
-    """Returns an (ifaddrmsg, attributes) tuple for the requested address.
-    """
+    """Returns an ifaddrmsg for the requested address."""
     if ":" not in address:
       # The address is likely an IPv4 address.  RTM_GETADDR without the
       # NLM_F_DUMP flag is not supported by the kernel.  We do not currently
