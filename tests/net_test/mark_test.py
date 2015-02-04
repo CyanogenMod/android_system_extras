@@ -1646,7 +1646,7 @@ class RulesTest(net_test.NetworkTest):
       self.iproute.FwmarkRule(version, False, 300, 302,
                               priority=self.RULE_PRIORITY)
       # Check that the rule pointing at table 301 is still around.
-      attributes = [a for _, a in self.iproute.DumpRules(4)
+      attributes = [a for _, a in self.iproute.DumpRules(version)
                     if a.get("FRA_PRIORITY", 0) == self.RULE_PRIORITY]
       self.assertEquals(1, len(attributes))
       self.assertEquals(301, attributes[0]["FRA_TABLE"])
