@@ -1128,18 +1128,9 @@ class PMTUTest(MultiNetworkTest):
     else:
       return s.getsockopt(net_test.SOL_IP, self.IP_MTU)
 
-  def SetDontFragment(self, version, s):
-    if version == 6:
-      s.setsockopt(net_test.SOL_IPV6, self.IPV6_DONTFRAG, 1)
-      s.setsockopt(net_test.SOL_IPV6, net_test.IPV6_RECVERR, 1)
-    else:
-      s.setsockopt(net_test.SOL_IP, self.IP_MTU_DISCOVER, self.IP_PMTUDISC_DO)
-      s.setsockopt(net_test.SOL_IP, net_test.IP_RECVERR, 1)
-
   def CheckPMTU(self, version):
     for netid in self.tuns:
       s = net_test.UDPSocket(self.GetProtocolFamily(version))
-      self.SetDontFragment(version, s)
 
       srcaddr = self.MyAddress(version, netid)
       dst_prefix, intermediate = {
