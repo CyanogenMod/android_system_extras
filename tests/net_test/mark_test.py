@@ -482,6 +482,9 @@ class MultiNetworkTest(net_test.NetworkTest):
       cls.SendRA(netid)
       cls._RunSetupCommands(netid, True)
 
+    for version in [4, 6]:
+      cls.iproute.UnreachableRule(version, True, 1000)
+
     # Uncomment to look around at interface and rule configuration while
     # running in the background. (Once the test finishes running, all the
     # interfaces and rules are gone.)
@@ -489,6 +492,12 @@ class MultiNetworkTest(net_test.NetworkTest):
 
   @classmethod
   def tearDownClass(cls):
+    for version in [4, 6]:
+      try:
+        cls.iproute.UnreachableRule(version, False, 1000)
+      except IOError:
+        pass
+
     for netid in cls.tuns:
       cls._RunSetupCommands(netid, False)
       cls.tuns[netid].close()
