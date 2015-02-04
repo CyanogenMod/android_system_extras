@@ -96,6 +96,8 @@ HAVE_TCP_MARK_ACCEPT = os.path.isfile(TCP_MARK_ACCEPT_SYSCTL)
 
 HAVE_EXPERIMENTAL_UID_ROUTING = HaveUidRouting()
 
+LINUX_VERSION = LinuxVersion()
+
 
 class ConfigurationError(AssertionError):
   pass
@@ -265,7 +267,9 @@ class Packets(object):
     icmp = {4: icmpv4_reply, 6: scapy.ICMPv6EchoReply}[version]
     packet = (ip(src=srcaddr, dst=dstaddr) /
               icmp(id=PING_IDENT, seq=PING_SEQ) / PING_PAYLOAD)
-    cls._SetPacketTos(packet, PING_TOS)
+    # IPv6 only started copying the tclass to echo replies in 3.14.
+    if version == 4 or LINUX_VERSION >= (3, 14):
+      cls._SetPacketTos(packet, PING_TOS)
     return ("ICMPv%d echo reply" % version, packet)
 
   @classmethod
@@ -1474,7 +1478,7 @@ class PMTUTest(InboundMarkingTest):
 
         # If this is a connected socket, make sure the socket MTU was set.
         # Note that in IPv4 this only started working in Linux 3.6!
-        if use_connect and (version == 6 or LinuxVersion() >= (3, 6)):
+        if use_connect and (version == 6 or LINUX_VERSION >= (3, 6)):
           self.assertEquals(1280, self.GetSocketMTU(version, s))
 
         s.close()
