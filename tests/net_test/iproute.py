@@ -8,6 +8,7 @@ import errno
 import os
 import socket
 import struct
+import sys
 
 import cstruct
 
@@ -75,7 +76,7 @@ RTA_METRICS = 8
 RTA_CACHEINFO = 12
 RTA_TABLE = 15
 RTA_MARK = 16
-EXPERIMENTAL_RTA_UID = 18
+RTA_EXPERIMENTAL_UID = 18
 
 # Route metric attributes.
 RTAX_MTU = 2
@@ -85,7 +86,7 @@ RTMsg = cstruct.Struct(
     "RTMsg", "=BBBBBBBBI",
     "family dst_len src_len tos table protocol scope type flags")
 RTACacheinfo = cstruct.Struct(
-    "RTACacheinfo", "=IIiII", "clntref lastuse expires error used")
+    "RTACacheinfo", "=IIiiI", "clntref lastuse expires error used")
 
 
 ### Interface address constants. See include/uapi/linux/if_addr.h.
@@ -121,8 +122,8 @@ FRA_PRIORITY = 6
 FRA_FWMARK = 10
 FRA_TABLE = 15
 FRA_OIFNAME = 17
-EXPERIMENTAL_FRA_UID_START = 18
-EXPERIMENTAL_FRA_UID_END = 19
+FRA_EXPERIMENTAL_UID_START = 18
+FRA_EXPERIMENTAL_UID_END = 19
 
 
 def CommandVerb(command):
@@ -162,6 +163,15 @@ class IPRoute(object):
   def _NlAttrIPAddress(self, nla_type, family, address):
     return self._NlAttr(nla_type, socket.inet_pton(family, address))
 
+  def _GetConstantName(self, value, prefix):
+    thismodule = sys.modules[__name__]
+    for name in dir(thismodule):
+      if (name.startswith(prefix) and
+          name.isupper() and
+          getattr(thismodule, name) == value):
+        return name
+    return value
+
   def _Decode(self, command, family, nla_type, nla_data):
     """Decodes netlink attributes to Python types.
 
@@ -183,31 +193,45 @@ class IPRoute(object):
       nla_data: A byte string, the netlink attribute data.
 
     Returns:
-      A Python object. Might be an integer, a string, a raw byte string, a
-      nested list of attributes (e.g., for RTA_METRICS), a cstruct.Struct
-      (e.g., RTACacheinfo), etc.
+      A tuple (name, data):
+       - name is a string (e.g., "FRA_PRIORITY") if we understood the attribute,
+         or an integer if we didn't.
+       - data can be an integer, a string, a nested dict of attributes as
+         returned by _ParseAttributes (e.g., for RTA_METRICS), a cstruct.Struct
+         (e.g., RTACacheinfo), etc. If we didn't understand the attribute, it
+         will be the raw byte string.
     """
     if command == -RTA_METRICS:
       if nla_type == RTAX_MTU:
-        return struct.unpack("=I", nla_data)[0]
-    elif CommandSubject(command) == "RULE":
-      if nla_type in [FRA_PRIORITY, FRA_FWMARK, FRA_TABLE,
-                      EXPERIMENTAL_FRA_UID_START, EXPERIMENTAL_FRA_UID_END]:
-        return struct.unpack("=I", nla_data)[0]
-      elif nla_type in [FRA_OIFNAME]:
-        return nla_data.strip("\x00")
-    elif CommandSubject(command) == "ROUTE":
-      if nla_type in [RTA_DST, RTA_SRC, RTA_GATEWAY, RTA_PREFSRC]:
-        return socket.inet_ntop(family, nla_data)
-      elif nla_type in [RTA_OIF, RTA_PRIORITY, RTA_TABLE, EXPERIMENTAL_RTA_UID]:
-        return struct.unpack("=I", nla_data)[0]
-      elif nla_type == RTA_METRICS:
-        return self._ParseAttributes(-RTA_METRICS, family, nla_data)
-      elif nla_type == RTA_CACHEINFO:
-        return RTACacheinfo(nla_data)
+        return ("RTAX_MTU", struct.unpack("=I", nla_data)[0])
 
-    # Don't know what this is.
-    return nla_data
+    if command == -RTA_METRICS:
+      name = self._GetConstantName(nla_type, "RTAX_")
+    elif CommandSubject(command) == "RULE":
+      name = self._GetConstantName(nla_type, "FRA_")
+    elif CommandSubject(command) == "ROUTE":
+      name = self._GetConstantName(nla_type, "RTA_")
+    else:
+      # Don't know what this is. Leave it as an integer.
+      name = nla_type
+
+    if name in ["FRA_PRIORITY", "FRA_FWMARK", "FRA_TABLE",
+                "FRA_EXPERIMENTAL_UID_START", "FRA_EXPERIMENTAL_UID_END",
+                "RTA_OIF", "RTA_PRIORITY", "RTA_TABLE", "RTA_MARK"]:
+      data = struct.unpack("=I", nla_data)[0]
+    elif name in ["RTA_DST", "RTA_SRC", "RTA_GATEWAY", "RTA_PREFSRC",
+                  "RTA_EXPERIMENTAL_UID"]:
+      data = socket.inet_ntop(family, nla_data)
+    elif name in ["FRA_IIFNAME", "FRA_OIFNAME"]:
+      data = nla_data.strip("\x00")
+    elif name == "RTA_METRICS":
+      data = self._ParseAttributes(-RTA_METRICS, family, nla_data)
+    elif name == "RTA_CACHEINFO":
+      data = RTACacheinfo(nla_data)
+    else:
+      data = nla_data
+
+    return name, data
 
   def _ParseAttributes(self, command, family, data):
     """Parses and decodes netlink attributes.
@@ -237,13 +261,13 @@ class IPRoute(object):
       nla_data, data = data[:datalen], data[padded_len:]
 
       # If it's an attribute we know about, try to decode it.
-      nla_data = self._Decode(command, family, nla.nla_type, nla_data)
+      nla_name, nla_data = self._Decode(command, family, nla.nla_type, nla_data)
 
       # We only support unique attributes for now.
-      if nla.nla_type in attributes:
-        raise ValueError("Duplicate attribute %d" % nla.nla_type)
+      if nla_name in attributes:
+        raise ValueError("Duplicate attribute %d" % nla_name)
 
-      attributes[nla.nla_type] = nla_data
+      attributes[nla_name] = nla_data
       self._Debug("      %s" % str((nla, nla_data)))
 
     return attributes
@@ -359,8 +383,8 @@ class IPRoute(object):
     return self._Rule(version, is_add, table, nlattr, priority)
 
   def UidRangeRule(self, version, is_add, start, end, table, priority=16383):
-    nlattr = (self._NlAttrU32(EXPERIMENTAL_FRA_UID_START, start) +
-              self._NlAttrU32(EXPERIMENTAL_FRA_UID_END, end))
+    nlattr = (self._NlAttrU32(FRA_EXPERIMENTAL_UID_START, start) +
+              self._NlAttrU32(FRA_EXPERIMENTAL_UID_END, end))
     return self._Rule(version, is_add, table, nlattr, priority)
 
   def UnreachableRule(self, version, is_add, priority):
@@ -453,7 +477,7 @@ class IPRoute(object):
     if mark is not None:
       rtmsg += self._NlAttrU32(RTA_MARK, mark)
     if uid is not None:
-      rtmsg += self._NlAttrU32(EXPERIMENTAL_RTA_UID, uid)
+      rtmsg += self._NlAttrU32(RTA_EXPERIMENTAL_UID, uid)
     self._SendNlRequest(command, rtmsg)
 
   def AddRoute(self, version, table, dest, prefixlen, nexthop, dev):
