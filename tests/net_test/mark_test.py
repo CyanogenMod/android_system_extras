@@ -1611,5 +1611,38 @@ class UidRoutingTest(MultiNetworkTest):
   def testIPv6RouteGet(self):
     self.CheckGetRoute(6, net_test.IPV6_ADDR)
 
+
+class RulesTest(net_test.NetworkTest):
+
+  RULE_PRIORITY = 99999
+
+  def setUp(self):
+    self.iproute = iproute.IPRoute()
+    for version in [4, 6]:
+      self.iproute.DeleteRulesAtPriority(version, self.RULE_PRIORITY)
+
+  def tearDown(self):
+    for version in [4, 6]:
+      self.iproute.DeleteRulesAtPriority(version, self.RULE_PRIORITY)
+
+  def testRuleDeletionMatchesTable(self):
+    for version in [4, 6]:
+      # Add rules with mark 300 pointing at tables 301 and 302.
+      # This checks for a kernel bug where deletion request for tables > 256
+      # ignored the table.
+      self.iproute.FwmarkRule(version, True, 300, 301,
+                              priority=self.RULE_PRIORITY)
+      self.iproute.FwmarkRule(version, True, 300, 302,
+                              priority=self.RULE_PRIORITY)
+      # Delete rule with mark 300 pointing at table 302.
+      self.iproute.FwmarkRule(version, False, 300, 302,
+                              priority=self.RULE_PRIORITY)
+      # Check that the rule pointing at table 301 is still around.
+      attributes = [a for _, a in self.iproute.DumpRules(4)
+                    if a.get(iproute.RTA_PRIORITY, 0) == self.RULE_PRIORITY]
+      self.assertEquals(1, len(attributes))
+      self.assertEquals(301, attributes[0][iproute.RTA_TABLE])
+
+
 if __name__ == "__main__":
   unittest.main()
