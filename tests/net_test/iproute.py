@@ -574,7 +574,8 @@ class IPRoute(object):
 
     ndmsg = NdMsg((family, dev, state, 0, RTN_UNICAST)).Pack()
     ndmsg += self._NlAttrIPAddress(NDA_DST, family, addr)
-    ndmsg += self._NlAttr(NDA_LLADDR, lladdr)
+    if is_add:
+      ndmsg += self._NlAttr(NDA_LLADDR, lladdr)
     command = RTM_NEWNEIGH if is_add else RTM_DELNEIGH
     self._SendNlRequest(command, ndmsg)
 
