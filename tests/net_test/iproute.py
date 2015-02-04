@@ -66,7 +66,8 @@ FRA_PRIORITY = 6
 FRA_FWMARK = 10
 FRA_TABLE = 15
 FRA_OIFNAME = 17
-EXPERIMENTAL_FRA_UID = 18
+EXPERIMENTAL_FRA_UID_START = 18
+EXPERIMENTAL_FRA_UID_END = 19
 
 
 def PaddedLength(length):
@@ -175,8 +176,9 @@ class IPRoute(object):
     nlattr = self._NlAttr(FRA_OIFNAME, oif)
     return self._Rule(version, is_add, table, nlattr, priority)
 
-  def UidRule(self, version, is_add, uid, table, priority=16383):
-    nlattr = (self._NlAttrU32(EXPERIMENTAL_FRA_UID, uid))
+  def UidRangeRule(self, version, is_add, start, end, table, priority=16383):
+    nlattr = (self._NlAttrU32(EXPERIMENTAL_FRA_UID_START, start) +
+              self._NlAttrU32(EXPERIMENTAL_FRA_UID_END, end))
     return self._Rule(version, is_add, table, nlattr, priority)
 
   def DumpRules(self, version):

@@ -34,21 +34,21 @@ UDP_PAYLOAD = "hello"
 def HaveUidRouting():
   result = False
 
-  # Create a rule with the UID selector. If the kernel doesn't understand the
-  # UID selector, it will create a rule with no selectors.
-  iproute.IPRoute().UidRule(6, True, 100, 100)
+  # Create a rule with the UID range selector. If the kernel doesn't understand
+  # the selector, it will create a rule with no selectors.
+  iproute.IPRoute().UidRangeRule(6, True, 1000, 2000, 100)
 
-  # Dump dump all the rules. If we find a rule using the UID selector, then the
-  # kernel supports UID routing.
+  # Dump dump all the rules. If we find a rule using the UID range selector,
+  # then the kernel supports UID range routing.
   rules = iproute.IPRoute().DumpRules(6)
   for unused_rtmsg, attributes in rules:
     for (nla, unused_nla_data) in attributes:
-      if nla.nla_type == iproute.EXPERIMENTAL_FRA_UID:
+      if nla.nla_type == iproute.EXPERIMENTAL_FRA_UID_START:
         result = True
         break
 
   # Delete the rule.
-  iproute.IPRoute().UidRule(6, False, 100, 100)
+  iproute.IPRoute().UidRangeRule(6, False, 1000, 2000, 100)
   return result
 
 
@@ -256,9 +256,19 @@ class MultiNetworkTest(net_test.NetworkTest):
   # Wether to output setup commands.
   DEBUG = False
 
-  @staticmethod
-  def UidForNetid(netid):
-    return 2000 + netid
+  # The size of our UID ranges.
+  UID_RANGE_SIZE = 1000
+
+  @classmethod
+  def UidRangeForNetid(cls, netid):
+    return (
+        cls.UID_RANGE_SIZE * netid,
+        cls.UID_RANGE_SIZE * (netid + 1) - 1
+    )
+
+  @classmethod
+  def UidForNetid(cls, netid):
+    return random.randint(*cls.UidRangeForNetid(netid))
 
   @classmethod
   def _TableForNetid(cls, netid):
@@ -369,10 +379,11 @@ class MultiNetworkTest(net_test.NetworkTest):
 
     for version, iptables in zip([4, 6], ["iptables", "ip6tables"]):
       table = cls._TableForNetid(netid)
-      uid = cls.UidForNetid(netid)
       iface = cls.GetInterfaceName(netid)
       if HAVE_EXPERIMENTAL_UID_ROUTING:
-        cls.iproute.UidRule(version, is_add, uid, table, priority=100)
+        start, end = cls.UidRangeForNetid(netid)
+        cls.iproute.UidRangeRule(version, is_add, start, end, table,
+                                 priority=100)
       cls.iproute.OifRule(version, is_add, iface, table, priority=200)
       cls.iproute.FwmarkRule(version, is_add, netid, table, priority=300)
 
