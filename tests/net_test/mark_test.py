@@ -10,8 +10,10 @@ from socket import *  # pylint: disable=wildcard-import
 import struct
 import time
 import unittest
+
 from scapy import all as scapy
 
+import iproute
 import net_test
 
 DEBUG = False
@@ -226,7 +228,6 @@ class MarkTest(net_test.NetworkTest):
   COMMANDS = [
       "/sbin/%(iptables)s %(append_delete)s INPUT -t mangle -i %(iface)s"
       " -j MARK --set-mark %(netid)d",
-      "ip -%(version)d rule %(add_del)s fwmark %(netid)s lookup %(table)s",
   ]
   ROUTE_COMMANDS = [
       "ip -%(version)d route %(add_del)s table %(table)s"
@@ -242,6 +243,9 @@ class MarkTest(net_test.NetworkTest):
   def _RunSetupCommands(cls, netid, is_add):
     iface = cls._GetInterfaceName(netid)
     for version, iptables in zip([4, 6], ["iptables", "ip6tables"]):
+
+      table = cls._TableForNetid(netid)
+      cls.iproute.FwmarkRule(version, is_add, netid, table)
 
       if version == 6:
         cmds = cls.COMMANDS
@@ -267,7 +271,7 @@ class MarkTest(net_test.NetworkTest):
           "macaddr": cls._RouterMacAddress(netid),
           "netid": netid,
           "router": cls._RouterAddress(netid, version),
-          "table": cls._TableForNetid(netid),
+          "table": table,
           "version": version,
       }).split("\n")
       for cmd in cmds:
@@ -310,6 +314,7 @@ class MarkTest(net_test.NetworkTest):
     # This is per-class setup instead of per-testcase setup because shelling out
     # to ip and iptables is slow, and because routing configuration doesn't
     # change during the test.
+    cls.iproute = iproute.IPRoute()
     cls.tuns = {}
     cls.ifindices = {}
     cls._SetAutoconfTableSysctl(1000)
@@ -651,7 +656,6 @@ class MarkTest(net_test.NetworkTest):
     finally:
       # Stop forcing SYN cookies on all connections.
       open("/proc/sys/net/ipv4/tcp_syncookies", "w").write("1")
-
 
 
 if __name__ == "__main__":

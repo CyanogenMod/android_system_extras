@@ -208,7 +208,7 @@ def GetDefaultRoute(version=6):
 
 
 def GetDefaultRouteInterface():
-  _, iface = GetDefaultRoute()
+  unused_gw, iface = GetDefaultRoute()
   return iface
 
 
