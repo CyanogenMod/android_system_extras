@@ -32,20 +32,15 @@ UDP_PAYLOAD = "hello"
 
 # Check to see if the kernel supports UID routing.
 def HaveUidRouting():
-  result = False
-
   # Create a rule with the UID range selector. If the kernel doesn't understand
   # the selector, it will create a rule with no selectors.
   iproute.IPRoute().UidRangeRule(6, True, 1000, 2000, 100)
 
-  # Dump dump all the rules. If we find a rule using the UID range selector,
-  # then the kernel supports UID range routing.
+  # Dump all the rules. If we find a rule using the UID range selector, then the
+  # kernel supports UID range routing.
   rules = iproute.IPRoute().DumpRules(6)
-  for unused_rtmsg, attributes in rules:
-    for (nla, unused_nla_data) in attributes:
-      if nla.nla_type == iproute.EXPERIMENTAL_FRA_UID_START:
-        result = True
-        break
+  result = any(iproute.EXPERIMENTAL_FRA_UID_START in attrs
+               for rule, attrs in rules)
 
   # Delete the rule.
   iproute.IPRoute().UidRangeRule(6, False, 1000, 2000, 100)
