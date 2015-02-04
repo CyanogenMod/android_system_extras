@@ -166,6 +166,15 @@ class Packets(object):
                       flags=cls.TCP_ACK | cls.TCP_FIN, window=cls.TCP_WINDOW))
 
   @classmethod
+  def GRE(cls, version, srcaddr, dstaddr, proto, packet):
+    if version == 4:
+      ip = scapy.IP(src=srcaddr, dst=dstaddr, proto=net_test.IPPROTO_GRE)
+    else:
+      ip = scapy.IPv6(src=srcaddr, dst=dstaddr, nh=net_test.IPPROTO_GRE)
+    packet = ip / scapy.GRE(proto=proto) / packet
+    return ("GRE packet", packet)
+
+  @classmethod
   def ICMPPortUnreachable(cls, version, srcaddr, dstaddr, packet):
     if version == 4:
       # Linux hardcodes the ToS on ICMP errors to 0xc0 or greater because of
@@ -773,6 +782,25 @@ class MarkTest(MultiNetworkTest):
       self.ExpectPacketOn(netid, msg % "connect/send", expected)
       s.close()
 
+  def CheckRawGrePacket(self, version, netid, routing_mode, dstaddr):
+    s = self.BuildSocket(version, net_test.RawGRESocket, netid, routing_mode)
+
+    inner_version = {4: 6, 6: 4}[version]
+    inner_src = self.MyAddress(inner_version, netid)
+    inner_dst = self._GetRemoteAddress(inner_version)
+    inner = str(Packets.UDP(inner_version, inner_src, inner_dst, sport=None)[1])
+
+    ethertype = {4: net_test.ETH_P_IP, 6: net_test.ETH_P_IPV6}[inner_version]
+    # A GRE header can be as simple as two zero bytes and the ethertype.
+    packet = struct.pack("!i", ethertype) + inner
+    myaddr = self.MyAddress(version, netid)
+
+    s.sendto(packet, (dstaddr, IPPROTO_GRE))
+    desc, expected = Packets.GRE(version, myaddr, dstaddr, ethertype, inner)
+    msg = "Raw IPv%d GRE with inner IPv%d UDP: expected %s on %s" % (
+        version, inner_version, desc, self.GetInterfaceName(netid))
+    self.ExpectPacketOn(netid, msg, expected)
+
   def CheckOutgoingPackets(self, routing_mode):
     v4addr = self.IPV4_ADDR
     v6addr = self.IPV6_ADDR
@@ -793,6 +821,13 @@ class MarkTest(MultiNetworkTest):
         self.CheckUDPPacket(4, netid, routing_mode, v4addr)
         self.CheckUDPPacket(6, netid, routing_mode, v6addr)
         self.CheckUDPPacket(6, netid, routing_mode, v4mapped)
+
+        # Creating raw sockets on non-root UIDs requires properly setting
+        # capabilities, which is hard to do from Python.
+        # IP_UNICAST_IF is not supported on raw sockets.
+        if routing_mode not in ["uid", "ucast_oif"]:
+          self.CheckRawGrePacket(4, netid, routing_mode, v4addr)
+          self.CheckRawGrePacket(6, netid, routing_mode, v6addr)
 
   def testMarkRouting(self):
     """Checks that socket marking selects the right outgoing interface."""
