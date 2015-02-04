@@ -167,6 +167,30 @@ class Ping6Test(net_test.NetworkTest):
     reply = posix.read(fd, 4096)
     self.assertEquals(written, len(reply))
 
+  def testCrossProtocolCrash(self):
+
+    def GetIPv4Unreachable(port):
+      return (scapy.IP(src="192.0.2.1", dst="127.0.0.1") /
+              scapy.ICMP(type=3, code=0) /
+              scapy.IP(src="127.0.0.1", dst="127.0.0.1") /
+              scapy.ICMP(type=8, id=port, seq=1))
+
+    def GetIPv6Unreachable(port):
+      return (scapy.IPv6(src="::1", dst="::1") /
+              scapy.ICMPv6DestUnreach() /
+              scapy.IPv6(src="::1", dst="::1") /
+              scapy.ICMPv6EchoRequest(id=port, seq=1, data="foobarbaz"))
+
+    # An unreachable matching the ID of a socket of the wrong protocol
+    # shouldn't crash. We can only test this using IPv6 unreachables and IPv4
+    # ping sockets, because IPv4 packets sent by scapy.send() on loopback don't
+    # appear to be received by the kernel.)
+    s = net_test.IPv4PingSocket()
+    s.connect(("127.0.0.1", 12345))
+    _, port = s.getsockname()
+    scapy.send(GetIPv6Unreachable(port))
+    # No crash? Good.
+
 
   @unittest.skipUnless(net_test.HAVE_IPV4, "skipping: no IPv4")
   def testIPv4Bind(self):
