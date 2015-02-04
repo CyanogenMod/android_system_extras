@@ -42,6 +42,7 @@ SO_BINDTODEVICE = 25
 
 # Setsockopt values.
 IP_UNICAST_IF = 50
+IPV6_MULTICAST_IF = 17
 IPV6_UNICAST_IF = 76
 
 # Cmsg values.
@@ -63,7 +64,7 @@ def HaveUidRouting():
   # Create a rule with the UID range selector. If the kernel doesn't understand
   # the selector, it will create a rule with no selectors.
   try:
-    iproute.IPRoute().UidRangeRule(6, True, 1000, 2000, 100)
+    iproute.IPRoute().UidRangeRule(6, True, 1000, 2000, 100, 10000)
   except IOError:
     return False
 
@@ -73,7 +74,7 @@ def HaveUidRouting():
   result = any("FRA_UID_START" in attrs for rule, attrs in rules)
 
   # Delete the rule.
-  iproute.IPRoute().UidRangeRule(6, False, 1000, 2000, 100)
+  iproute.IPRoute().UidRangeRule(6, False, 1000, 2000, 100, 10000)
   return result
 
 AUTOCONF_TABLE_SYSCTL = "/proc/sys/net/ipv6/conf/default/accept_ra_rt_table"
@@ -123,6 +124,13 @@ class MultiNetworkBaseTest(net_test.NetworkTest):
 
   # The size of our UID ranges.
   UID_RANGE_SIZE = 1000
+
+  # Rule priorities.
+  PRIORITY_UID = 100
+  PRIORITY_OIF = 200
+  PRIORITY_FWMARK = 300
+  PRIORITY_DEFAULT = 999
+  PRIORITY_UNREACHABLE = 1000
 
   # For convenience.
   IPV4_ADDR = net_test.IPV4_ADDR
@@ -254,9 +262,10 @@ class MultiNetworkBaseTest(net_test.NetworkTest):
       if HAVE_UID_ROUTING:
         start, end = cls.UidRangeForNetid(netid)
         cls.iproute.UidRangeRule(version, is_add, start, end, table,
-                                 priority=100)
-      cls.iproute.OifRule(version, is_add, iface, table, priority=200)
-      cls.iproute.FwmarkRule(version, is_add, netid, table, priority=300)
+                                 cls.PRIORITY_UID)
+      cls.iproute.OifRule(version, is_add, iface, table, cls.PRIORITY_OIF)
+      cls.iproute.FwmarkRule(version, is_add, netid, table,
+                             cls.PRIORITY_FWMARK)
 
       # Configure routing and addressing.
       #
@@ -286,6 +295,17 @@ class MultiNetworkBaseTest(net_test.NetworkTest):
         if version == 4:
           cls.iproute.DelNeighbour(version, router, macaddr, ifindex)
           cls.iproute.DelAddress(cls._MyIPv4Address(netid), 24, ifindex)
+
+  @classmethod
+  def SetDefaultNetwork(cls, netid):
+    table = cls._TableForNetid(netid) if netid else None
+    for version in [4, 6]:
+      is_add = table is not None
+      cls.iproute.DefaultRule(version, is_add, table, cls.PRIORITY_DEFAULT)
+
+  @classmethod
+  def ClearDefaultNetwork(cls):
+    cls.SetDefaultNetwork(None)
 
   @classmethod
   def GetSysctl(cls, sysctl):
