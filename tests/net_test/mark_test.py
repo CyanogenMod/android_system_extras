@@ -66,8 +66,7 @@ def HaveUidRouting():
   # Dump all the rules. If we find a rule using the UID range selector, then the
   # kernel supports UID range routing.
   rules = iproute.IPRoute().DumpRules(6)
-  result = any(iproute.EXPERIMENTAL_FRA_UID_START in attrs
-               for rule, attrs in rules)
+  result = any("FRA_EXPERIMENTAL_UID_START" in attrs for rule, attrs in rules)
 
   # Delete the rule.
   iproute.IPRoute().UidRangeRule(6, False, 1000, 2000, 100)
@@ -1497,8 +1496,8 @@ class PMTUTest(InboundMarkingTest):
         route = routes[0]
         rtmsg, attributes = route
         self.assertEquals(iproute.RTN_UNICAST, rtmsg.type)
-        metrics = attributes[iproute.RTA_METRICS]
-        self.assertEquals(metrics[iproute.RTAX_MTU], 1280)
+        metrics = attributes["RTA_METRICS"]
+        self.assertEquals(metrics["RTAX_MTU"], 1280)
 
   def testIPv4BasicPMTU(self):
     self.CheckPMTU(4, True, ["mark", "oif"])
@@ -1546,7 +1545,7 @@ class UidRoutingTest(MultiNetworkTest):
   def GetRulesAtPriority(self, version, priority):
     rules = self.iproute.DumpRules(version)
     out = [(rule, attributes) for rule, attributes in rules
-           if attributes.get(iproute.FRA_PRIORITY, 0) == priority]
+           if attributes.get("FRA_PRIORITY", 0) == priority]
     return out
 
   def CheckInitialTablesHaveNoUIDs(self, version):
@@ -1554,8 +1553,8 @@ class UidRoutingTest(MultiNetworkTest):
     for priority in [0, 32766, 32767]:
       rules.extend(self.GetRulesAtPriority(version, priority))
     for _, attributes in rules:
-      self.assertNotIn(iproute.EXPERIMENTAL_FRA_UID_START, attributes)
-      self.assertNotIn(iproute.EXPERIMENTAL_FRA_UID_END, attributes)
+      self.assertNotIn("FRA_EXPERIMENTAL_UID_START", attributes)
+      self.assertNotIn("FRA_EXPERIMENTAL_UID_END", attributes)
 
   def testIPv4InitialTablesHaveNoUIDs(self):
     self.CheckInitialTablesHaveNoUIDs(4)
@@ -1578,10 +1577,10 @@ class UidRoutingTest(MultiNetworkTest):
       rules = self.GetRulesAtPriority(version, priority)
       self.assertTrue(rules)
       _, attributes = rules[-1]
-      self.assertEquals(priority, attributes[iproute.FRA_PRIORITY])
-      self.assertEquals(start, attributes[iproute.EXPERIMENTAL_FRA_UID_START])
-      self.assertEquals(end, attributes[iproute.EXPERIMENTAL_FRA_UID_END])
-      self.assertEquals(table, attributes[iproute.FRA_TABLE])
+      self.assertEquals(priority, attributes["FRA_PRIORITY"])
+      self.assertEquals(start, attributes["FRA_EXPERIMENTAL_UID_START"])
+      self.assertEquals(end, attributes["FRA_EXPERIMENTAL_UID_END"])
+      self.assertEquals(table, attributes["FRA_TABLE"])
     finally:
       self.iproute.UidRangeRule(version, False, start, end, table,
                                 priority=priority)
@@ -1648,9 +1647,9 @@ class RulesTest(net_test.NetworkTest):
                               priority=self.RULE_PRIORITY)
       # Check that the rule pointing at table 301 is still around.
       attributes = [a for _, a in self.iproute.DumpRules(4)
-                    if a.get(iproute.RTA_PRIORITY, 0) == self.RULE_PRIORITY]
+                    if a.get("FRA_PRIORITY", 0) == self.RULE_PRIORITY]
       self.assertEquals(1, len(attributes))
-      self.assertEquals(301, attributes[0][iproute.RTA_TABLE])
+      self.assertEquals(301, attributes[0]["FRA_TABLE"])
 
 
 if __name__ == "__main__":
