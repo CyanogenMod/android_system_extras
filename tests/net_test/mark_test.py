@@ -8,7 +8,6 @@ import random
 import re
 from socket import *  # pylint: disable=wildcard-import
 import struct
-import time
 import unittest
 
 from scapy import all as scapy
@@ -16,28 +15,52 @@ from scapy import all as scapy
 import iproute
 import net_test
 
-DEBUG = False
-
 IFF_TUN = 1
 IFF_TAP = 2
 IFF_NO_PI = 0x1000
 TUNSETIFF = 0x400454ca
-
-AUTOCONF_TABLE_SYSCTL = "/proc/sys/net/ipv6/route/autoconf_table_offset"
 
 PING_IDENT = 0xff19
 PING_PAYLOAD = "foobarbaz"
 PING_SEQ = 3
 PING_TOS = 0x83
 
-TCP_SYN = 2
-TCP_RST = 4
-TCP_ACK = 16
-
-TCP_SEQ = 1692871236
-TCP_WINDOW = 14400
-
 UDP_PAYLOAD = "hello"
+
+
+# Check to see if the kernel supports UID routing.
+def HaveUidRouting():
+  result = False
+
+  # Create a rule with the UID selector. If the kernel doesn't understand the
+  # UID selector, it will create a rule with no selectors.
+  iproute.IPRoute().UidRule(6, True, 100, 100)
+
+  # Dump dump all the rules. If we find a rule using the UID selector, then the
+  # kernel supports UID routing.
+  rules = iproute.IPRoute().DumpRules(6)
+  for unused_rtmsg, attributes in rules:
+    for (nla, unused_nla_data) in attributes:
+      if nla.nla_type == iproute.EXPERIMENTAL_FRA_UID:
+        result = True
+        break
+
+  # Delete the rule.
+  iproute.IPRoute().UidRule(6, False, 100, 100)
+  return result
+
+
+AUTOCONF_TABLE_SYSCTL = "/proc/sys/net/ipv6/conf/default/accept_ra_rt_table"
+IPV4_MARK_REFLECT_SYSCTL = "/proc/sys/net/ipv4/fwmark_reflect"
+IPV6_MARK_REFLECT_SYSCTL = "/proc/sys/net/ipv6/fwmark_reflect"
+SYNCOOKIES_SYSCTL = "/proc/sys/net/ipv4/tcp_syncookies"
+TCP_MARK_ACCEPT_SYSCTL = "/proc/sys/net/ipv4/tcp_fwmark_accept"
+
+HAVE_AUTOCONF_TABLE = os.path.isfile(AUTOCONF_TABLE_SYSCTL)
+HAVE_MARK_REFLECT = os.path.isfile(IPV4_MARK_REFLECT_SYSCTL)
+HAVE_TCP_MARK_ACCEPT = os.path.isfile(TCP_MARK_ACCEPT_SYSCTL)
+
+HAVE_EXPERIMENTAL_UID_ROUTING = HaveUidRouting()
 
 
 class ConfigurationError(AssertionError):
@@ -49,6 +72,14 @@ class UnexpectedPacketError(AssertionError):
 
 
 class Packets(object):
+
+  TCP_FIN = 1
+  TCP_SYN = 2
+  TCP_RST = 4
+  TCP_ACK = 16
+
+  TCP_SEQ = 1692871236
+  TCP_WINDOW = 14400
 
   @staticmethod
   def RandomPort():
@@ -86,7 +117,7 @@ class Packets(object):
             ip(src=srcaddr, dst=dstaddr) /
             scapy.TCP(sport=sport, dport=dport,
                       seq=seq, ack=0,
-                      flags=TCP_SYN, window=TCP_WINDOW))
+                      flags=cls.TCP_SYN, window=cls.TCP_WINDOW))
 
   @classmethod
   def RST(cls, version, srcaddr, dstaddr, packet):
@@ -96,7 +127,7 @@ class Packets(object):
             ip(src=srcaddr, dst=dstaddr) /
             scapy.TCP(sport=original.dport, dport=original.sport,
                       ack=original.seq + 1, seq=None,
-                      flags=TCP_RST | TCP_ACK, window=TCP_WINDOW))
+                      flags=cls.TCP_RST | cls.TCP_ACK, window=cls.TCP_WINDOW))
 
   @classmethod
   def SYNACK(cls, version, srcaddr, dstaddr, packet):
@@ -106,18 +137,29 @@ class Packets(object):
             ip(src=srcaddr, dst=dstaddr) /
             scapy.TCP(sport=original.dport, dport=original.sport,
                       ack=original.seq + 1, seq=None,
-                      flags=TCP_SYN | TCP_ACK, window=None))
+                      flags=cls.TCP_SYN | cls.TCP_ACK, window=None))
 
   @classmethod
   def ACK(cls, version, srcaddr, dstaddr, packet):
     ip = cls._GetIpLayer(version)
     original = packet.getlayer("TCP")
-    was_syn = (original.flags & TCP_SYN) != 0
+    was_syn_or_fin = (original.flags & (cls.TCP_SYN | cls.TCP_FIN)) != 0
     return ("TCP ACK",
             ip(src=srcaddr, dst=dstaddr) /
             scapy.TCP(sport=original.dport, dport=original.sport,
-                      ack=original.seq + was_syn, seq=original.ack,
-                      flags=TCP_ACK, window=TCP_WINDOW))
+                      ack=original.seq + was_syn_or_fin, seq=original.ack,
+                      flags=cls.TCP_ACK, window=cls.TCP_WINDOW))
+
+  @classmethod
+  def FIN(cls, version, srcaddr, dstaddr, packet):
+    ip = cls._GetIpLayer(version)
+    original = packet.getlayer("TCP")
+    was_fin = (original.flags & cls.TCP_FIN) != 0
+    return ("TCP FIN",
+            ip(src=srcaddr, dst=dstaddr) /
+            scapy.TCP(sport=original.dport, dport=original.sport,
+                      ack=original.seq + was_fin, seq=original.ack,
+                      flags=cls.TCP_ACK | cls.TCP_FIN, window=cls.TCP_WINDOW))
 
   @classmethod
   def ICMPPortUnreachable(cls, version, srcaddr, dstaddr, packet):
@@ -153,10 +195,58 @@ class Packets(object):
     return ("ICMPv%d echo" % version, packet)
 
 
+class RunAsUid(object):
+
+  """Context guard to run a code block as a given UID."""
+
+  def __init__(self, uid):
+    self.uid = uid
+
+  def __enter__(self):
+    if self.uid:
+      self.saved_uid = os.geteuid()
+      if self.uid:
+        os.seteuid(self.uid)
+
+  def __exit__(self, unused_type, unused_value, unused_traceback):
+    if self.uid:
+      os.seteuid(self.saved_uid)
+
+
 class MarkTest(net_test.NetworkTest):
+
+  # How many times to run packet reflection tests.
+  ITERATIONS = 5
 
   # Must be between 1 and 256, since we put them in MAC addresses and IIDs.
   NETIDS = [100, 150, 200, 250]
+
+  # Stores sysctl values to write back when the test completes.
+  saved_sysctls = {}
+
+  # For convenience.
+  IPV4_ADDR = net_test.IPV4_ADDR
+  IPV6_ADDR = net_test.IPV6_ADDR
+  IPV4_PING = net_test.IPV4_PING
+  IPV6_PING = net_test.IPV6_PING
+
+  # Wether to output setup commands.
+  DEBUG = False
+
+  @staticmethod
+  def _GetInterfaceName(netid):
+    return "nettest%d" % netid
+
+  @classmethod
+  def _TableForNetid(cls, netid):
+    if cls.AUTOCONF_TABLE_OFFSET:
+      return cls.ifindices[netid] + (-cls.AUTOCONF_TABLE_OFFSET)
+    else:
+      return netid
+
+  @staticmethod
+  def _UidForNetid(netid):
+    return 2000 + netid
 
   @staticmethod
   def _RouterMacAddress(netid):
@@ -203,20 +293,21 @@ class MarkTest(net_test.NetworkTest):
     net_test.SetNonBlocking(f)
     return f
 
-  @staticmethod
-  def _GetInterfaceName(netid):
-    return "nettest%d" % netid
-
   @classmethod
   def _SendRA(cls, netid):
     validity = 300                 # seconds
     validity_ms = validity * 1000  # milliseconds
     macaddr = cls._RouterMacAddress(netid)
     lladdr = cls._RouterAddress(netid, 6)
+
+    # We don't want any routes in the main table. If the kernel doesn't support
+    # putting RA routes into per-interface tables, configure routing manually.
+    routerlifetime = validity if HAVE_AUTOCONF_TABLE else 0
+
     ra = (scapy.Ether(src=macaddr, dst="33:33:00:00:00:01") /
           scapy.IPv6(src=lladdr, hlim=255) /
           scapy.ICMPv6ND_RA(retranstimer=validity_ms,
-                            routerlifetime=validity) /
+                            routerlifetime=routerlifetime) /
           scapy.ICMPv6NDOptSrcLLAddr(lladdr=macaddr) /
           scapy.ICMPv6NDOptPrefixInfo(prefix="2001:db8:%d::" % netid,
                                       prefixlen=64,
@@ -225,76 +316,81 @@ class MarkTest(net_test.NetworkTest):
                                       preferredlifetime=validity))
     posix.write(cls.tuns[netid].fileno(), str(ra))
 
-  COMMANDS = [
-      "/sbin/%(iptables)s %(append_delete)s INPUT -t mangle -i %(iface)s"
-      " -j MARK --set-mark %(netid)d",
-  ]
-  ROUTE_COMMANDS = [
-      "ip -%(version)d route %(add_del)s table %(table)s"
-      " default dev %(iface)s via %(router)s",
-  ]
-  IPV4_COMMANDS = [
-      "ip -4 nei %(add_del)s %(router)s dev %(iface)s"
-      " lladdr %(macaddr)s nud permanent",
-      "ip -4 addr %(add_del)s 10.0.%(netid)d.2/24 dev %(iface)s",
-  ]
-
   @classmethod
   def _RunSetupCommands(cls, netid, is_add):
-    iface = cls._GetInterfaceName(netid)
+    iptables_commands = [
+        "/sbin/%(iptables)s %(append_delete)s INPUT -t mangle -i %(iface)s"
+        " -j MARK --set-mark %(mark)d",
+    ]
+    route_commands = [
+        "ip -%(version)d route %(add_del)s table %(table)s"
+        " default dev %(iface)s via %(router)s",
+    ]
+    ipv4_commands = [
+        "ip -4 nei %(add_del)s %(router)s dev %(iface)s"
+        " lladdr %(macaddr)s nud permanent",
+        "ip -4 addr %(add_del)s %(ipv4addr)s/24 dev %(iface)s",
+    ]
+
     for version, iptables in zip([4, 6], ["iptables", "ip6tables"]):
 
       table = cls._TableForNetid(netid)
-      cls.iproute.FwmarkRule(version, is_add, netid, table)
+      uid = cls._UidForNetid(netid)
+      if HAVE_EXPERIMENTAL_UID_ROUTING:
+        cls.iproute.UidRule(version, is_add, uid, table, priority=100)
+      cls.iproute.FwmarkRule(version, is_add, netid, table, priority=200)
 
       if version == 6:
-        cmds = cls.COMMANDS
-        if cls.AUTOCONF_TABLE_OFFSET < 0:
+        if cls.AUTOCONF_TABLE_OFFSET is None:
           # Set up routing manually.
-          # Don't do cmds += cls.ROUTE_COMMANDS as this modifies cls.COMMANDS.
-          cmds = cls.COMMANDS + cls.ROUTE_COMMANDS
+          cmds = iptables_commands + route_commands
+        else:
+          cmds = iptables_commands
 
       if version == 4:
         # Deleting addresses also causes routes to be deleted, so watch the
         # order or the test will output lots of ENOENT errors.
         if is_add:
-          cmds = cls.COMMANDS + cls.IPV4_COMMANDS + cls.ROUTE_COMMANDS
+          cmds = iptables_commands + ipv4_commands + route_commands
         else:
-          cmds = cls.COMMANDS + cls.ROUTE_COMMANDS + cls.IPV4_COMMANDS
+          cmds = iptables_commands + route_commands + ipv4_commands
 
       cmds = str("\n".join(cmds) % {
           "add_del": "add" if is_add else "del",
           "append_delete": "-A" if is_add else "-D",
-          "iface": iface,
+          "iface": cls._GetInterfaceName(netid),
           "iptables": iptables,
           "ipv4addr": cls._MyIPv4Address(netid),
           "macaddr": cls._RouterMacAddress(netid),
-          "netid": netid,
+          "mark": netid,
           "router": cls._RouterAddress(netid, version),
           "table": table,
           "version": version,
       }).split("\n")
       for cmd in cmds:
         cmd = cmd.split(" ")
-        if DEBUG: print " ".join(cmd)
+        if cls.DEBUG: print " ".join(cmd)
         ret = os.spawnvp(os.P_WAIT, cmd[0], cmd)
         if ret:
           raise ConfigurationError("Setup command failed: %s" % " ".join(cmd))
 
   @classmethod
-  def _SetAutoconfTableSysctl(cls, offset):
-    try:
-      open(AUTOCONF_TABLE_SYSCTL, "w").write(str(offset))
-      cls.AUTOCONF_TABLE_OFFSET = offset
-    except IOError:
-      cls.AUTOCONF_TABLE_OFFSET = -1
+  def _GetSysctl(cls, sysctl):
+    return open(sysctl, "r").read()
 
   @classmethod
-  def _TableForNetid(cls, netid):
-    if cls.AUTOCONF_TABLE_OFFSET >= 0:
-      return cls.ifindices[netid] + cls.AUTOCONF_TABLE_OFFSET
-    else:
-      return netid
+  def _SetSysctl(cls, sysctl, value):
+    # Only save each sysctl value the first time we set it. This is so we can
+    # set it to arbitrary values multiple times and still write it back
+    # correctly at the end.
+    if sysctl not in cls.saved_sysctls:
+      cls.saved_sysctls[sysctl] = cls._GetSysctl(sysctl)
+    open(sysctl, "w").write(str(value) + "\n")
+
+  @classmethod
+  def _RestoreSysctls(cls):
+    for sysctl, value in cls.saved_sysctls.iteritems():
+      open(sysctl, "w").write(value)
 
   @classmethod
   def _ICMPRatelimitFilename(cls, version):
@@ -302,12 +398,22 @@ class MarkTest(net_test.NetworkTest):
                                6: "ipv6/icmp/ratelimit"}[version]
 
   @classmethod
-  def _GetICMPRatelimit(cls, version):
-    return int(open(cls._ICMPRatelimitFilename(version), "r").read().strip())
+  def _SetICMPRatelimit(cls, version, limit):
+    cls._SetSysctl(cls._ICMPRatelimitFilename(version), limit)
 
   @classmethod
-  def _SetICMPRatelimit(cls, version, limit):
-    return open(cls._ICMPRatelimitFilename(version), "w").write("%d" % limit)
+  def _SetMarkReflectSysctls(cls, value):
+    cls._SetSysctl(IPV4_MARK_REFLECT_SYSCTL, value)
+    try:
+      cls._SetSysctl(IPV6_MARK_REFLECT_SYSCTL, value)
+    except IOError:
+      # This does not exist if we use the version of the patch that uses a
+      # common sysctl for IPv4 and IPv6.
+      pass
+
+  @classmethod
+  def _SetTCPMarkAcceptSysctl(cls, value):
+    cls._SetSysctl(TCP_MARK_ACCEPT_SYSCTL, value)
 
   @classmethod
   def setUpClass(cls):
@@ -317,12 +423,14 @@ class MarkTest(net_test.NetworkTest):
     cls.iproute = iproute.IPRoute()
     cls.tuns = {}
     cls.ifindices = {}
-    cls._SetAutoconfTableSysctl(1000)
+    if HAVE_AUTOCONF_TABLE:
+      cls._SetSysctl(AUTOCONF_TABLE_SYSCTL, -1000)
+      cls.AUTOCONF_TABLE_OFFSET = -1000
+    else:
+      cls.AUTOCONF_TABLE_OFFSET = None
 
-    # Disable ICMP rate limits.
-    cls.ratelimits = {}
+    # Disable ICMP rate limits. These will be restored by _RestoreSysctls.
     for version in [4, 6]:
-      cls.ratelimits[version] = cls._GetICMPRatelimit(version)
       cls._SetICMPRatelimit(version, 0)
 
     for netid in cls.NETIDS:
@@ -346,8 +454,6 @@ class MarkTest(net_test.NetworkTest):
     cls.listensocket.bind(("::", cls.listenport))
     cls.listensocket.listen(100)
 
-    # Give time for unknown things to settle down.
-    time.sleep(0.5)
     # Uncomment to look around at interface and rule configuration while
     # running in the background. (Once the test finishes running, all the
     # interfaces and rules are gone.)
@@ -358,13 +464,18 @@ class MarkTest(net_test.NetworkTest):
     for netid in cls.tuns:
       cls._RunSetupCommands(netid, False)
       cls.tuns[netid].close()
-    cls._SetAutoconfTableSysctl(-1)
-    for version in [4, 6]:
-      cls._SetICMPRatelimit(version, cls.ratelimits[version])
+    cls._RestoreSysctls()
 
   def assertPacketMatches(self, expected, actual):
-    # Remove the Ethernet header from the incoming packet.
-    actual = scapy.Ether(actual).payload
+    # The expected packet is just a rough sketch of the packet we expect to
+    # receive. For example, it doesn't contain fields we can't predict, such as
+    # initial TCP sequence numbers, or that depend on the host implementation
+    # and settings, such as TCP options. To check whether the packet matches
+    # what we expect, instead of just checking all the known fields one by one,
+    # we blank out fields in the actual packet and then compare the whole
+    # packets to each other as strings. Because we modify the actual packet,
+    # make a copy here.
+    actual = actual.copy()
 
     # Blank out IPv4 fields that we can't predict, like ID and the DF bit.
     actualip = actual.getlayer("IP")
@@ -425,7 +536,12 @@ class MarkTest(net_test.NetworkTest):
     packets = []
     while True:
       try:
-        packets.append(posix.read(self.tuns[netid].fileno(), 4096))
+        packet = posix.read(self.tuns[netid].fileno(), 4096)
+        ether = scapy.Ether(packet)
+        # Skip multicast frames, i.e., frames where the first byte of the
+        # destination MAC address has 1 in the least-significant bit.
+        if not int(ether.dst.split(":")[0], 16) & 0x1:
+          packets.append(ether.payload)
       except OSError, e:
         # EAGAIN means there are no more packets waiting.
         if re.match(e.message, os.strerror(errno.EAGAIN)):
@@ -435,6 +551,14 @@ class MarkTest(net_test.NetworkTest):
           raise e
     return packets
 
+  def ExpectNoPacketsOn(self, netid, msg, expected):
+    packets = self.ReadAllPacketsOn(netid)
+    if packets:
+      firstpacket = str(packets[0]).encode("hex")
+    else:
+      firstpacket = ""
+    self.assertFalse(packets, msg + ": unexpected packet: " + firstpacket)
+
   def ExpectPacketOn(self, netid, msg, expected):
     packets = self.ReadAllPacketsOn(netid)
     self.assertTrue(packets, msg + ": received no packets")
@@ -442,7 +566,7 @@ class MarkTest(net_test.NetworkTest):
     # If we receive a packet that matches what we expected, return it.
     for packet in packets:
       if self.PacketMatches(expected, packet):
-        return scapy.Ether(packet).payload
+        return packet
 
     # None of the packets matched. Call assertPacketMatches to output a diff
     # between the expected packet and the last packet we received. In theory,
@@ -469,9 +593,9 @@ class MarkTest(net_test.NetworkTest):
   def setUp(self):
     self.ClearTunQueues()
 
-  @staticmethod
-  def _GetRemoteAddress(version):
-    return {4: net_test.IPV4_ADDR, 6: net_test.IPV6_ADDR}[version]
+  @classmethod
+  def _GetRemoteAddress(cls, version):
+    return {4: cls.IPV4_ADDR, 6: cls.IPV6_ADDR}[version]
 
   def SetSocketMark(self, s, netid):
     s.setsockopt(SOL_SOCKET, net_test.SO_MARK, netid)
@@ -482,78 +606,108 @@ class MarkTest(net_test.NetworkTest):
   def GetProtocolFamily(self, version):
     return {4: AF_INET, 6: AF_INET6}[version]
 
-  def testOutgoingPackets(self):
+  def BuildSocket(self, version, constructor, mark, uid):
+    with RunAsUid(uid):
+      family = self.GetProtocolFamily(version)
+      s = constructor(family)
+    if mark:
+      self.SetSocketMark(s, mark)
+    return s
+
+  def CheckPingPacket(self, version, mark, uid, dstaddr, packet,
+                      expected_netid):
+    s = self.BuildSocket(version, net_test.PingSocket, mark, uid)
+
+    myaddr = self._MyAddress(version, expected_netid)
+    s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+    s.bind((myaddr, PING_IDENT))
+    net_test.SetSocketTos(s, PING_TOS)
+
+    desc, expected = Packets.ICMPEcho(version, myaddr, dstaddr)
+
+    self.ClearTunQueues()
+    s.sendto(packet + PING_PAYLOAD, (dstaddr, 19321))
+    msg = "IPv%d ping: expected %s on %s" % (
+        version, desc, self._GetInterfaceName(expected_netid))
+    self.ExpectPacketOn(expected_netid, msg, expected)
+
+  def CheckTCPSYNPacket(self, version, mark, uid, dstaddr, expected_netid):
+    s = self.BuildSocket(version, net_test.TCPSocket, mark, uid)
+
+    if version == 6 and dstaddr.startswith("::ffff"):
+      version = 4
+    myaddr = self._MyAddress(version, expected_netid)
+    desc, expected = Packets.SYN(53, version, myaddr, dstaddr,
+                                 sport=None, seq=None)
+
+    self.ClearTunQueues()
+    # Non-blocking TCP connects always return EINPROGRESS.
+    self.assertRaisesErrno(errno.EINPROGRESS, s.connect, (dstaddr, 53))
+    msg = "IPv%s TCP connect: expected %s on %s" % (
+        version, desc, self._GetInterfaceName(expected_netid))
+    self.ExpectPacketOn(expected_netid, msg, expected)
+    s.close()
+
+  def CheckUDPPacket(self, version, mark, uid, dstaddr, expected_netid):
+    s = self.BuildSocket(version, net_test.UDPSocket, mark, uid)
+
+    if version == 6 and dstaddr.startswith("::ffff"):
+      version = 4
+    myaddr = self._MyAddress(version, expected_netid)
+    desc, expected = Packets.UDP(version, myaddr, dstaddr, sport=None)
+    msg = "IPv%s UDP %%s: expected %s on %s" % (
+        version, desc, self._GetInterfaceName(expected_netid))
+
+    self.ClearTunQueues()
+    s.sendto(UDP_PAYLOAD, (dstaddr, 53))
+    self.ExpectPacketOn(expected_netid, msg % "sendto", expected)
+
+    self.ClearTunQueues()
+    s.connect((dstaddr, 53))
+    s.send(UDP_PAYLOAD)
+    self.ExpectPacketOn(expected_netid, msg % "connect/send", expected)
+    s.close()
+
+  def testMarkRouting(self):
     """Checks that socket marking selects the right outgoing interface."""
+    for _ in xrange(self.ITERATIONS):
+      for netid in self.tuns:
+        self.CheckPingPacket(4, netid, 0, self.IPV4_ADDR, self.IPV4_PING, netid)
+        self.CheckPingPacket(6, netid, 0, self.IPV6_ADDR, self.IPV6_PING, netid)
 
-    def CheckPingPacket(version, netid, dstaddr, packet):
-      s = net_test.PingSocket(self.GetProtocolFamily(version))
-      myaddr = self._MyAddress(version, netid)
-      s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-      s.bind((myaddr, PING_IDENT))
-      self.SetSocketMark(s, netid)
-      net_test.SetSocketTos(s, PING_TOS)
+      for netid in self.tuns:
+        self.CheckTCPSYNPacket(4, netid, 0, self.IPV4_ADDR, netid)
+        self.CheckTCPSYNPacket(6, netid, 0, self.IPV6_ADDR, netid)
+        self.CheckTCPSYNPacket(6, netid, 0, "::ffff:" + self.IPV4_ADDR, netid)
 
-      desc, expected = Packets.ICMPEcho(version, myaddr, dstaddr)
+      for netid in self.tuns:
+        self.CheckUDPPacket(4, netid, 0, self.IPV4_ADDR, netid)
+        self.CheckUDPPacket(6, netid, 0, self.IPV6_ADDR, netid)
+        self.CheckUDPPacket(6, netid, 0, "::ffff:" + self.IPV4_ADDR, netid)
 
-      self.ClearTunQueues()
-      s.sendto(packet + PING_PAYLOAD, (dstaddr, 19321))
-      msg = "IPv%d ping: expected %s on %s" % (
-          version, desc, self._GetInterfaceName(netid))
-      self.ExpectPacketOn(netid, msg, expected)
+  @unittest.skipUnless(HAVE_EXPERIMENTAL_UID_ROUTING, "no UID routing")
+  def testUidRouting(self):
+    """Checks that UID routing selects the right outgoing interface."""
+    for _ in xrange(self.ITERATIONS):
+      for netid in self.tuns:
+        uid = self._UidForNetid(netid)
+        self.CheckPingPacket(4, 0, uid, self.IPV4_ADDR, self.IPV4_PING, netid)
+        self.CheckPingPacket(6, 0, uid, self.IPV6_ADDR, self.IPV6_PING, netid)
 
-    for netid in self.tuns:
-      CheckPingPacket(4, netid, net_test.IPV4_ADDR, net_test.IPV4_PING)
-      CheckPingPacket(6, netid, net_test.IPV6_ADDR, net_test.IPV6_PING)
+      for netid in self.tuns:
+        uid = self._UidForNetid(netid)
+        self.CheckTCPSYNPacket(4, 0, uid, self.IPV4_ADDR, netid)
+        self.CheckTCPSYNPacket(6, 0, uid, self.IPV6_ADDR, netid)
+        self.CheckTCPSYNPacket(6, 0, uid, "::ffff:" + self.IPV4_ADDR, netid)
 
-    def CheckTCPSYNPacket(version, netid, dstaddr):
-      s = net_test.TCPSocket(self.GetProtocolFamily(version))
-      self.SetSocketMark(s, netid)
-      if version == 6 and dstaddr.startswith("::ffff"):
-        version = 4
-      myaddr = self._MyAddress(version, netid)
-      desc, expected = Packets.SYN(53, version, myaddr, dstaddr,
-                                   sport=None, seq=None)
-
-      self.ClearTunQueues()
-      # Non-blocking TCP connects always return EINPROGRESS.
-      self.assertRaisesErrno(errno.EINPROGRESS, s.connect, (dstaddr, 53))
-      msg = "IPv%s TCP connect: expected %s on %s" % (
-          version, desc, self._GetInterfaceName(netid))
-      self.ExpectPacketOn(netid, msg, expected)
-      s.close()
-
-    for netid in self.tuns:
-      CheckTCPSYNPacket(4, netid, net_test.IPV4_ADDR)
-      CheckTCPSYNPacket(6, netid, net_test.IPV6_ADDR)
-      CheckTCPSYNPacket(6, netid, "::ffff:" + net_test.IPV4_ADDR)
-
-    def CheckUDPPacket(version, netid, dstaddr):
-      s = net_test.UDPSocket(self.GetProtocolFamily(version))
-      self.SetSocketMark(s, netid)
-      if version == 6 and dstaddr.startswith("::ffff"):
-        version = 4
-      myaddr = self._MyAddress(version, netid)
-      desc, expected = Packets.UDP(version, myaddr, dstaddr, sport=None)
-      msg = "IPv%s UDP %%s: expected %s on %s" % (
-          version, desc, self._GetInterfaceName(netid))
-
-      self.ClearTunQueues()
-      s.sendto(UDP_PAYLOAD, (dstaddr, 53))
-      self.ExpectPacketOn(netid, msg % "sendto", expected)
-
-      self.ClearTunQueues()
-      s.connect((dstaddr, 53))
-      s.send(UDP_PAYLOAD)
-      self.ExpectPacketOn(netid, msg % "connect/send", expected)
-      s.close()
-
-    for netid in self.tuns:
-      CheckUDPPacket(4, netid, net_test.IPV4_ADDR)
-      CheckUDPPacket(6, netid, net_test.IPV6_ADDR)
-      CheckUDPPacket(6, netid, "::ffff:" + net_test.IPV4_ADDR)
+      for netid in self.tuns:
+        uid = self._UidForNetid(netid)
+        self.CheckUDPPacket(4, 0, uid, self.IPV4_ADDR, netid)
+        self.CheckUDPPacket(6, 0, uid, self.IPV6_ADDR, netid)
+        self.CheckUDPPacket(6, 0, uid, "::ffff:" + self.IPV4_ADDR, netid)
 
   def CheckReflection(self, version, packet_generator, reply_generator,
-                      callback=None):
+                      mark_behaviour, callback=None):
     """Checks that replies go out on the same interface as the original.
 
     Iterates through all the combinations of the interfaces in self.tuns and the
@@ -572,10 +726,16 @@ class MarkTest(net_test.NetworkTest):
         packet.
       reply_generator: A function taking the same arguments as packet_generator,
         plus a scapy packet, and returning a scapy packet.
+      mark_behaviour: A string describing the mark behaviour to test. Tests are
+        performed with the corresponding sysctl set to both 0 and 1.
       callback: A function to call to perform extra checks if the packet
         matches. Takes netid, version, local address, remote address, original
         packet, kernel reply, and a message.
     """
+    # What are we testing?
+    sysctl_function = {"accept": self._SetTCPMarkAcceptSysctl,
+                       "reflect": self._SetMarkReflectSysctls}[mark_behaviour]
+
     # Check packets addressed to the IP addresses of all our interfaces...
     for dest_ip_netid in self.tuns:
       dest_ip_iface = self._GetInterfaceName(dest_ip_netid)
@@ -583,22 +743,31 @@ class MarkTest(net_test.NetworkTest):
       myaddr = self._MyAddress(version, dest_ip_netid)
       remote_addr = self._GetRemoteAddress(version)
 
-      # ... coming in on all our interfaces.
+      # ... coming in on all our interfaces...
       for iif_netid in self.tuns:
         iif = self._GetInterfaceName(iif_netid)
         desc, packet = packet_generator(version, remote_addr, myaddr)
         reply_desc, reply = reply_generator(version, myaddr, remote_addr,
                                             packet)
-        msg = "Receiving %s on %s to %s IP: Expecting %s on %s" % (
-            desc, iif, dest_ip_iface, reply_desc, iif)
 
-        self.ClearTunQueues()
-        # Cause the kernel to receive packet on iif_netid.
-        self.ReceivePacketOn(iif_netid, packet)
-        # Expect the kernel to send out reply on the same interface.
-        reply = self.ExpectPacketOn(iif_netid, msg, reply)
-        if callback:
-          callback(iif_netid, version, myaddr, remote_addr, packet, reply, msg)
+        # ... with inbound mark sysctl enabled and disabled.
+        for sysctl_value in [0, 1]:
+          msg = "Receiving %s on %s to %s IP, %s=%d" % (
+              desc, iif, dest_ip_iface, mark_behaviour, sysctl_value)
+          sysctl_function(sysctl_value)
+          self.ClearTunQueues()
+          # Cause the kernel to receive packet on iif_netid.
+          self.ReceivePacketOn(iif_netid, packet)
+          # Expect the kernel to send out reply on the same interface.
+          if sysctl_value:
+            msg += ": Expecting %s on %s" % (reply_desc, iif)
+            reply = self.ExpectPacketOn(iif_netid, msg, reply)
+            if callback:
+              callback(iif_netid, version, myaddr, remote_addr, packet, reply,
+                       msg)
+          else:
+            msg += ": Expecting no packets on %s" % reply_desc
+            self.ExpectNoPacketsOn(iif_netid, msg, reply)
 
   def SYNToClosedPort(self, *args):
     return Packets.SYN(999, *args)
@@ -606,23 +775,29 @@ class MarkTest(net_test.NetworkTest):
   def SYNToOpenPort(self, *args):
     return Packets.SYN(self.listenport, *args)
 
+  @unittest.skipUnless(HAVE_MARK_REFLECT, "no mark reflection")
   def testIPv4ICMPErrorsReflectMark(self):
-    self.CheckReflection(4, Packets.UDP, Packets.ICMPPortUnreachable)
+    self.CheckReflection(4, Packets.UDP, Packets.ICMPPortUnreachable, "reflect")
 
+  @unittest.skipUnless(HAVE_MARK_REFLECT, "no mark reflection")
   def testIPv6ICMPErrorsReflectMark(self):
-    self.CheckReflection(6, Packets.UDP, Packets.ICMPPortUnreachable)
+    self.CheckReflection(6, Packets.UDP, Packets.ICMPPortUnreachable, "reflect")
 
+  @unittest.skipUnless(HAVE_MARK_REFLECT, "no mark reflection")
   def testIPv4PingRepliesReflectMarkAndTos(self):
-    self.CheckReflection(4, Packets.ICMPEcho, Packets.ICMPReply)
+    self.CheckReflection(4, Packets.ICMPEcho, Packets.ICMPReply, "reflect")
 
+  @unittest.skipUnless(HAVE_MARK_REFLECT, "no mark reflection")
   def testIPv6PingRepliesReflectMarkAndTos(self):
-    self.CheckReflection(6, Packets.ICMPEcho, Packets.ICMPReply)
+    self.CheckReflection(6, Packets.ICMPEcho, Packets.ICMPReply, "reflect")
 
+  @unittest.skipUnless(HAVE_MARK_REFLECT, "no mark reflection")
   def testIPv4RSTsReflectMark(self):
-    self.CheckReflection(4, self.SYNToClosedPort, Packets.RST)
+    self.CheckReflection(4, self.SYNToClosedPort, Packets.RST, "reflect")
 
+  @unittest.skipUnless(HAVE_MARK_REFLECT, "no mark reflection")
   def testIPv6RSTsReflectMark(self):
-    self.CheckReflection(6, self.SYNToClosedPort, Packets.RST)
+    self.CheckReflection(6, self.SYNToClosedPort, Packets.RST, "reflect")
 
   def CheckAcceptedSocketMarkCallback(self, netid, version, myaddr,
                                       remote_addr, packet, reply, msg):
@@ -637,25 +812,42 @@ class MarkTest(net_test.NetworkTest):
                       msg + ": Accepted socket: Expected mark %d, got %d" % (
                           netid, mark))
 
-  def testIPv4SYNACKsReflectMark(self):
-    self.CheckReflection(4, self.SYNToOpenPort, Packets.SYNACK,
+    # Check the FIN was sent on the right interface, and ack it. We don't expect
+    # this to fail because by the time the connection is established things are
+    # likely working, but a) extra tests are always good and b) extra packets
+    # like the FIN (and retransmitted FINs) could cause later tests that expect
+    # no packets to fail.
+    desc, fin = Packets.FIN(version, myaddr, remote_addr, establishing_ack)
+    self.ExpectPacketOn(netid, msg + ": expecting %s after close" % desc, fin)
+
+    desc, finack = Packets.FIN(version, remote_addr, myaddr, fin)
+    self.ReceivePacketOn(netid, finack)
+
+    desc, finackack = Packets.ACK(version, myaddr, remote_addr, finack)
+    self.ExpectPacketOn(netid, msg + ": expecting final ack", finackack)
+
+  @unittest.skipUnless(HAVE_TCP_MARK_ACCEPT, "fwmark writeback not supported")
+  def testIPv4TCPConnections(self):
+    self.CheckReflection(4, self.SYNToOpenPort, Packets.SYNACK, "accept",
                          self.CheckAcceptedSocketMarkCallback)
 
-  def testIPv6SYNACKsReflectMark(self):
-    self.CheckReflection(6, self.SYNToOpenPort, Packets.SYNACK,
+  @unittest.skipUnless(HAVE_TCP_MARK_ACCEPT, "fwmark writeback not supported")
+  def testIPv6TCPConnections(self):
+    self.CheckReflection(6, self.SYNToOpenPort, Packets.SYNACK, "accept",
                          self.CheckAcceptedSocketMarkCallback)
 
-  def testSynCookiesSYNACKsReflectMark(self):
+  @unittest.skipUnless(HAVE_TCP_MARK_ACCEPT, "fwmark writeback not supported")
+  def testTCPConnectionsWithSynCookies(self):
     # Force SYN cookies on all connections.
-    open("/proc/sys/net/ipv4/tcp_syncookies", "w").write("2")
+    self._SetSysctl(SYNCOOKIES_SYSCTL, 2)
     try:
-      self.CheckReflection(4, self.SYNToOpenPort, Packets.SYNACK,
+      self.CheckReflection(4, self.SYNToOpenPort, Packets.SYNACK, "accept",
                            self.CheckAcceptedSocketMarkCallback)
-      self.CheckReflection(6, self.SYNToOpenPort, Packets.SYNACK,
+      self.CheckReflection(6, self.SYNToOpenPort, Packets.SYNACK, "accept",
                            self.CheckAcceptedSocketMarkCallback)
     finally:
       # Stop forcing SYN cookies on all connections.
-      open("/proc/sys/net/ipv4/tcp_syncookies", "w").write("1")
+      self._SetSysctl(SYNCOOKIES_SYSCTL, 1)
 
 
 if __name__ == "__main__":
