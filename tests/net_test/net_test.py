@@ -53,6 +53,19 @@ IPV6_SEQ_DGRAM_HEADER = ("  sl  "
 AID_INET = 3003
 
 
+def LinuxVersion():
+  # Example: "3.4.67-00753-gb7a556f".
+  # Get the part before the dash.
+  version = os.uname()[2].split("-")[0]
+  # Convert it into a tuple such as (3, 4, 67). That allows comparing versions
+  # using < and >, since tuples are compared lexicographically.
+  version = tuple(int(i) for i in version.split("."))
+  return version
+
+
+LINUX_VERSION = LinuxVersion()
+
+
 def SetSocketTimeout(sock, ms):
   s = ms / 1000
   us = (ms % 1000) * 1000
@@ -255,6 +268,27 @@ try:
   HAVE_IPV6 = True
 except ValueError:
   HAVE_IPV6 = False
+
+
+class RunAsUid(object):
+
+  """Context guard to run a code block as a given UID."""
+
+  def __init__(self, uid):
+    self.uid = uid
+
+  def __enter__(self):
+    if self.uid:
+      self.saved_uid = os.geteuid()
+      self.saved_groups = os.getgroups()
+      if self.uid:
+        os.setgroups(self.saved_groups + [AID_INET])
+        os.seteuid(self.uid)
+
+  def __exit__(self, unused_type, unused_value, unused_traceback):
+    if self.uid:
+      os.seteuid(self.saved_uid)
+      os.setgroups(self.saved_groups)
 
 
 class NetworkTest(unittest.TestCase):

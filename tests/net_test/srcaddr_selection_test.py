@@ -10,7 +10,7 @@ import unittest
 from scapy import all as scapy
 
 import iproute
-import mark_test
+import multinetwork_base
 import net_test
 import sendmsg
 
@@ -24,7 +24,7 @@ USE_OPTIMISTIC_SYSCTL = "/proc/sys/net/ipv6/conf/default/use_optimistic"
 HAVE_USE_OPTIMISTIC = os.path.isfile(USE_OPTIMISTIC_SYSCTL)
 
 
-class IPv6SourceAddressSelectionTest(mark_test.MultiNetworkTest):
+class IPv6SourceAddressSelectionTest(multinetwork_base.MultiNetworkBaseTest):
 
   def SetDAD(self, ifname, value):
     self.SetSysctl("/proc/sys/net/ipv6/conf/%s/accept_dad" % ifname, value)
@@ -70,7 +70,7 @@ class IPv6SourceAddressSelectionTest(mark_test.MultiNetworkTest):
     s.bind((address, 0, 0, 0))
 
   def SendWithSourceAddress(self, address, netid, dest=net_test.IPV6_ADDR):
-    pktinfo = mark_test.MakePktInfo(6, address, 0)
+    pktinfo = multinetwork_base.MakePktInfo(6, address, 0)
     cmsgs = [(net_test.SOL_IPV6, IPV6_PKTINFO, pktinfo)]
     s = self.BuildSocket(6, net_test.UDPSocket, netid, "mark")
     return sendmsg.Sendmsg(s, (dest, 53), "Hello", cmsgs, 0)
@@ -162,7 +162,7 @@ class OptimisticAddressTest(MultiInterfaceSourceAddressSelectionTest):
         self.test_ip, self.test_ifindex, iproute.IFA_F_OPTIMISTIC)
 
     # Optimistic addresses are usable but are not selected.
-    if mark_test.LinuxVersion() >= (3, 18, 0):
+    if net_test.LinuxVersion() >= (3, 18, 0):
       # The version checked in to android kernels <= 3.10 requires the
       # use_optimistic sysctl to be turned on.
       self.assertAddressUsable(self.test_ip, self.test_netid)
@@ -261,7 +261,7 @@ class DadFailureTest(MultiInterfaceSourceAddressSelectionTest):
 class NoNsFromOptimisticTest(MultiInterfaceSourceAddressSelectionTest):
 
   @unittest.skipUnless(HAVE_USE_OPTIMISTIC, "use_optimistic not supported")
-  @unittest.skipUnless(mark_test.LinuxVersion() >= (3, 18, 0),
+  @unittest.skipUnless(net_test.LinuxVersion() >= (3, 18, 0),
                        "correct optimistic bind() not supported")
   def testSendToOnlinkDestination(self):
     # [3]  Get an IPv6 address back, in optimistic DAD start-up.
@@ -282,7 +282,7 @@ class NoNsFromOptimisticTest(MultiInterfaceSourceAddressSelectionTest):
     onlink_dest = self.GetRandomDestination(self.IPv6Prefix(self.test_netid))
     self.SendWithSourceAddress(self.test_ip, self.test_netid, onlink_dest)
 
-    expected_ns = mark_test.Packets.NS(
+    expected_ns = multinetwork_base.Packets.NS(
         net_test.GetLinkAddress(self.test_ifname, True),
         onlink_dest,
         self.MyMacAddress(self.test_netid))[1]
