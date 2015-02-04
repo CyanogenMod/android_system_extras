@@ -1,13 +1,18 @@
 #!/usr/bin/python
 
+# pylint: disable=g-bad-todo
+
 import errno
 import os
-import re
 import posix
+import re
+from socket import *  # pylint: disable=wildcard-import
 import unittest
-from socket import *
 
 import net_test
+
+
+HAVE_PROC_NET_ICMP6 = os.path.isfile("/proc/net/icmp6")
 
 
 class Ping6Test(net_test.NetworkTest):
@@ -25,11 +30,11 @@ class Ping6Test(net_test.NetworkTest):
     # Check the data being sent is valid.
     self.assertGreater(len(data), 7, "Not enough data for ping packet")
     if family == AF_INET:
-      self.assertTrue(data.startswith('\x08\x00'), "Not an IPv4 echo request")
+      self.assertTrue(data.startswith("\x08\x00"), "Not an IPv4 echo request")
     elif family == AF_INET6:
-      self.assertTrue(data.startswith('\x80\x00'), "Not an IPv4 echo request")
+      self.assertTrue(data.startswith("\x80\x00"), "Not an IPv4 echo request")
     else:
-      self.fail("Unknown socket address family %d", s.family)
+      self.fail("Unknown socket address family %d" * s.family)
 
     # Receive the reply.
     rcvd, src = s.recvfrom(32768)
@@ -37,13 +42,13 @@ class Ping6Test(net_test.NetworkTest):
 
     # Check address, ICMP type, and ICMP code.
     if family == AF_INET:
-      addr, port = src
+      addr, unused_port = src
       self.assertGreaterEqual(len(addr), len("1.1.1.1"))
-      self.assertTrue(rcvd.startswith('\x00\x00'), "Not an IPv4 echo reply")
+      self.assertTrue(rcvd.startswith("\x00\x00"), "Not an IPv4 echo reply")
     else:
-      addr, port, flowlabel, scope_id = src
+      addr, unused_port, flowlabel, scope_id = src
       self.assertGreaterEqual(len(addr), len("::"))
-      self.assertTrue(rcvd.startswith('\x81\x00'), "Not an IPv6 echo reply")
+      self.assertTrue(rcvd.startswith("\x81\x00"), "Not an IPv6 echo reply")
       # Check that the flow label is zero and that the scope ID is sane.
       self.assertEqual(flowlabel, 0)
       self.assertLess(scope_id, 100)
@@ -65,11 +70,11 @@ class Ping6Test(net_test.NetworkTest):
     lines = lines[1:]
 
     # Check contents.
-    if (protocol.endswith("6")):
+    if protocol.endswith("6"):
       addrlen = 32
     else:
       addrlen = 8
-    regexp = re.compile(" *(\d+): "                     # bucket
+    regexp = re.compile(r" *(\d+): "                    # bucket
                         "([0-9A-F]{%d}:[0-9A-F]{4}) "   # srcaddr, port
                         "([0-9A-F]{%d}:[0-9A-F]{4}) "   # dstaddr, port
                         "([0-9A-F][0-9A-F]) "           # state
@@ -96,7 +101,7 @@ class Ping6Test(net_test.NetworkTest):
     expected = ["%s:%04X" % (net_test.FormatSockStatAddress(srcaddr), srcport),
                 "%s:%04X" % (net_test.FormatSockStatAddress(dstaddr), dstport),
                 "%02X" % state,
-                "%08X:%08X" % (txmem, rxmem), 
+                "%08X:%08X" % (txmem, rxmem),
                 str(os.getuid()), "2", "0"]
     actual = self.ReadProcNetSocket(name)[-1]
     self.assertListEqual(expected, actual)
@@ -238,7 +243,7 @@ class Ping6Test(net_test.NetworkTest):
                            s.bind, ("255.255.255.255", 1026))
     self.assertRaisesErrno(errno.EADDRNOTAVAIL,
                            s.bind, ("224.0.0.1", 651))
-    # Binding to an address we don't have only works with net_test.IP_TRANSPARENT.
+    # Binding to an address we don't have only works with IP_TRANSPARENT.
     self.assertRaisesErrno(errno.EADDRNOTAVAIL,
                            s.bind, (net_test.IPV4_ADDR, 651))
     try:
@@ -304,8 +309,8 @@ class Ping6Test(net_test.NetworkTest):
   def testLinkLocalAddress(self):
     s = net_test.IPv6PingSocket()
     # Sending to a link-local address with no scope fails with EINVAL.
-    msg = os.strerror(errno.EINVAL)
-    self.assertRaisesErrno(errno.EINVAL, s.sendto, net_test.IPV6_PING, ("fe80::1", 55))
+    self.assertRaisesErrno(errno.EINVAL,
+                           s.sendto, net_test.IPV6_PING, ("fe80::1", 55))
     # Sending to link-local address with a scope succeeds. Note that Python
     # doesn't understand the "fe80::1%lo" format, even though it returns it.
     s.sendto(net_test.IPV6_PING, ("fe80::1", 55, 0, self.ifindex))
@@ -318,7 +323,6 @@ class Ping6Test(net_test.NetworkTest):
     self.assertValidPingResponse(s, net_test.IPV6_PING)
     s.sendto(net_test.IPV6_PING, ("2001:4860:4860::8844", 55))
     self.assertValidPingResponse(s, net_test.IPV6_PING)
-    msg = os.strerror(errno.EINVAL)
     self.assertRaisesErrno(errno.EINVAL, s.sendto, net_test.IPV6_PING,
                            ("::ffff:192.0.2.1", 55))
 
@@ -326,13 +330,14 @@ class Ping6Test(net_test.NetworkTest):
   def testFlowLabel(self):
     s = net_test.IPv6PingSocket()
     s.sendto(net_test.IPV6_PING, (net_test.IPV6_ADDR, 93, 0xdead, 0))
-    self.assertValidPingResponse(s, net_test.IPV6_PING)  # Checks the flow label is 0.
+    self.assertValidPingResponse(s, net_test.IPV6_PING)  # Checks flow label==0.
 
     s.setsockopt(net_test.SOL_IPV6, net_test.IPV6_FLOWINFO_SEND, 1)
-    self.assertEqual(1, s.getsockopt(net_test.SOL_IPV6, net_test.IPV6_FLOWINFO_SEND))
+    self.assertEqual(1, s.getsockopt(net_test.SOL_IPV6,
+                                     net_test.IPV6_FLOWINFO_SEND))
     s.sendto(net_test.IPV6_PING, (net_test.IPV6_ADDR, 93, 0xdead, 0))
-    rcvd, src = s.recvfrom(32768)
-    addr, port, flowlabel, scope_id = src
+    _, src = s.recvfrom(32768)
+    _, _, flowlabel, _ = src
     self.assertEqual(0, flowlabel & 0xfffff)
 
   def testIPv4Error(self):
@@ -376,7 +381,7 @@ class Ping6Test(net_test.NetworkTest):
     s.sendto(data, ("::1", 953))
 
   @unittest.skipUnless(net_test.HAVE_IPV6, "skipping: no IPv6")
-  @unittest.skipUnless(net_test.HAVE_PROC_NET_ICMP6, "skipping: no /proc/net/icmp6")
+  @unittest.skipUnless(HAVE_PROC_NET_ICMP6, "skipping: no /proc/net/icmp6")
   def testIcmpSocketsNotInIcmp6(self):
     numrows = len(self.ReadProcNetSocket("icmp"))
     numrows6 = len(self.ReadProcNetSocket("icmp6"))
@@ -387,7 +392,7 @@ class Ping6Test(net_test.NetworkTest):
     self.assertEquals(numrows6, len(self.ReadProcNetSocket("icmp6")))
 
   @unittest.skipUnless(net_test.HAVE_IPV6, "skipping: no IPv6")
-  @unittest.skipUnless(net_test.HAVE_PROC_NET_ICMP6, "skipping: no /proc/net/icmp6")
+  @unittest.skipUnless(HAVE_PROC_NET_ICMP6, "skipping: no /proc/net/icmp6")
   def testIcmp6SocketsNotInIcmp(self):
     numrows = len(self.ReadProcNetSocket("icmp"))
     numrows6 = len(self.ReadProcNetSocket("icmp6"))
@@ -404,7 +409,7 @@ class Ping6Test(net_test.NetworkTest):
     self.CheckSockStatFile("icmp", "127.0.0.1", 0xace, "127.0.0.1", 0xbeef, 1)
 
   @unittest.skipUnless(net_test.HAVE_IPV6, "skipping: no IPv6")
-  @unittest.skipUnless(net_test.HAVE_PROC_NET_ICMP6, "skipping: no /proc/net/icmp6")
+  @unittest.skipUnless(HAVE_PROC_NET_ICMP6, "skipping: no /proc/net/icmp6")
   def testProcNetIcmp6(self):
     numrows6 = len(self.ReadProcNetSocket("icmp6"))
     s = net_test.IPv6PingSocket()
@@ -432,7 +437,6 @@ class Ping6Test(net_test.NetworkTest):
     s.connect(("ff02::1", 0xdead))
     self.CheckSockStatFile("icmp6", self.lladdr, 0xd00d, "ff02::1", 0xdead, 1)
     s.send(net_test.IPV6_PING)
-    #time.sleep(0.1)
     self.CheckSockStatFile("icmp6", self.lladdr, 0xd00d, "ff02::1", 0xdead, 1,
                            txmem=0, rxmem=0x880)
     self.assertValidPingResponse(s, net_test.IPV6_PING)
