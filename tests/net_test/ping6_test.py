@@ -329,6 +329,7 @@ class Ping6Test(net_test.NetworkTest):
   @unittest.skipUnless(net_test.HAVE_IPV6, "skipping: no IPv6")
   def testFlowLabel(self):
     s = net_test.IPv6PingSocket()
+    net_test.SetFlowLabel(s, net_test.IPV6_ADDR, 0xdead)
     s.sendto(net_test.IPV6_PING, (net_test.IPV6_ADDR, 93, 0xdead, 0))
     self.assertValidPingResponse(s, net_test.IPV6_PING)  # Checks flow label==0.
 
@@ -338,7 +339,7 @@ class Ping6Test(net_test.NetworkTest):
     s.sendto(net_test.IPV6_PING, (net_test.IPV6_ADDR, 93, 0xdead, 0))
     _, src = s.recvfrom(32768)
     _, _, flowlabel, _ = src
-    self.assertEqual(0, flowlabel & 0xfffff)
+    self.assertEqual(0xdead, flowlabel & 0xfffff)
 
   def testIPv4Error(self):
     s = net_test.IPv4PingSocket()
