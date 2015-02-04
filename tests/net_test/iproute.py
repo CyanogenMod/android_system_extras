@@ -460,10 +460,10 @@ class IPRoute(object):
     data = data[attrlen:]
     return (nlmsg, attributes), data
 
-  def _GetRTMsgList(self, data, expect_done):
+  def _GetMsgList(self, msgtype, data, expect_done):
     out = []
     while data:
-      msg, data = self._ParseNLMsg(data, RTMsg)
+      msg, data = self._ParseNLMsg(data, msgtype)
       if msg is None:
         break
       out.append(msg)
@@ -488,21 +488,33 @@ class IPRoute(object):
     except KeyError:
       raise ValueError("Don't know how to print command type %s" % name)
 
+  def _Dump(self, command, msg, msgtype):
+    """Sends a dump request and returns a list of decoded messages."""
+    # Create a netlink dump request containing the msg.
+    flags = NLM_F_DUMP | NLM_F_REQUEST
+    length = len(NLMsgHdr) + len(msg)
+    nlmsghdr = NLMsgHdr((length, command, flags, self.seq, self.pid))
+
+    # Send the request.
+    self._Send(nlmsghdr.Pack() + msg.Pack())
+
+    # Keep reading netlink messages until we get a NLMSG_DONE.
+    out = []
+    while True:
+      data = self._Recv()
+      response_type = NLMsgHdr(data).type
+      if response_type == NLMSG_DONE:
+        break
+      out.extend(self._GetMsgList(msgtype, data, False))
+
+    return out
+
   def DumpRules(self, version):
     """Returns the IP rules for the specified IP version."""
     # Create a struct rtmsg specifying the table and the given match attributes.
     family = self._AddressFamily(version)
     rtmsg = RTMsg((family, 0, 0, 0, 0, 0, 0, 0, 0))
-
-    # Create a netlink dump request containing the rtmsg.
-    command = RTM_GETRULE
-    flags = NLM_F_DUMP | NLM_F_REQUEST
-    length = len(NLMsgHdr) + len(rtmsg)
-    nlmsghdr = NLMsgHdr((length, command, flags, self.seq, self.pid))
-
-    self._Send(nlmsghdr.Pack() + rtmsg.Pack())
-    data = self._Recv()
-    return self._GetRTMsgList(data, True)
+    return self._Dump(RTM_GETRULE, rtmsg, RTMsg)
 
   def _Address(self, version, command, addr, prefixlen, flags, scope, ifindex):
     """Adds or deletes an IP address."""
@@ -576,7 +588,7 @@ class IPRoute(object):
     # The response will either be an error or a list of routes.
     if NLMsgHdr(data).type == NLMSG_ERROR:
       self._ParseAck(data)
-    routes = self._GetRTMsgList(data, False)
+    routes = self._GetMsgList(RTMsg, data, False)
     return routes
 
   def _Neighbour(self, version, is_add, addr, lladdr, dev, state):
