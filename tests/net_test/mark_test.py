@@ -1098,5 +1098,62 @@ class PMTUTest(MultiNetworkTest):
       self.assertEquals(1280, self.GetSocketMTU(s))
 
 
+class UidRoutingTest(net_test.NetworkTest):
+
+  def setUp(self):
+    self.iproute = iproute.IPRoute()
+
+  @staticmethod
+  def Random():
+    return random.randint(100 * 1000, 200 * 1000)
+
+  def GetRules(self, version, priority):
+    rules = self.iproute.DumpRules(version)
+    out = [(rule, attributes) for rule, attributes in rules
+           if attributes.get(iproute.FRA_PRIORITY, 0) == priority]
+    return out
+
+  def CheckInitialTablesHaveNoUIDs(self, version):
+    rules = []
+    for priority in [0, 32766, 32767]:
+      rules.extend(self.GetRules(version, priority))
+    for _, attributes in rules:
+      self.assertNotIn(iproute.EXPERIMENTAL_FRA_UID_START, attributes)
+      self.assertNotIn(iproute.EXPERIMENTAL_FRA_UID_END, attributes)
+
+  def testIPv4InitialTablesHaveNoUIDs(self):
+    self.CheckInitialTablesHaveNoUIDs(4)
+
+  def testIPv6InitialTablesHaveNoUIDs(self):
+    self.CheckInitialTablesHaveNoUIDs(6)
+
+  def CheckGetAndSetRules(self, version):
+    priority = self.Random()
+    start, end = tuple(sorted([self.Random(), self.Random()]))
+    table = self.Random()
+    self.iproute.UidRangeRule(version, True, start, end, table,
+                              priority=priority)
+
+    try:
+      rules = self.GetRules(version, priority)
+      self.assertTrue(rules)
+      _, attributes = rules[-1]
+      self.assertEquals(priority, attributes[iproute.FRA_PRIORITY])
+      self.assertEquals(start, attributes[iproute.EXPERIMENTAL_FRA_UID_START])
+      self.assertEquals(end, attributes[iproute.EXPERIMENTAL_FRA_UID_END])
+      self.assertEquals(table, attributes[iproute.FRA_TABLE])
+    finally:
+      self.iproute.UidRangeRule(version, False, start, end, table,
+                                priority=priority)
+
+  @unittest.skipUnless(HAVE_EXPERIMENTAL_UID_ROUTING, "no UID routing")
+  def testIPv4GetAndSetRules(self):
+    self.CheckGetAndSetRules(4)
+
+  @unittest.skipUnless(HAVE_EXPERIMENTAL_UID_ROUTING, "no UID routing")
+  def testIPv6GetAndSetRules(self):
+    self.CheckGetAndSetRules(6)
+
+
 if __name__ == "__main__":
   unittest.main()
