@@ -243,7 +243,13 @@ def SetFlowLabel(s, addr, label):
   # Caller also needs to do s.setsockopt(SOL_IPV6, IPV6_FLOWINFO_SEND, 1).
 
 
-# Determine IPv6 configuration.
+# Determine network configuration.
+try:
+  GetDefaultRoute(version=4)
+  HAVE_IPV4 = True
+except ValueError:
+  HAVE_IPV4 = False
+
 try:
   GetDefaultRoute(version=6)
   HAVE_IPV6 = True

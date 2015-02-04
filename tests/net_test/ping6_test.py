@@ -6,6 +6,7 @@ import errno
 import os
 import posix
 import re
+from scapy import all as scapy
 from socket import *  # pylint: disable=wildcard-import
 import unittest
 
@@ -128,13 +129,13 @@ class Ping6Test(net_test.NetworkTest):
     s.send(data)
     self.assertValidPingResponse(s, data)
 
-  @unittest.skipUnless(net_test.HAVE_IPV6, "skipping: no IPv6")
   def testIPv6LoopbackPingWithConnect(self):
     s = net_test.IPv6PingSocket()
     s.connect(("::1", 55))
     s.send(net_test.IPV6_PING)
     self.assertValidPingResponse(s, net_test.IPV6_PING)
 
+  @unittest.skipUnless(net_test.HAVE_IPV4, "skipping: no IPv4")
   def testIPv4PingUsingSendto(self):
     s = net_test.IPv4PingSocket()
     written = s.sendto(net_test.IPV4_PING, (net_test.IPV4_ADDR, 55))
@@ -166,6 +167,8 @@ class Ping6Test(net_test.NetworkTest):
     reply = posix.read(fd, 4096)
     self.assertEquals(written, len(reply))
 
+
+  @unittest.skipUnless(net_test.HAVE_IPV4, "skipping: no IPv4")
   def testIPv4Bind(self):
     # Bind to unspecified address.
     s = net_test.IPv4PingSocket()
@@ -359,6 +362,7 @@ class Ping6Test(net_test.NetworkTest):
     _, _, flowlabel, _ = src
     self.assertEqual(0xdead, flowlabel & 0xfffff)
 
+  @unittest.skipUnless(net_test.HAVE_IPV4, "skipping: no IPv4")
   def testIPv4Error(self):
     s = net_test.IPv4PingSocket()
     s.setsockopt(SOL_IP, IP_TTL, 2)
@@ -392,7 +396,6 @@ class Ping6Test(net_test.NetworkTest):
     s.sendto(data, ("127.0.0.1", 987))
     self.assertValidPingResponse(s, data)
 
-  @unittest.skipUnless(net_test.HAVE_IPV6, "skipping: no IPv6")
   def testIPv6LargePacket(self):
     s = net_test.IPv6PingSocket()
     s.bind(("::", 0xace))
