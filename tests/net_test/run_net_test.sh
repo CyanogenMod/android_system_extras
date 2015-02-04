@@ -52,20 +52,19 @@ for tap in $tapinterfaces; do
   fi
 done
 
-# Set kernel compilation options for make.
-export ARCH=um
-export SUBARCH=x86_64
+# Exporting ARCH=um SUBARCH=x86_64 doesn't seem to work, as it "sometimes" (?)
+# results in a 32-bit kernel.
 
 # If there's no kernel config at all, create one or UML won't work.
-[ -f .config ] || make defconfig
+[ -f .config ] || make defconfig ARCH=um SUBARCH=x86_64
 
 # Enable the kernel config options listed in $OPTIONS.
 cmdline=${OPTIONS// / -e }
 ./scripts/config $cmdline
-make olddefconfig
+make olddefconfig ARCH=um SUBARCH=x86_64
 
 # Compile the kernel.
-make -j12 linux
+make -j12 linux ARCH=um SUBARCH=x86_64
 
 # Get the absolute path to the test file that's being run.
 dir=/host$(dirname $(readlink -f $0))
