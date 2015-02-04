@@ -17,10 +17,11 @@ from socket import *
 from scapy import all as scapy
 
 SOL_IPV6 = 41
-IP_TRANSPARENT = 19
-IPV6_TRANSPARENT = 75
 IP_RECVERR = 11
 IPV6_RECVERR = 25
+IP_TRANSPARENT = 19
+IPV6_TRANSPARENT = 75
+IPV6_TCLASS = 67
 SO_BINDTODEVICE = 25
 SO_MARK = 36
 IPV6_FLOWLABEL_MGR = 32
@@ -59,6 +60,11 @@ def SetSocketTimeout(sock, ms):
   s = ms / 1000
   us = (ms % 1000) * 1000
   sock.setsockopt(SOL_SOCKET, SO_RCVTIMEO, struct.pack("LL", s, us))
+
+def SetSocketTos(s, tos):
+  level = {AF_INET: SOL_IP, AF_INET6: SOL_IPV6}[s.family]
+  option = {AF_INET: IP_TOS, AF_INET6: IPV6_TCLASS}[s.family]
+  s.setsockopt(level, option, tos)
 
 def SetNonBlocking(fd):
   flags = fcntl.fcntl(fd, fcntl.F_GETFL, 0)
