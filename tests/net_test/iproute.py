@@ -5,6 +5,7 @@
 # pylint: disable=g-bad-todo
 
 import os
+import errno
 import socket
 import struct
 
@@ -316,6 +317,20 @@ class IPRoute(object):
     # Create a netlink request containing the rtmsg.
     command = RTM_NEWRULE if is_add else RTM_DELRULE
     self._SendNlRequest(command, rtmsg)
+
+  def DeleteRulesAtPriority(self, version, priority):
+    family = self._AddressFamily(version)
+    rtmsg = RTMsg((family, 0, 0, 0, RT_TABLE_UNSPEC,
+                   RTPROT_STATIC, RT_SCOPE_UNIVERSE, RTN_UNICAST, 0)).Pack()
+    rtmsg += self._NlAttrU32(FRA_PRIORITY, priority)
+    while True:
+      try:
+        self._SendNlRequest(RTM_DELRULE, rtmsg)
+      except IOError, e:
+        if e.errno == -errno.ENOENT:
+          break
+        else:
+          raise
 
   def FwmarkRule(self, version, is_add, fwmark, table, priority=16383):
     nlattr = self._NlAttrU32(FRA_FWMARK, fwmark)
