@@ -1,4 +1,18 @@
 #!/usr/bin/python
+#
+# Copyright 2014 The Android Open Source Project
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 # pylint: disable=g-bad-todo
 
@@ -169,8 +183,14 @@ class Ping6Test(net_test.NetworkTest):
     self.assertEquals(written, len(reply))
 
   def testCrossProtocolCrash(self):
+    # Checks that an ICMP error containing a ping packet that matches the ID
+    # of a socket of the wrong protocol (which can happen when using 464xlat)
+    # doesn't crash the kernel.
 
-    def GetIPv4Unreachable(port):
+    # We can only test this using IPv6 unreachables and IPv4 ping sockets,
+    # because IPv4 packets sent by scapy.send() on loopback are not received by
+    # the kernel. So we don't actually use this function yet.
+    def GetIPv4Unreachable(port):  # pylint: disable=unused-variable
       return (scapy.IP(src="192.0.2.1", dst="127.0.0.1") /
               scapy.ICMP(type=3, code=0) /
               scapy.IP(src="127.0.0.1", dst="127.0.0.1") /
@@ -183,9 +203,7 @@ class Ping6Test(net_test.NetworkTest):
               scapy.ICMPv6EchoRequest(id=port, seq=1, data="foobarbaz"))
 
     # An unreachable matching the ID of a socket of the wrong protocol
-    # shouldn't crash. We can only test this using IPv6 unreachables and IPv4
-    # ping sockets, because IPv4 packets sent by scapy.send() on loopback don't
-    # appear to be received by the kernel.)
+    # shouldn't crash.
     s = net_test.IPv4PingSocket()
     s.connect(("127.0.0.1", 12345))
     _, port = s.getsockname()
@@ -506,4 +524,3 @@ class Ping6Test(net_test.NetworkTest):
 
 if __name__ == "__main__":
   unittest.main()
-

@@ -1,4 +1,20 @@
 #!/usr/bin/python
+#
+# Copyright 2014 The Android Open Source Project
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Base module for multinetwork tests."""
 
 import errno
 import fcntl
@@ -42,8 +58,8 @@ InPktinfo = cstruct.Struct("in_pktinfo", "@i4s4s", "ifindex spec_dst addr")
 In6Pktinfo = cstruct.Struct("in6_pktinfo", "@16si", "addr ifindex")
 
 
-# Check to see if the kernel supports UID routing.
 def HaveUidRouting():
+  """Checks whether the kernel supports UID routing."""
   # Create a rule with the UID range selector. If the kernel doesn't understand
   # the selector, it will create a rule with no selectors.
   try:
@@ -83,6 +99,18 @@ def MakePktInfo(version, addr, ifindex):
 
 
 class MultiNetworkBaseTest(net_test.NetworkTest):
+
+  """Base class for all multinetwork tests.
+
+  This class does not contain any test code, but contains code to set up and
+  tear a multi-network environment using multiple tun interfaces. The
+  environment is designed to be similar to a real Android device in terms of
+  rules and routes, and supports IPv4 and IPv6.
+
+  Tests wishing to use this environment should inherit from this class and
+  ensure that any setupClass, tearDownClass, setUp, and tearDown methods they
+  implement also call the superclass versions.
+  """
 
   # Must be between 1 and 256, since we put them in MAC addresses and IIDs.
   NETIDS = [100, 150, 200, 250]
@@ -415,7 +443,7 @@ class MultiNetworkBaseTest(net_test.NetworkTest):
     while True:
       try:
         packet = posix.read(self.tuns[netid].fileno(), 4096)
-        if len(packet) == 0:
+        if not packet:
           break
         ether = scapy.Ether(packet)
         # Multicast frames are frames where the first byte of the destination
