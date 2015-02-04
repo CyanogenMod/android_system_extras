@@ -329,11 +329,21 @@ class Ping6Test(net_test.NetworkTest):
   @unittest.skipUnless(net_test.HAVE_IPV6, "skipping: no IPv6")
   def testFlowLabel(self):
     s = net_test.IPv6PingSocket()
-    net_test.SetFlowLabel(s, net_test.IPV6_ADDR, 0xdead)
+
+    # Specifying a flowlabel without having set IPV6_FLOWINFO_SEND succeeds but
+    # the flow label in the packet is not set.
     s.sendto(net_test.IPV6_PING, (net_test.IPV6_ADDR, 93, 0xdead, 0))
     self.assertValidPingResponse(s, net_test.IPV6_PING)  # Checks flow label==0.
 
+    # If IPV6_FLOWINFO_SEND is set on the socket, attempting to set a flow label
+    # that is not registered with the flow manager returns EINVAL.
     s.setsockopt(net_test.SOL_IPV6, net_test.IPV6_FLOWINFO_SEND, 1)
+    self.assertRaisesErrno(errno.EINVAL, s.sendto, net_test.IPV6_PING,
+                           (net_test.IPV6_ADDR, 93, 0xdead, 0))
+
+    # After registering the flow label, it gets sent properly, appears in the
+    # output packet, and is returned in the response.
+    net_test.SetFlowLabel(s, net_test.IPV6_ADDR, 0xdead)
     self.assertEqual(1, s.getsockopt(net_test.SOL_IPV6,
                                      net_test.IPV6_FLOWINFO_SEND))
     s.sendto(net_test.IPV6_PING, (net_test.IPV6_ADDR, 93, 0xdead, 0))
