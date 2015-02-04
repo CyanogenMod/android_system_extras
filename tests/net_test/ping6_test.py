@@ -52,7 +52,7 @@ class Ping6Test(net_test.NetworkTest):
       self.assertGreaterEqual(len(addr), len("1.1.1.1"))
       self.assertTrue(rcvd.startswith("\x00\x00"), "Not an IPv4 echo reply")
     else:
-      addr, unused_port, flowlabel, scope_id = src
+      addr, unused_port, flowlabel, scope_id = src  # pylint: disable=unbalanced-tuple-unpacking
       self.assertGreaterEqual(len(addr), len("::"))
       self.assertTrue(rcvd.startswith("\x81\x00"), "Not an IPv6 echo reply")
       # Check that the flow label is zero and that the scope ID is sane.
