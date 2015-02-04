@@ -12,6 +12,7 @@ from socket import *
 
 import net_test
 
+DEBUG = False
 
 IFF_TUN = 1
 IFF_TAP = 2
@@ -200,7 +201,8 @@ class MarkTest(net_test.NetworkTest):
         cmds = self.COMMANDS
         if self.AUTOCONF_TABLE_OFFSET < 0:
           # Set up routing manually.
-          cmds += self.ROUTE_COMMANDS
+          # Don't do cmds += self.ROUTE_COMMANDS as this modifies self.COMMANDS.
+          cmds = self.COMMANDS + self.ROUTE_COMMANDS
 
       if version == 4:
         # Deleting addresses also causes routes to be deleted, so watch the
@@ -224,7 +226,7 @@ class MarkTest(net_test.NetworkTest):
       }).split("\n")
       for cmd in cmds:
         cmd = cmd.split(" ")
-        #print cmd
+        if DEBUG: print " ".join(cmd)
         ret = os.spawnvp(os.P_WAIT, cmd[0], cmd)
         if ret:
           raise ConfigurationError("Setup command failed: %s" % " ".join(cmd))
@@ -317,16 +319,6 @@ class MarkTest(net_test.NetworkTest):
       self.assertMultiLineEqual(str(expected).encode("hex"),
                                 str(actual).encode("hex"))
     
-  def ExpectPacketOn(self, netid, msg, expected):
-    try:
-      actual = self.tuns[netid].read(4096)
-    except IOError, e:
-      raise AssertionError(msg + ": " + str(e))
-      
-    self.assertTrue(actual)
-    if expected:
-      self.CheckExpectedPacket(expected, actual, msg)
-
   def assertNoPacketsOn(self, netids, msg):
     for netid in netids:
       try:
@@ -340,6 +332,21 @@ class MarkTest(net_test.NetworkTest):
 
   def assertNoPacketsExceptOn(self, netid, msg):
     self.assertNoPacketsOn([n for n in self.tuns if n != netid], msg)
+
+  def ExpectPacketOn(self, netid, msg, expected=None):
+    # Check no packets were sent on any other netid.
+    self.assertNoPacketsExceptOn(netid, msg)
+
+    # Check that a packet was sent on netid.
+    try:
+      actual = self.tuns[netid].read(4096)
+    except IOError, e:
+      raise AssertionError(msg + ": " + str(e))
+    self.assertTrue(actual)
+
+    # If we know what sort of packet we expect, check that here.
+    if expected:
+      self.CheckExpectedPacket(expected, actual, msg)
 
   def ReceivePacketOn(self, netid, ip_packet):
     routermac = self._RouterMacAddress(netid)
@@ -362,8 +369,60 @@ class MarkTest(net_test.NetworkTest):
   def _GetRemoteAddress(version):
     return {4: net_test.IPV4_ADDR, 6: net_test.IPV6_ADDR}[version]
 
+  def MarkSocket(self, s, netid):
+    s.setsockopt(SOL_SOCKET, net_test.SO_MARK, netid)
+
+  def GetProtocolFamily(self, version):
+    return {4: AF_INET, 6: AF_INET6}[version]
+
+  def testOutgoingPackets(self):
+    """Checks that socket marking selects the right outgoing interface."""
+
+    def CheckPingPacket(version, netid, packet):
+      s = net_test.PingSocket(self.GetProtocolFamily(version))
+      dstaddr = self._GetRemoteAddress(version)
+      self.MarkSocket(s, netid)
+      s.sendto(packet, (dstaddr, 19321))
+      self.ExpectPacketOn(netid, "IPv%d ping: mark %d" % (version, netid))
+
+    for netid in self.tuns:
+      CheckPingPacket(4, netid, net_test.IPV4_PING)
+      CheckPingPacket(6, netid, net_test.IPV6_PING)
+
+    def CheckTCPSYNPacket(version, netid, dstaddr):
+      s = net_test.TCPSocket(self.GetProtocolFamily(version))
+      self.MarkSocket(s, netid)
+      # Non-blocking TCP connects always return EINPROGRESS.
+      self.assertRaisesErrno(errno.EINPROGRESS, s.connect, (dstaddr, 53))
+      self.ExpectPacketOn(netid, "IPv%d TCP connect: mark %d" % (version,
+                                                                 netid))
+      s.close()
+
+    for netid in self.tuns:
+      CheckTCPSYNPacket(4, netid, net_test.IPV4_ADDR)
+      CheckTCPSYNPacket(6, netid, net_test.IPV6_ADDR)
+      CheckTCPSYNPacket(6, netid, "::ffff:" + net_test.IPV4_ADDR)
+
+    def CheckUDPPacket(version, netid, dstaddr):
+      s = net_test.UDPSocket(self.GetProtocolFamily(version))
+      self.MarkSocket(s, netid)
+      s.sendto("hello", (dstaddr, 53))
+      self.ExpectPacketOn(netid, "IPv%d UDP sendto: mark %d" % (version, netid))
+      s.connect((dstaddr, 53))
+      s.send("hello")
+      self.ExpectPacketOn(netid, "IPv%d UDP connect/send: mark %d" % (version,
+                                                                      netid))
+      s.close()
+
+    for netid in self.tuns:
+      CheckUDPPacket(4, netid, net_test.IPV4_ADDR)
+      CheckUDPPacket(6, netid, net_test.IPV6_ADDR)
+      CheckUDPPacket(6, netid, "::ffff:" + net_test.IPV4_ADDR)
+
   def CheckReflection(self, version, packet_generator, reply_generator):
-    # Test packets addressed to the IP addresses of all our interfaces...
+    """Checks that replies go out on the same interface as the original."""
+
+    # Check packets addressed to the IP addresses of all our interfaces...
     for dest_ip_netid in self.tuns:
       dest_ip_iface = self._GetInterfaceName(dest_ip_netid)
 
@@ -391,7 +450,6 @@ class MarkTest(net_test.NetworkTest):
         # Expect a reply on the interface the original packet came in on.
         self.ClearTunQueues()
         self.ReceivePacketOn(iif_netid, packet)
-        self.assertNoPacketsExceptOn(iif_netid, msg)
         self.ExpectPacketOn(iif_netid, msg, reply)
 
   def SYNToClosedPort(self, *args):
@@ -417,6 +475,10 @@ class MarkTest(net_test.NetworkTest):
 
   def testIPv6RSTsReflectMark(self):
     self.CheckReflection(6, self.SYNToClosedPort, Packets.RST)
+
+  @unittest.skipUnless(False, "skipping: doesn't work yet")
+  def testIPv4SYNACKsReflectMark(self):
+    self.CheckReflection(4, Packets.SYNToOpenPort, Packets.SYNACK)
 
   @unittest.skipUnless(False, "skipping: doesn't work yet")
   def testIPv6SYNACKsReflectMark(self):
