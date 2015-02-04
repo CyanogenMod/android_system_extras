@@ -472,7 +472,7 @@ class MultiNetworkTest(net_test.NetworkTest):
       #
       # IPv6 uses autoconf for everything, except if per-device autoconf routing
       # tables are not supported, in which case the default route (only) is
-      # configured manually. For IPv4 we have to manualy configure addresses,
+      # configured manually. For IPv4 we have to manually configure addresses,
       # routes, and neighbour cache entries (since we don't reply to ARP or ND).
       #
       # Since deleting addresses also causes routes to be deleted, we need to
