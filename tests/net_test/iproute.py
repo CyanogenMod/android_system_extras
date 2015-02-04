@@ -126,6 +126,25 @@ def CommandSubject(command):
 
 
 def Decode(command, family, nla_type, nla_data):
+  """Decodes netlink attributes to Python types.
+
+  Values for which the code knows the type (e.g., the fwmark ID in a
+  RTM_NEWRULE command) are decoded to Python integers, strings, etc. Values
+  of unknown type are returned as raw byte strings.
+
+  Args:
+    command: An integer, the rtnetlink command being carried out. This is used
+      to interpret the attributes. For example, for an RTM_NEWROUTE command,
+      attribute type 3 is the incoming interface and is an integer, but for a
+      RTM_NEWRULE command, attribute type 3 is the incoming interface name
+      and is a string.
+    family: The address family. Used to convert IP addresses into strings.
+    nla_type: An integer, then netlink attribute type.
+    nla_data: A byte string, the netlink attribute data.
+
+  Returns:
+    A Python object. (Currently an integer, a string, or a raw byte string.)
+  """
   if CommandSubject(command) == "RULE":
     if nla_type in [FRA_PRIORITY, FRA_FWMARK, FRA_TABLE,
                     EXPERIMENTAL_FRA_UID_START, EXPERIMENTAL_FRA_UID_END]:
@@ -172,20 +191,15 @@ class IPRoute(object):
     return self._NlAttr(nla_type, socket.inet_pton(family, address))
 
   def _ParseAttributes(self, command, family, data):
-    """Parses netlink attributes.
+    """Parses and decodes netlink attributes.
 
-    Values for which the code knows the type (e.g., the fwmark ID in a
-    RTM_NEWRULE command) are decoded to Python integers, strings, etc. Values
-    of unknown type are returned as raw byte strings.
+    Takes a block of NLAttr data structures, decodes them using Decode, and
+    returns the result in a dict keyed by attribute number.
 
     Args:
-      command: An integer, the rtnetlink command being carried out. This is used
-        to interpret the attributes. For example, for an RTM_NEWROUTE command,
-        attribute type 3 is the incoming interface and is an integer, but for a
-        RTM_NEWRULE command, attribute type 3 is the incoming interface name
-        and is a string.
-      family: The address family. Used to convert IP addresses into strings.
-      data: A byte string containing a sequence of NLAttrs data structures.
+      command: An integer, the rtnetlink command being carried out.
+      family: The address family.
+      data: A byte string containing a sequence of NLAttr data structures.
 
     Returns:
       A dictionary mapping attribute types (integers) to decoded values.
