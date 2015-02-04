@@ -583,14 +583,14 @@ class MarkTest(MultiNetworkTest):
         actualtcp.ack = None
       actualtcp.chksum = None
 
-    # Serialize the packet so:
-    # - Expected packet fields that are only set when a packet is serialized
-    #   (e.g., the checksum) are filled in.
-    # - The packet is vaguely human-readable. Scapy has sophisticated packet
-    #   dissection capabilities, but unfortunately they can only be used to
-    #   print the packet, not to return its dissection as as string.
-    self.assertMultiLineEqual(str(expected).encode("hex"),
-                              str(actual).encode("hex"))
+    # Serialize the packet so that expected packet fields that are only set when
+    # a packet is serialized e.g., the checksum) are filled in.
+    expected_real = expected.__class__(str(expected))
+    actual_real = actual.__class__(str(actual))
+    # repr() can be expensive. Call it only if the test is going to fail and we
+    # want to see the error.
+    if expected_real != actual_real:
+      self.assertEquals(repr(expected_real), repr(actual_real))
 
   def PacketMatches(self, expected, actual):
     try:
