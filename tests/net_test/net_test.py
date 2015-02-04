@@ -239,7 +239,7 @@ def MakeFlowLabelOption(addr, label):
 def SetFlowLabel(s, addr, label):
   opt = MakeFlowLabelOption(addr, label)
   s.setsockopt(SOL_IPV6, IPV6_FLOWLABEL_MGR, opt)
-  s.setsockopt(SOL_IPV6, IPV6_FLOWINFO_SEND, 1)
+  # Caller also needs to do s.setsockopt(SOL_IPV6, IPV6_FLOWINFO_SEND, 1).
 
 
 # Determine IPv6 configuration.
