@@ -799,6 +799,35 @@ class MarkTest(MultiNetworkTest):
     """Checks that oif routing selects the right outgoing interface."""
     self.CheckOutgoingPackets("oif")
 
+  def CheckRemarking(self, version):
+    s = net_test.UDPSocket(self._GetProtocolFamily(version))
+
+    # Figure out what packets to expect.
+    unspec = {4: "0.0.0.0", 6: "::"}[version]
+    sport = Packets.RandomPort()
+    s.bind((unspec, sport))
+    dstaddr = {4: self.IPV4_ADDR, 6: self.IPV6_ADDR}[version]
+    desc, expected = Packets.UDP(version, unspec, dstaddr, sport)
+
+    # For each netid, set that netid's mark on the socket without closing it,
+    # and check that the packets sent on that socket go out on the right
+    # network.
+    for netid in self.tuns:
+      self.SetSocketMark(s, netid)
+      expected.src = self.MyAddress(version, netid)
+      s.sendto("hello", (dstaddr, 53))
+      msg = "Remarked UDPv%d socket: expecting %s on %s" % (
+          version, desc, self.GetInterfaceName(netid))
+      self.ExpectPacketOn(netid, msg, expected)
+
+  def testIPv4Remarking(self):
+    """Checks that updating the mark on an IPv4 socket changes routing."""
+    self.CheckRemarking(4)
+
+  def testIPv6Remarking(self):
+    """Checks that updating the mark on an IPv6 socket changes routing."""
+    self.CheckRemarking(6)
+
   def CheckReflection(self, version, packet_generator, reply_generator,
                       mark_behaviour, callback=None):
     """Checks that replies go out on the same interface as the original.
