@@ -57,7 +57,10 @@ UDP_PAYLOAD = str(scapy.DNS(rd=1,
 def HaveUidRouting():
   # Create a rule with the UID range selector. If the kernel doesn't understand
   # the selector, it will create a rule with no selectors.
-  iproute.IPRoute().UidRangeRule(6, True, 1000, 2000, 100)
+  try:
+    iproute.IPRoute().UidRangeRule(6, True, 1000, 2000, 100)
+  except IOError:
+    return False
 
   # Dump all the rules. If we find a rule using the UID range selector, then the
   # kernel supports UID range routing.
