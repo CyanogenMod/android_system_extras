@@ -25,6 +25,7 @@ from scapy import all as scapy
 
 import iproute
 import multinetwork_base
+import multinetwork_test
 import net_test
 import sendmsg
 
@@ -296,7 +297,7 @@ class NoNsFromOptimisticTest(MultiInterfaceSourceAddressSelectionTest):
     onlink_dest = self.GetRandomDestination(self.IPv6Prefix(self.test_netid))
     self.SendWithSourceAddress(self.test_ip, self.test_netid, onlink_dest)
 
-    expected_ns = multinetwork_base.Packets.NS(
+    expected_ns = multinetwork_test.Packets.NS(
         net_test.GetLinkAddress(self.test_ifname, True),
         onlink_dest,
         self.MyMacAddress(self.test_netid))[1]
