@@ -109,6 +109,17 @@ EXPERIMENTAL_FRA_UID_START = 18
 EXPERIMENTAL_FRA_UID_END = 19
 
 
+def Decode(nla_type, nla_data):
+  if nla_type in [FRA_PRIORITY, FRA_FWMARK, FRA_TABLE,
+                  EXPERIMENTAL_FRA_UID_START, EXPERIMENTAL_FRA_UID_END]:
+    return struct.unpack("=I", nla_data)[0]
+  elif nla_type in [FRA_OIFNAME]:
+    return nla_data.strip("\x00")
+  else:
+    # Don't know what this is.
+    return nla_data
+
+
 def PaddedLength(length):
   # TODO: This padding is probably overly simplistic.
   return NLA_ALIGNTO * ((length / NLA_ALIGNTO) + (length % NLA_ALIGNTO != 0))
@@ -253,7 +264,7 @@ class IPRoute(object):
       self._Debug("  %s" % rtmsg)
 
       # Parse the attributes in the rtmsg.
-      attributes = []
+      attributes = {}
       bytesleft = nlmsghdr.length - len(nlmsghdr) - len(rtmsg)
       while bytesleft:
         # Read the nlattr header.
@@ -265,8 +276,13 @@ class IPRoute(object):
         padded_len = PaddedLength(nla.nla_len) - len(nla)
         nla_data, data = data[:datalen], data[padded_len:]
 
-        attributes.append((nla, nla_data))
-        self._Debug("    %s" % str(attributes[-1]))
+        # If it's an attribute we know about, try to decode it.
+        nla_data = Decode(nla.nla_type, nla_data)
+
+        if nla.nla_type in attributes:
+          raise ValueError("Duplicate attribute %d in rules")
+        attributes[nla.nla_type] = nla_data
+        self._Debug("    %s" % str((nla, nla_data)))
         bytesleft -= (padded_len + len(nla))
 
       rules.append((rtmsg, attributes))
