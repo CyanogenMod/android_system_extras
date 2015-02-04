@@ -8,6 +8,7 @@ import random
 import re
 from socket import *  # pylint: disable=wildcard-import
 import struct
+import time
 import unittest
 
 from scapy import all as scapy
@@ -957,7 +958,7 @@ class RATest(MultiNetworkTest):
     self.assertEquals(num_routes, GetNumRoutes())
 
 
-class RedirectAndPMTUTest(MultiNetworkTest):
+class PMTUTest(MultiNetworkTest):
 
   IPV6_PATHMTU = 61
   IPV6_DONTFRAG = 62
@@ -989,6 +990,11 @@ class RedirectAndPMTUTest(MultiNetworkTest):
     self.assertEquals(1500, self.GetSocketMTU(s))
 
     self.ClearTunQueues()
+    # XXX why is this needed? It seems that if this is not there, the packet
+    # won't even make it to icmpv6_rcv. Perhaps the local delivery route for
+    # our IP address has not been set up yet? But why should that take 0.5s?
+    # DAD is disabled, so we're not waiting for DAD...
+    time.sleep(0.5)
     s.send(1400 * "a")
     packets = self.ReadAllPacketsOn(netid)
     self.assertEquals(1, len(packets))
