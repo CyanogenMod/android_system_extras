@@ -62,6 +62,7 @@ RTPROT_STATIC = 4
 
 # Route scope values (rtm_scope).
 RT_SCOPE_UNIVERSE = 0
+RT_SCOPE_LINK = 253
 
 # Named routing tables.
 RT_TABLE_UNSPEC = 0
@@ -522,8 +523,9 @@ class IPRoute(object):
              mark, uid):
     """Adds, deletes, or queries a route."""
     family = self._AddressFamily(version)
+    scope = RT_SCOPE_UNIVERSE if nexthop else RT_SCOPE_LINK
     rtmsg = RTMsg((family, prefixlen, 0, 0, RT_TABLE_UNSPEC,
-                   RTPROT_STATIC, RT_SCOPE_UNIVERSE, RTN_UNICAST, 0)).Pack()
+                   RTPROT_STATIC, scope, RTN_UNICAST, 0)).Pack()
     if command == RTM_NEWROUTE and not table:
       # Don't allow setting routes in table 0, since its behaviour is confusing
       # and differs between IPv4 and IPv6.
