@@ -6,9 +6,10 @@ import errno
 import os
 import posix
 import re
-from scapy import all as scapy
 from socket import *  # pylint: disable=wildcard-import
 import unittest
+
+from scapy import all as scapy
 
 import net_test
 
@@ -190,7 +191,6 @@ class Ping6Test(net_test.NetworkTest):
     _, port = s.getsockname()
     scapy.send(GetIPv6Unreachable(port))
     # No crash? Good.
-
 
   @unittest.skipUnless(net_test.HAVE_IPV4, "skipping: no IPv4")
   def testIPv4Bind(self):
