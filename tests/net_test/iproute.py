@@ -37,6 +37,12 @@ NLA_ALIGNTO = 4
 
 ### rtnetlink constants. See include/uapi/linux/rtnetlink.h.
 # Message types.
+RTM_NEWADDR = 20
+RTM_DELADDR = 21
+RTM_NEWROUTE = 24
+RTM_DELROUTE = 25
+RTM_NEWNEIGH = 28
+RTM_DELNEIGH = 29
 RTM_NEWRULE = 32
 RTM_DELRULE = 33
 RTM_GETRULE = 34
@@ -55,10 +61,43 @@ RT_SCOPE_UNIVERSE = 0
 # Named routing tables.
 RT_TABLE_UNSPEC = 0
 
+# Routing attributes.
+RTA_DST = 1
+RTA_OIF = 4
+RTA_GATEWAY = 5
+
 # Data structure formats.
 RTMsg = cstruct.Struct(
     "RTMsg", "=BBBBBBBBI",
     "family dst_len src_len tos table protocol scope type flags")
+
+
+### Interface address constants. See include/uapi/linux/if_addr.h.
+# Interface address attributes.
+IFA_ADDRESS = 1
+IFA_LOCAL = 2
+
+# Address flags.
+IFA_F_PERMANENT = 0x80
+
+# Data structure formats.
+IfAddrMsg = cstruct.Struct(
+    "IfAddrMsg", "=BBBBI",
+    "family prefixlen flags scope index")
+
+
+### Neighbour table entry constants. See include/uapi/linux/neighbour.h.
+# Neighbour cache entry attributes.
+NDA_DST = 1
+NDA_LLADDR = 2
+
+# Neighbour cache entry states.
+NUD_PERMANENT = 0x80
+
+# Data structure formats.
+NdMsg = cstruct.Struct(
+    "NdMsg", "=BxxxiHBB",
+    "family ifindex state flags type")
 
 
 ### FIB rule constants. See include/uapi/linux/fib_rules.h.
@@ -96,6 +135,9 @@ class IPRoute(object):
   def _NlAttrU32(self, nla_type, value):
     return self._NlAttr(nla_type, struct.pack("=I", value))
 
+  def _NlAttrIPAddress(self, nla_type, family, address):
+    return self._NlAttr(nla_type, socket.inet_pton(family, address))
+
   def __init__(self):
     # Global sequence number.
     self.seq = 0
@@ -105,6 +147,7 @@ class IPRoute(object):
     self.pid = self.sock.getsockname()[1]
 
   def _Send(self, msg):
+    self._Debug(msg.encode("hex"))
     self.seq += 1
     self.sock.send(msg)
 
@@ -129,6 +172,24 @@ class IPRoute(object):
     else:
       raise ValueError("Unexpected netlink ACK type %d" % hdr.type)
 
+  def _AddressFamily(self, version):
+    return {4: socket.AF_INET, 6: socket.AF_INET6}[version]
+
+  def _SendNlRequest(self, command, is_add, data):
+    """Sends a netlink request and expects an ack."""
+    flags = NLM_F_REQUEST | NLM_F_ACK
+    if is_add:
+      flags |= (NLM_F_EXCL | NLM_F_CREATE)
+
+    length = len(NLMsgHdr) + len(data)
+    nlmsg = NLMsgHdr((length, command, flags, self.seq, self.pid)).Pack()
+
+    # Send the message and block forever until we receive a response.
+    self._Send(nlmsg + data)
+
+    # Expect a successful ACK.
+    self._ExpectAck()
+
   def _Rule(self, version, is_add, table, match_nlattr, priority):
     """Python equivalent of "ip rule <add|del> <match_cond> lookup <table>".
 
@@ -143,10 +204,8 @@ class IPRoute(object):
       IOError: If the netlink request returns an error.
       ValueError: If the kernel's response could not be parsed.
     """
-    self.seq += 1
-
     # Create a struct rtmsg specifying the table and the given match attributes.
-    family = {4: socket.AF_INET, 6: socket.AF_INET6}[version]
+    family = self._AddressFamily(version)
     rtmsg = RTMsg((family, 0, 0, 0, RT_TABLE_UNSPEC,
                    RTPROT_STATIC, RT_SCOPE_UNIVERSE, RTN_UNICAST, 0)).Pack()
     rtmsg += self._NlAttrU32(FRA_PRIORITY, priority)
@@ -155,18 +214,7 @@ class IPRoute(object):
 
     # Create a netlink request containing the rtmsg.
     command = RTM_NEWRULE if is_add else RTM_DELRULE
-    flags = NLM_F_REQUEST | NLM_F_ACK
-    if is_add:
-      flags |= (NLM_F_EXCL | NLM_F_CREATE)
-
-    length = len(NLMsgHdr) + len(rtmsg)
-    nlmsg = NLMsgHdr((length, command, flags, self.seq, self.pid)).Pack()
-
-    # Send the message and block forever until we receive a response.
-    self._Send(nlmsg + rtmsg)
-
-    # Expect a successful ACK.
-    self._ExpectAck()
+    self._SendNlRequest(command, is_add, rtmsg)
 
   def FwmarkRule(self, version, is_add, fwmark, table, priority=16383):
     nlattr = self._NlAttrU32(FRA_FWMARK, fwmark)
@@ -184,7 +232,7 @@ class IPRoute(object):
   def DumpRules(self, version):
     """Returns the IP rules for the specified IP version."""
     # Create a struct rtmsg specifying the table and the given match attributes.
-    family = {4: socket.AF_INET, 6: socket.AF_INET6}[version]
+    family = self._AddressFamily(version)
     rtmsg = RTMsg((family, 0, 0, 0, 0, 0, 0, 0, 0))
 
     # Create a netlink dump request containing the rtmsg.
@@ -225,6 +273,67 @@ class IPRoute(object):
 
     self._ExpectDone()
     return rules
+
+  def _Address(self, version, is_add, addr, prefixlen, flags, scope, ifindex):
+    """Adds or deletes an IP address."""
+    family = self._AddressFamily(version)
+    ifaddrmsg = IfAddrMsg((family, prefixlen, flags, scope, ifindex)).Pack()
+    ifaddrmsg += self._NlAttrIPAddress(IFA_ADDRESS, family, addr)
+    if version == 4:
+      ifaddrmsg += self._NlAttrIPAddress(IFA_LOCAL, family, addr)
+    command = RTM_NEWADDR if is_add else RTM_DELADDR
+    self._SendNlRequest(command, is_add, ifaddrmsg)
+
+  def AddAddress(self, address, prefixlen, ifindex):
+    version = 6 if ":" in address else 4
+    return self._Address(version, True, address, prefixlen, IFA_F_PERMANENT,
+                         RT_SCOPE_UNIVERSE, ifindex)
+
+  def DelAddress(self, address, prefixlen, ifindex):
+    version = 6 if ":" in address else 4
+    return self._Address(version, False, address, prefixlen, 0, 0, ifindex)
+
+  def _Route(self, version, is_add, table, dest, prefixlen, nexthop, dev):
+    """Adds or deletes a route."""
+    family = self._AddressFamily(version)
+    rtmsg = RTMsg((family, prefixlen, 0, 0, RT_TABLE_UNSPEC,
+                   RTPROT_STATIC, RT_SCOPE_UNIVERSE, RTN_UNICAST, 0)).Pack()
+    rtmsg += self._NlAttrU32(FRA_TABLE, table)
+    if dest != "default":  # The default is the default route.
+      rtmsg += self._NlAttrIPAddress(RTA_DST, family, dest)
+    rtmsg += self._NlAttrIPAddress(RTA_GATEWAY, family, nexthop)
+    rtmsg += self._NlAttrU32(RTA_OIF, dev)
+    command = RTM_NEWROUTE if is_add else RTM_DELROUTE
+    self._SendNlRequest(command, is_add, rtmsg)
+
+  def AddRoute(self, version, table, dest, prefixlen, nexthop, dev):
+    self._Route(version, True, table, dest, prefixlen, nexthop, dev)
+
+  def DelRoute(self, version, table, dest, prefixlen, nexthop, dev):
+    self._Route(version, False, table, dest, prefixlen, nexthop, dev)
+
+  def _Neighbour(self, version, is_add, addr, lladdr, dev, state):
+    """Adds or deletes a neighbour cache entry."""
+    family = self._AddressFamily(version)
+
+    # Convert the link-layer address to a raw byte string.
+    if is_add:
+      lladdr = lladdr.split(":")
+      if len(lladdr) != 6:
+        raise ValueError("Invalid lladdr %s" % ":".join(lladdr))
+      lladdr = "".join(chr(int(hexbyte, 16)) for hexbyte in lladdr)
+
+    ndmsg = NdMsg((family, dev, state, 0, RTN_UNICAST)).Pack()
+    ndmsg += self._NlAttrIPAddress(NDA_DST, family, addr)
+    ndmsg += self._NlAttr(NDA_LLADDR, lladdr)
+    command = RTM_NEWNEIGH if is_add else RTM_DELNEIGH
+    self._SendNlRequest(command, is_add, ndmsg)
+
+  def AddNeighbour(self, version, addr, lladdr, dev):
+    self._Neighbour(version, True, addr, lladdr, dev, NUD_PERMANENT)
+
+  def DelNeighbour(self, version, addr, lladdr, dev):
+    self._Neighbour(version, False, addr, lladdr, dev, 0)
 
 
 if __name__ == "__main__":
