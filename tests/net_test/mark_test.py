@@ -299,12 +299,15 @@ class RunAsUid(object):
   def __enter__(self):
     if self.uid:
       self.saved_uid = os.geteuid()
+      self.saved_groups = os.getgroups()
       if self.uid:
+        os.setgroups(self.saved_groups + [net_test.AID_INET])
         os.seteuid(self.uid)
 
   def __exit__(self, unused_type, unused_value, unused_traceback):
     if self.uid:
       os.seteuid(self.saved_uid)
+      os.setgroups(self.saved_groups)
 
 
 def MakePktInfo(version, addr, ifindex):
