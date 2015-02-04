@@ -504,6 +504,9 @@ class MultiNetworkTest(net_test.NetworkTest):
       cls.tuns[netid].close()
     cls._RestoreSysctls()
 
+  def setUp(self):
+    self.ClearTunQueues()
+
   def SetSocketMark(self, s, netid):
     if netid is None:
       netid = 0
@@ -766,13 +769,10 @@ class InboundMarkingTest(MultiNetworkTest):
       pass
 
 
-class MarkTest(InboundMarkingTest):
+class OutgoingRoutingTest(MultiNetworkTest):
 
   # How many times to run outgoing packet tests.
   ITERATIONS = 5
-
-  def setUp(self):
-    self.ClearTunQueues()
 
   def CheckPingPacket(self, version, netid, routing_mode, dstaddr, packet):
     s = self.BuildSocket(version, net_test.PingSocket, netid, routing_mode)
@@ -939,6 +939,9 @@ class MarkTest(InboundMarkingTest):
     """Checks that updating the mark on an IPv6 socket changes routing."""
     self.CheckRemarking(6, False)
     self.CheckRemarking(6, True)
+
+
+class MarkTest(InboundMarkingTest):
 
   def CheckReflection(self, version, gen_packet, gen_reply):
     """Checks that replies go out on the same interface as the original.
@@ -1152,10 +1155,6 @@ class TCPAcceptTest(InboundMarkingTest):
             self.CheckTCPConnection(mode, listensocket, netid, version, myaddr,
                                     remoteaddr, packet, reply, msg)
 
-  def tearDown(self):
-    # Restore default syncookie behaviour.
-    self.SetSysctl(SYNCOOKIES_SYSCTL, 1)
-
   def testBasicTCP(self):
     self.CheckTCP(4, [None, self.MODE_BINDTODEVICE, self.MODE_EXPLICIT_MARK])
     self.CheckTCP(6, [None, self.MODE_BINDTODEVICE, self.MODE_EXPLICIT_MARK])
@@ -1319,9 +1318,6 @@ class PMTUTest(MultiNetworkTest):
 
 @unittest.skipUnless(HAVE_EXPERIMENTAL_UID_ROUTING, "no UID routing")
 class UidRoutingTest(MultiNetworkTest):
-
-  def setUp(self):
-    self.iproute = iproute.IPRoute()
 
   def GetRulesAtPriority(self, version, priority):
     rules = self.iproute.DumpRules(version)
