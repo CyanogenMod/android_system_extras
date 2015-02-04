@@ -2,6 +2,8 @@
 
 """Partial Python implementation of iproute functionality."""
 
+# pylint: disable=g-bad-todo
+
 import os
 import socket
 import struct
@@ -27,6 +29,9 @@ NLMSG_ERROR = 2
 NLMsgHdr = cstruct.Struct("NLMsgHdr", "=LHHLL", "length type flags seq pid")
 NLMsgErr = cstruct.Struct("NLMsgErr", "=i", "error")
 NLAttr = cstruct.Struct("NLAttr", "=HH", "nla_len nla_type")
+
+# Alignment / padding.
+NLA_ALIGNTO = 4
 
 
 ### rtnetlink constants. See include/uapi/linux/rtnetlink.h.
@@ -59,7 +64,13 @@ RTMsg = cstruct.Struct(
 FRA_PRIORITY = 6
 FRA_FWMARK = 10
 FRA_TABLE = 15
+FRA_OIFNAME = 17
 EXPERIMENTAL_FRA_UID = 18
+
+
+def PaddedLength(length):
+  # TODO: This padding is probably overly simplistic.
+  return NLA_ALIGNTO * ((length / NLA_ALIGNTO) + (length % NLA_ALIGNTO != 0))
 
 
 class IPRoute(object):
@@ -67,11 +78,18 @@ class IPRoute(object):
   """Provides a tiny subset of iproute functionality."""
 
   BUFSIZE = 65536
+  DEBUG = False
 
-  def _NlAttrU32(self, nla_type, value):
-    data = struct.pack("=I", value)
+  def _Debug(self, s):
+    if self.DEBUG:
+      print s
+
+  def _NlAttr(self, nla_type, data):
     nla_len = len(data) + len(NLAttr)
     return NLAttr((nla_len, nla_type)).Pack() + data
+
+  def _NlAttrU32(self, nla_type, value):
+    return self._NlAttr(nla_type, struct.pack("=I", value))
 
   def __init__(self):
     # Global sequence number.
@@ -142,6 +160,10 @@ class IPRoute(object):
     nlattr = self._NlAttrU32(FRA_FWMARK, fwmark)
     return self._Rule(version, is_add, table, nlattr, priority)
 
+  def OifRule(self, version, is_add, oif, table, priority=16383):
+    nlattr = self._NlAttr(FRA_OIFNAME, struct.pack("16s", oif))
+    return self._Rule(version, is_add, table, nlattr, priority)
+
   def UidRule(self, version, is_add, uid, table, priority=16383):
     nlattr = (self._NlAttrU32(EXPERIMENTAL_FRA_UID, uid))
     return self._Rule(version, is_add, table, nlattr, priority)
@@ -165,7 +187,9 @@ class IPRoute(object):
     while data:
       # Parse the netlink and rtmsg headers.
       nlmsghdr, data = cstruct.Read(data, NLMsgHdr)
+      self._Debug("%s" % nlmsghdr)
       rtmsg, data = cstruct.Read(data, RTMsg)
+      self._Debug("  %s" % rtmsg)
 
       # Parse the attributes in the rtmsg.
       attributes = []
@@ -177,11 +201,19 @@ class IPRoute(object):
         # Read the data. We don't know how to parse attributes, so just return
         # them as raw bytes.
         datalen = nla.nla_len - len(nla)
-        nla_data, data = data[:datalen], data[datalen:]
+        padded_len = PaddedLength(nla.nla_len) - len(nla)
+        nla_data, data = data[:datalen], data[padded_len:]
 
         attributes.append((nla, nla_data))
-        bytesleft -= nla.nla_len
+        self._Debug("    %s" % str(attributes[-1]))
+        bytesleft -= (padded_len + len(nla))
 
       rules.append((rtmsg, attributes))
 
     return rules
+
+
+if __name__ == "__main__":
+  iproute = IPRoute()
+  iproute.DEBUG = True
+  iproute.DumpRules(6)
