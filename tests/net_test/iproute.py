@@ -71,14 +71,21 @@ RTA_OIF = 4
 RTA_GATEWAY = 5
 RTA_PRIORITY = 6
 RTA_PREFSRC = 7
+RTA_METRICS = 8
+RTA_CACHEINFO = 12
 RTA_TABLE = 15
 RTA_MARK = 16
 EXPERIMENTAL_RTA_UID = 18
+
+# Route metric attributes.
+RTAX_MTU = 2
 
 # Data structure formats.
 RTMsg = cstruct.Struct(
     "RTMsg", "=BBBBBBBBI",
     "family dst_len src_len tos table protocol scope type flags")
+RTACacheinfo = cstruct.Struct(
+    "RTACacheinfo", "=IIiII", "clntref lastuse expires error used")
 
 
 ### Interface address constants. See include/uapi/linux/if_addr.h.
@@ -126,42 +133,6 @@ def CommandSubject(command):
   return ["LINK", "ADDR", "ROUTE", "NEIGH", "RULE"][(command - 16) / 4]
 
 
-def Decode(command, family, nla_type, nla_data):
-  """Decodes netlink attributes to Python types.
-
-  Values for which the code knows the type (e.g., the fwmark ID in a
-  RTM_NEWRULE command) are decoded to Python integers, strings, etc. Values
-  of unknown type are returned as raw byte strings.
-
-  Args:
-    command: An integer, the rtnetlink command being carried out. This is used
-      to interpret the attributes. For example, for an RTM_NEWROUTE command,
-      attribute type 3 is the incoming interface and is an integer, but for a
-      RTM_NEWRULE command, attribute type 3 is the incoming interface name
-      and is a string.
-    family: The address family. Used to convert IP addresses into strings.
-    nla_type: An integer, then netlink attribute type.
-    nla_data: A byte string, the netlink attribute data.
-
-  Returns:
-    A Python object. (Currently an integer, a string, or a raw byte string.)
-  """
-  if CommandSubject(command) == "RULE":
-    if nla_type in [FRA_PRIORITY, FRA_FWMARK, FRA_TABLE,
-                    EXPERIMENTAL_FRA_UID_START, EXPERIMENTAL_FRA_UID_END]:
-      return struct.unpack("=I", nla_data)[0]
-    elif nla_type in [FRA_OIFNAME]:
-      return nla_data.strip("\x00")
-  elif CommandSubject(command) == "ROUTE":
-    if nla_type in [RTA_DST, RTA_SRC, RTA_GATEWAY, RTA_PREFSRC]:
-      return socket.inet_ntop(family, nla_data)
-    elif nla_type in [RTA_OIF, RTA_PRIORITY, RTA_TABLE]:
-      return struct.unpack("=I", nla_data)[0]
-
-  # Don't know what this is.
-  return nla_data
-
-
 def PaddedLength(length):
   # TODO: This padding is probably overly simplistic.
   return NLA_ALIGNTO * ((length / NLA_ALIGNTO) + (length % NLA_ALIGNTO != 0))
@@ -191,6 +162,53 @@ class IPRoute(object):
   def _NlAttrIPAddress(self, nla_type, family, address):
     return self._NlAttr(nla_type, socket.inet_pton(family, address))
 
+  def _Decode(self, command, family, nla_type, nla_data):
+    """Decodes netlink attributes to Python types.
+
+    Values for which the code knows the type (e.g., the fwmark ID in a
+    RTM_NEWRULE command) are decoded to Python integers, strings, etc. Values
+    of unknown type are returned as raw byte strings.
+
+    Args:
+      command: An integer.
+        - If positive, the number of the rtnetlink command being carried out.
+          This is used to interpret the attributes. For example, for an
+          RTM_NEWROUTE command, attribute type 3 is the incoming interface and
+          is an integer, but for a RTM_NEWRULE command, attribute type 3 is the
+          incoming interface name and is a string.
+        - If negative, one of the following (negative) values:
+          - RTA_METRICS: Interpret as nested route metrics.
+      family: The address family. Used to convert IP addresses into strings.
+      nla_type: An integer, then netlink attribute type.
+      nla_data: A byte string, the netlink attribute data.
+
+    Returns:
+      A Python object. Might be an integer, a string, a raw byte string, a
+      nested list of attributes (e.g., for RTA_METRICS), a cstruct.Struct
+      (e.g., RTACacheinfo), etc.
+    """
+    if command == -RTA_METRICS:
+      if nla_type == RTAX_MTU:
+        return struct.unpack("=I", nla_data)[0]
+    elif CommandSubject(command) == "RULE":
+      if nla_type in [FRA_PRIORITY, FRA_FWMARK, FRA_TABLE,
+                      EXPERIMENTAL_FRA_UID_START, EXPERIMENTAL_FRA_UID_END]:
+        return struct.unpack("=I", nla_data)[0]
+      elif nla_type in [FRA_OIFNAME]:
+        return nla_data.strip("\x00")
+    elif CommandSubject(command) == "ROUTE":
+      if nla_type in [RTA_DST, RTA_SRC, RTA_GATEWAY, RTA_PREFSRC]:
+        return socket.inet_ntop(family, nla_data)
+      elif nla_type in [RTA_OIF, RTA_PRIORITY, RTA_TABLE, EXPERIMENTAL_RTA_UID]:
+        return struct.unpack("=I", nla_data)[0]
+      elif nla_type == RTA_METRICS:
+        return self._ParseAttributes(-RTA_METRICS, family, nla_data)
+      elif nla_type == RTA_CACHEINFO:
+        return RTACacheinfo(nla_data)
+
+    # Don't know what this is.
+    return nla_data
+
   def _ParseAttributes(self, command, family, data):
     """Parses and decodes netlink attributes.
 
@@ -219,7 +237,7 @@ class IPRoute(object):
       nla_data, data = data[:datalen], data[padded_len:]
 
       # If it's an attribute we know about, try to decode it.
-      nla_data = Decode(command, family, nla.nla_type, nla_data)
+      nla_data = self._Decode(command, family, nla.nla_type, nla_data)
 
       # We only support unique attributes for now.
       if nla.nla_type in attributes:
