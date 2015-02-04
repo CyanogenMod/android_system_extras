@@ -146,6 +146,13 @@ def CommandSubject(command):
   return ["LINK", "ADDR", "ROUTE", "NEIGH", "RULE"][(command - 16) / 4]
 
 
+def CommandName(command):
+  try:
+    return "RTM_%s%s" % (CommandVerb(command), CommandSubject(command))
+  except KeyError:
+    return "RTM_%d" % command
+
+
 def PaddedLength(length):
   # TODO: This padding is probably overly simplistic.
   return NLA_ALIGNTO * ((length / NLA_ALIGNTO) + (length % NLA_ALIGNTO != 0))
@@ -157,6 +164,8 @@ class IPRoute(object):
 
   BUFSIZE = 65536
   DEBUG = False
+  # List of netlink messages to print, e.g., [], ["NEIGH", "ROUTE"], or ["ALL"]
+  NL_DEBUG = []
 
   def _Debug(self, s):
     if self.DEBUG:
@@ -179,6 +188,7 @@ class IPRoute(object):
     thismodule = sys.modules[__name__]
     for name in dir(thismodule):
       if (name.startswith(prefix) and
+          not name.startswith(prefix + "F_") and
           name.isupper() and
           getattr(thismodule, name) == value):
         return name
@@ -225,6 +235,8 @@ class IPRoute(object):
       name = self._GetConstantName(nla_type, "FRA_")
     elif CommandSubject(command) == "ROUTE":
       name = self._GetConstantName(nla_type, "RTA_")
+    elif CommandSubject(command) == "NEIGH":
+      name = self._GetConstantName(nla_type, "NDA_")
     else:
       # Don't know what this is. Leave it as an integer.
       name = nla_type
@@ -234,7 +246,8 @@ class IPRoute(object):
                 "RTA_OIF", "RTA_PRIORITY", "RTA_TABLE", "RTA_MARK"]:
       data = struct.unpack("=I", nla_data)[0]
     elif name in ["IFA_ADDRESS", "IFA_LOCAL", "RTA_DST", "RTA_SRC",
-                  "RTA_GATEWAY", "RTA_PREFSRC", "RTA_EXPERIMENTAL_UID"]:
+                  "RTA_GATEWAY", "RTA_PREFSRC", "RTA_EXPERIMENTAL_UID",
+                  "NDA_DST"]:
       data = socket.inet_ntop(family, nla_data)
     elif name in ["FRA_IIFNAME", "FRA_OIFNAME"]:
       data = nla_data.strip("\x00")
@@ -244,6 +257,8 @@ class IPRoute(object):
       data = RTACacheinfo(nla_data)
     elif name == "IFA_CACHEINFO":
       data = IFACacheinfo(nla_data)
+    elif name == "NDA_LLADDR":
+      data = ":".join(x.encode("hex") for x in nla_data)
     else:
       data = nla_data
 
@@ -340,6 +355,8 @@ class IPRoute(object):
     length = len(NLMsgHdr) + len(data)
     nlmsg = NLMsgHdr((length, command, flags, self.seq, self.pid)).Pack()
 
+    self.MaybeDebugCommand(command, nlmsg + data)
+
     # Send the message.
     self._Send(nlmsg + data)
 
@@ -435,6 +452,23 @@ class IPRoute(object):
     if expect_done:
       self._ExpectDone()
     return out
+
+  def MaybeDebugCommand(self, command, data):
+    subject = CommandSubject(command)
+    if "ALL" not in self.NL_DEBUG and subject not in self.NL_DEBUG:
+      return
+    name = CommandName(command)
+    try:
+      struct_type = {
+          "ADDR": IfAddrMsg,
+          "NEIGH": NdMsg,
+          "ROUTE": RTMsg,
+          "RULE": RTMsg,
+      }[subject]
+      parsed = self._ParseNLMsg(data, struct_type)
+      print "%s %s" % (name, str(parsed))
+    except KeyError:
+      raise ValueError("Don't know how to print command type %s" % name)
 
   def DumpRules(self, version):
     """Returns the IP rules for the specified IP version."""
