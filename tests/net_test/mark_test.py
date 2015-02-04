@@ -27,6 +27,9 @@ PING_TOS = 0x83
 
 SO_BINDTODEVICE = 25
 
+IP_UNICAST_IF = 50
+IPV6_UNICAST_IF = 76
+
 UDP_PAYLOAD = "hello"
 
 
@@ -489,6 +492,20 @@ class MultiNetworkTest(net_test.NetworkTest):
       iface = ""
     s.setsockopt(SOL_SOCKET, SO_BINDTODEVICE, iface)
 
+  def SetUnicastInterface(self, version, s, iface):
+    if iface:
+      ifindex = net_test.GetInterfaceIndex(iface)
+    else:
+      ifindex = 0
+    # Otherwise, Python apparently thinks it's a 1-byte option.
+    ifindex = struct.pack("!I", ifindex)
+
+    layer, opt = {
+        4: (net_test.SOL_IP, IP_UNICAST_IF),
+        6: (net_test.SOL_IPV6, IPV6_UNICAST_IF),
+    }[version]
+    s.setsockopt(layer, opt, ifindex)
+
   def ReceiveEtherPacketOn(self, netid, packet):
     posix.write(self.tuns[netid].fileno(), str(packet))
 
@@ -680,7 +697,7 @@ class MarkTest(MultiNetworkTest):
   def _GetProtocolFamily(self, version):
     return {4: AF_INET, 6: AF_INET6}[version]
 
-  def BuildSocket(self, version, constructor, mark, uid, oif):
+  def BuildSocket(self, version, constructor, mark, uid, oif, ucast_oif):
     with RunAsUid(uid):
       family = self._GetProtocolFamily(version)
       s = constructor(family)
@@ -688,11 +705,14 @@ class MarkTest(MultiNetworkTest):
       self.SetSocketMark(s, mark)
     if oif:
       self.BindToDevice(s, oif)
+    if ucast_oif:
+      self.SetUnicastInterface(version, s, ucast_oif)
     return s
 
-  def CheckPingPacket(self, version, mark, uid, oif, dstaddr, packet,
+  def CheckPingPacket(self, version, mark, uid, oif, ucast_oif, dstaddr, packet,
                       expected_netid):
-    s = self.BuildSocket(version, net_test.PingSocket, mark, uid, oif)
+    s = self.BuildSocket(version, net_test.PingSocket, mark, uid, oif,
+                         ucast_oif)
 
     myaddr = self.MyAddress(version, expected_netid)
     s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
@@ -700,14 +720,14 @@ class MarkTest(MultiNetworkTest):
     net_test.SetSocketTos(s, PING_TOS)
 
     desc, expected = Packets.ICMPEcho(version, myaddr, dstaddr)
-
-    s.sendto(packet + PING_PAYLOAD, (dstaddr, 19321))
     msg = "IPv%d ping: expected %s on %s" % (
         version, desc, self.GetInterfaceName(expected_netid))
+    s.sendto(packet + PING_PAYLOAD, (dstaddr, 19321))
     self.ExpectPacketOn(expected_netid, msg, expected)
 
-  def CheckTCPSYNPacket(self, version, mark, uid, oif, dstaddr, expected_netid):
-    s = self.BuildSocket(version, net_test.TCPSocket, mark, uid, oif)
+  def CheckTCPSYNPacket(self, version, mark, uid, oif, ucast_oif, dstaddr,
+                        expected_netid):
+    s = self.BuildSocket(version, net_test.TCPSocket, mark, uid, oif, ucast_oif)
 
     if version == 6 and dstaddr.startswith("::ffff"):
       version = 4
@@ -722,8 +742,9 @@ class MarkTest(MultiNetworkTest):
     self.ExpectPacketOn(expected_netid, msg, expected)
     s.close()
 
-  def CheckUDPPacket(self, version, mark, uid, oif, dstaddr, expected_netid):
-    s = self.BuildSocket(version, net_test.UDPSocket, mark, uid, oif)
+  def CheckUDPPacket(self, version, mark, uid, oif, ucast_oif,
+                     dstaddr, expected_netid):
+    s = self.BuildSocket(version, net_test.UDPSocket, mark, uid, oif, ucast_oif)
 
     if version == 6 and dstaddr.startswith("::ffff"):
       version = 4
@@ -743,31 +764,40 @@ class MarkTest(MultiNetworkTest):
   def CheckOutgoingPackets(self, mode):
     v4addr = self.IPV4_ADDR
     v6addr = self.IPV6_ADDR
+    v4mapped = "::ffff:" + v4addr
 
     for _ in xrange(self.ITERATIONS):
       for netid in self.tuns:
 
+        mark = uid = oif = ucast_oif = None
         if mode == "mark":
-          mark, uid, oif = (netid, 0, 0)
+          mark = netid
         elif mode == "uid":
-          mark, uid, oif = (0, self.UidForNetid(netid), 0)
+          uid = self.UidForNetid(netid)
         elif mode == "oif":
-          mark, uid, oif = (0, 0, self.GetInterfaceName(netid))
+          oif = self.GetInterfaceName(netid)
+        elif mode == "ucast_oif":
+          ucast_oif = self.GetInterfaceName(netid)
         else:
           raise ValueError("Unkown routing mode %s" % mode)
 
-        self.CheckPingPacket(4, mark, uid, oif, v4addr, self.IPV4_PING, netid)
-        # Kernel bug.
-        if mode != "oif":
-          self.CheckPingPacket(6, mark, uid, oif, v6addr, self.IPV6_PING, netid)
+        self.CheckPingPacket(4, mark, uid, oif, ucast_oif, v4addr,
+                             self.IPV4_PING, netid)
+        self.CheckPingPacket(6, mark, uid, oif, ucast_oif, v6addr,
+                             self.IPV6_PING, netid)
 
-        self.CheckTCPSYNPacket(4, mark, uid, oif, v4addr, netid)
-        self.CheckTCPSYNPacket(6, mark, uid, oif, v6addr, netid)
-        self.CheckTCPSYNPacket(6, mark, uid, oif, "::ffff:" + v4addr, netid)
+        # TCP doesn't seem to honour IP_UNICAST_IF.
+        if mode != "ucast_oif":
+          self.CheckTCPSYNPacket(4, mark, uid, oif, ucast_oif, v4addr, netid)
+          self.CheckTCPSYNPacket(6, mark, uid, oif, ucast_oif, v6addr, netid)
+          self.CheckTCPSYNPacket(6, mark, uid, oif, ucast_oif, v4mapped, netid)
 
-        self.CheckUDPPacket(4, mark, uid, oif, v4addr, netid)
-        self.CheckUDPPacket(6, mark, uid, oif, v6addr, netid)
-        self.CheckUDPPacket(6, mark, uid, oif, "::ffff:" + v4addr, netid)
+        if mode != "ucast_oif":
+          # This doesn't work.
+          self.CheckUDPPacket(4, mark, uid, oif, ucast_oif, v4addr, netid)
+          # These work, but the source addresses are incorrect.
+          self.CheckUDPPacket(6, mark, uid, oif, ucast_oif, v6addr, netid)
+          self.CheckUDPPacket(6, mark, uid, oif, ucast_oif, v4mapped, netid)
 
   def testMarkRouting(self):
     """Checks that socket marking selects the right outgoing interface."""
@@ -781,6 +811,10 @@ class MarkTest(MultiNetworkTest):
   def testOifRouting(self):
     """Checks that oif routing selects the right outgoing interface."""
     self.CheckOutgoingPackets("oif")
+
+  def testUcastOifRouting(self):
+    """Checks that ucast oif routing selects the right outgoing interface."""
+    self.CheckOutgoingPackets("ucast_oif")
 
   def CheckRemarking(self, version):
     s = net_test.UDPSocket(self._GetProtocolFamily(version))
