@@ -15,7 +15,9 @@ OPTIONS="$OPTIONS DEVTMPFS DEVTMPFS_MOUNT"
 NUMTAPINTERFACES=2
 
 # The root filesystem disk image we'll use.
-ROOTFS=$(dirname $0)/net_test.rootfs
+ROOTFS=net_test.rootfs.20150203
+COMPRESSED_ROOTFS=$ROOTFS.xz
+URL=https://dl.google.com/dl/android/$COMPRESSED_ROOTFS
 
 # Figure out which test to run.
 if [ -z "$1" ]; then
@@ -28,13 +30,17 @@ set -e
 
 # Check if we need to uncompress the disk image.
 # We use xz because it compresses better: to 42M vs 72M (gzip) / 62M (bzip2).
-if [ $ROOTFS.xz -nt $ROOTFS ]; then
-  echo "Deleting $ROOTFS" >&2
-  rm -f $ROOTFS
-  echo "Uncompressing $ROOTFS.xz" >&2
-  unxz --keep $ROOTFS.xz
+cd $(dirname $0)
+if [ ! -f $ROOTFS ]; then
+  echo "Deleting $COMPRESSED_ROOTFS" >&2
+  rm -f $COMPRESSED_ROOTFS
+  echo "Downloading $URL" >&2
+  wget $URL
+  echo "Uncompressing $COMPRESSED_ROOTFS" >&2
+  unxz $COMPRESSED_ROOTFS
 fi
-
+echo "Using $ROOTFS"
+cd -
 
 # Create NUMTAPINTERFACES tap interfaces on the host, and prepare UML command
 # line params to use them. The interfaces are called <user>TAP0, <user>TAP1,
@@ -86,6 +92,6 @@ make -j12 linux ARCH=um SUBARCH=x86_64 CROSS_COMPILE=
 dir=/host$(dirname $(readlink -f $0))
 
 # Start the VM.
-exec ./linux umid=net_test ubda=$(dirname $0)/net_test.rootfs \
+exec ./linux umid=net_test ubda=$(dirname $0)/$ROOTFS \
     mem=512M init=/sbin/net_test.sh net_test=$dir/$test \
     $netconfig
