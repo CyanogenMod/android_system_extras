@@ -29,7 +29,7 @@
 #define _LARGEFILE64_SOURCE
 
 #include <fcntl.h>
-#include <dlfcn.h>
+#include <string.h>
 
 #include <f2fs_fs.h>
 #include <f2fs_format_utils.h>
