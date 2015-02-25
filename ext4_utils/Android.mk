@@ -52,23 +52,29 @@ include $(BUILD_HOST_EXECUTABLE)
 # -- All host/targets excluding windows
 #
 
+libext4_utils_src_files += \
+    ext4_crypt.cpp \
+    e4crypt_static.c
+
 ifneq ($(HOST_OS),windows)
 
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(libext4_utils_src_files)
 LOCAL_MODULE := libext4_utils
+LOCAL_C_INCLUDES += system/core/logwrapper/include
 LOCAL_SHARED_LIBRARIES := \
     libselinux \
     libsparse \
-    libz
+    libz \
+    libcutils
 include $(BUILD_SHARED_LIBRARY)
 
 
 include $(CLEAR_VARS)
-LOCAL_SRC_FILES := $(libext4_utils_src_files)
+LOCAL_SRC_FILES := $(libext4_utils_src_files) \
+    ext4_crypt_init_extensions.cpp
 LOCAL_MODULE := libext4_utils_static
-LOCAL_STATIC_LIBRARIES += \
-    libselinux \
+LOCAL_STATIC_LIBRARIES := \
     libsparse_static
 include $(BUILD_STATIC_LIBRARY)
 
@@ -143,4 +149,3 @@ LOCAL_IS_HOST_MODULE := true
 include $(BUILD_PREBUILT)
 
 endif
-
