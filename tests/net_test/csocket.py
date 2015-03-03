@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Python wrapper for sendmsg."""
+"""Python wrapper for C socket calls and data structures."""
 
 import ctypes
 import ctypes.util
@@ -23,7 +23,7 @@ import struct
 import cstruct
 
 
-# Data structures used by sendmsg.
+# Data structures.
 CMsgHdr = cstruct.Struct("cmsghdr", "@Lii", "len level type")
 Iovec = cstruct.Struct("iovec", "@LL", "base len")
 MsgHdr = cstruct.Struct("msghdr", "@LLLLLLi",
@@ -42,6 +42,12 @@ libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
 
 def PaddedLength(length):
   return CMSG_ALIGNTO * ((length / CMSG_ALIGNTO) + (length % CMSG_ALIGNTO != 0))
+
+
+def MaybeRaiseSocketError(ret):
+  if ret < 0:
+    errno = ctypes.get_errno()
+    raise socket.error(errno, os.strerror(errno))
 
 
 def Sockaddr(addr):
@@ -100,12 +106,25 @@ def _MakeMsgControl(optlist):
   return msg_control
 
 
+def Bind(s, to):
+  """Python wrapper for connect."""
+  ret = libc.bind(s.fileno(), to.CPointer(), len(to))
+  MaybeRaiseSocketError(ret)
+  return ret
+
+def Connect(s, to):
+  """Python wrapper for connect."""
+  ret = libc.connect(s.fileno(), to.CPointer(), len(to))
+  MaybeRaiseSocketError(ret)
+  return ret
+
+
 def Sendmsg(s, to, data, control, flags):
   """Python wrapper for sendmsg.
 
   Args:
     s: A Python socket object. Becomes sockfd.
-    to: A Python socket address tuple. Becomes msg->msg_name.
+    to: An address tuple, or a SockaddrIn[6] struct. Becomes msg->msg_name.
     data: A string, the data to write. Goes into msg->msg_iov.
     control: A list of cmsg options. Becomes msg->msg_control.
     flags: An integer. Becomes msg->msg_flags.
@@ -122,9 +141,10 @@ def Sendmsg(s, to, data, control, flags):
 
   # Convert the destination address into a struct sockaddr.
   if to:
-    name = Sockaddr(to)
-    msg_name = name.CPointer()
-    msg_namelen = len(name)
+    if isinstance(to, tuple):
+      to = Sockaddr(to)
+    msg_name = to.CPointer()
+    msg_namelen = len(to)
   else:
     msg_name = 0
     msg_namelen = 0
@@ -155,9 +175,6 @@ def Sendmsg(s, to, data, control, flags):
 
   # Call sendmsg.
   ret = libc.sendmsg(s.fileno(), msghdr, 0)
-
-  if ret < 0:
-    errno = ctypes.get_errno()
-    raise socket.error(errno, os.strerror(errno))
+  MaybeRaiseSocketError(ret)
 
   return ret
