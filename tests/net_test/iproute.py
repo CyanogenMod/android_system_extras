@@ -150,6 +150,7 @@ NdMsg = cstruct.Struct(
 
 
 ### FIB rule constants. See include/uapi/linux/fib_rules.h.
+FRA_IIFNAME = 3
 FRA_PRIORITY = 6
 FRA_FWMARK = 10
 FRA_SUPPRESS_PREFIXLEN = 14
@@ -224,6 +225,9 @@ class IPRoute(object):
 
   def _NlAttrIPAddress(self, nla_type, family, address):
     return self._NlAttr(nla_type, socket.inet_pton(family, address))
+
+  def _NlAttrInterfaceName(self, nla_type, interface):
+    return self._NlAttr(nla_type, interface + "\x00")
 
   def _GetConstantName(self, value, prefix):
     thismodule = sys.modules[__name__]
@@ -462,11 +466,12 @@ class IPRoute(object):
     return self._Rule(version, is_add, RTN_UNICAST, table, nlattr, priority)
 
   def OifRule(self, version, is_add, oif, table, priority):
-    nlattr = self._NlAttr(FRA_OIFNAME, oif + "\x00")
+    nlattr = self._NlAttrInterfaceName(FRA_OIFNAME, oif)
     return self._Rule(version, is_add, RTN_UNICAST, table, nlattr, priority)
 
   def UidRangeRule(self, version, is_add, start, end, table, priority):
-    nlattr = (self._NlAttrU32(FRA_UID_START, start) +
+    nlattr = (self._NlAttrInterfaceName(FRA_IIFNAME, "lo") +
+              self._NlAttrU32(FRA_UID_START, start) +
               self._NlAttrU32(FRA_UID_END, end))
     return self._Rule(version, is_add, RTN_UNICAST, table, nlattr, priority)
 
