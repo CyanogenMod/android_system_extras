@@ -23,11 +23,11 @@ import unittest
 
 from scapy import all as scapy
 
+import csocket
 import iproute
 import multinetwork_base
 import multinetwork_test
 import net_test
-import sendmsg
 
 # Setsockopt values.
 IPV6_ADDR_PREFERENCES = 72
@@ -88,7 +88,7 @@ class IPv6SourceAddressSelectionTest(multinetwork_base.MultiNetworkBaseTest):
     pktinfo = multinetwork_base.MakePktInfo(6, address, 0)
     cmsgs = [(net_test.SOL_IPV6, IPV6_PKTINFO, pktinfo)]
     s = self.BuildSocket(6, net_test.UDPSocket, netid, "mark")
-    return sendmsg.Sendmsg(s, (dest, 53), "Hello", cmsgs, 0)
+    return csocket.Sendmsg(s, (dest, 53), "Hello", cmsgs, 0)
 
   def assertAddressUsable(self, address, netid):
     self.BindToAddress(address)

@@ -27,10 +27,10 @@ import struct
 
 from scapy import all as scapy
 
+import csocket
 import cstruct
 import iproute
 import net_test
-import sendmsg
 
 
 IFF_TUN = 1
@@ -447,7 +447,7 @@ class MultiNetworkBaseTest(net_test.NetworkTest):
           4: (net_test.SOL_IP, IP_PKTINFO),
           6: (net_test.SOL_IPV6, IPV6_PKTINFO)}[version]
       cmsgs.append((cmsg_level, cmsg_name, pktinfo))
-    sendmsg.Sendmsg(s, (dstaddr, dstport), payload, cmsgs, sendmsg.MSG_CONFIRM)
+    csocket.Sendmsg(s, (dstaddr, dstport), payload, cmsgs, csocket.MSG_CONFIRM)
 
   def ReceiveEtherPacketOn(self, netid, packet):
     posix.write(self.tuns[netid].fileno(), str(packet))
