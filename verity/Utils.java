@@ -18,21 +18,59 @@ package com.android.verity;
 
 import java.lang.reflect.Constructor;
 import java.io.File;
+import java.io.ByteArrayInputStream;
+import java.io.Console;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.InputStreamReader;
 import java.io.IOException;
+import java.security.GeneralSecurityException;
+import java.security.Key;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.KeyFactory;
 import java.security.Provider;
 import java.security.Security;
 import java.security.Signature;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.security.spec.X509EncodedKeySpec;
 import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.InvalidKeySpecException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 
+import javax.crypto.Cipher;
+import javax.crypto.EncryptedPrivateKeyInfo;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
+
+import org.bouncycastle.asn1.ASN1InputStream;
+import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
+import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
 import org.bouncycastle.util.encoders.Base64;
 
 public class Utils {
+
+    private static final Map<String, String> ID_TO_ALG;
+    private static final Map<String, String> ALG_TO_ID;
+
+    static {
+        ID_TO_ALG = new HashMap<String, String>();
+        ALG_TO_ID = new HashMap<String, String>();
+
+        ID_TO_ALG.put(PKCSObjectIdentifiers.sha1WithRSAEncryption.getId(), "SHA1withRSA");
+        ID_TO_ALG.put(PKCSObjectIdentifiers.sha256WithRSAEncryption.getId(), "SHA256withRSA");
+        ID_TO_ALG.put(PKCSObjectIdentifiers.sha512WithRSAEncryption.getId(), "SHA512withRSA");
+
+        ALG_TO_ID.put("SHA1withRSA", PKCSObjectIdentifiers.sha1WithRSAEncryption.getId());
+        ALG_TO_ID.put("SHA256withRSA", PKCSObjectIdentifiers.sha256WithRSAEncryption.getId());
+        ALG_TO_ID.put("SHA512withRSA", PKCSObjectIdentifiers.sha512WithRSAEncryption.getId());
+    }
 
     private static void loadProviderIfNecessary(String providerClassName) {
         if (providerClassName == null) {
@@ -88,10 +126,45 @@ public class Utils {
         return Base64.decode(base64_der);
     }
 
+    private static PKCS8EncodedKeySpec decryptPrivateKey(byte[] encryptedPrivateKey)
+        throws GeneralSecurityException {
+        EncryptedPrivateKeyInfo epkInfo;
+        try {
+            epkInfo = new EncryptedPrivateKeyInfo(encryptedPrivateKey);
+        } catch (IOException ex) {
+            // Probably not an encrypted key.
+            return null;
+        }
+
+        char[] password = System.console().readPassword("Password for the private key file: ");
+
+        SecretKeyFactory skFactory = SecretKeyFactory.getInstance(epkInfo.getAlgName());
+        Key key = skFactory.generateSecret(new PBEKeySpec(password));
+        Arrays.fill(password, '\0');
+
+        Cipher cipher = Cipher.getInstance(epkInfo.getAlgName());
+        cipher.init(Cipher.DECRYPT_MODE, key, epkInfo.getAlgParameters());
+
+        try {
+            return epkInfo.getKeySpec(cipher);
+        } catch (InvalidKeySpecException ex) {
+            System.err.println("Password may be bad.");
+            throw ex;
+        }
+    }
+
     static PrivateKey loadDERPrivateKey(byte[] der) throws Exception {
-        PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(der);
-        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-        return (PrivateKey) keyFactory.generatePrivate(keySpec);
+        PKCS8EncodedKeySpec spec = decryptPrivateKey(der);
+
+        if (spec == null) {
+            spec = new PKCS8EncodedKeySpec(der);
+        }
+
+        ASN1InputStream bIn = new ASN1InputStream(new ByteArrayInputStream(spec.getEncoded()));
+        PrivateKeyInfo pki = PrivateKeyInfo.getInstance(bIn.readObject());
+        String algOid = pki.getPrivateKeyAlgorithm().getAlgorithm().getId();
+
+        return KeyFactory.getInstance(algOid).generatePrivate(spec);
     }
 
     static PrivateKey loadPEMPrivateKey(byte[] pem) throws Exception {
@@ -128,8 +201,48 @@ public class Utils {
         return loadDERPublicKey(read(keyFname));
     }
 
+    static X509Certificate loadPEMCertificate(String fname) throws Exception {
+        try (FileInputStream fis = new FileInputStream(fname)) {
+            CertificateFactory cf = CertificateFactory.getInstance("X.509");
+            return (X509Certificate) cf.generateCertificate(fis);
+        }
+    }
+
+    private static String getSignatureAlgorithm(Key key) {
+        if ("RSA".equals(key.getAlgorithm())) {
+            return "SHA256withRSA";
+        } else {
+            throw new IllegalArgumentException("Unsupported key type " + key.getAlgorithm());
+        }
+    }
+
+    static AlgorithmIdentifier getSignatureAlgorithmIdentifier(Key key) {
+        String id = ALG_TO_ID.get(getSignatureAlgorithm(key));
+
+        if (id == null) {
+            throw new IllegalArgumentException("Unsupported key type " + key.getAlgorithm());
+        }
+
+        return new AlgorithmIdentifier(new ASN1ObjectIdentifier(id));
+    }
+
+    static boolean verify(PublicKey key, byte[] input, byte[] signature,
+            AlgorithmIdentifier algId) throws Exception {
+        String algName = ID_TO_ALG.get(algId.getObjectId().getId());
+
+        if (algName == null) {
+            throw new IllegalArgumentException("Unsupported algorithm " + algId.getObjectId());
+        }
+
+        Signature verifier = Signature.getInstance(algName);
+        verifier.initVerify(key);
+        verifier.update(input);
+
+        return verifier.verify(signature);
+    }
+
     static byte[] sign(PrivateKey privateKey, byte[] input) throws Exception {
-        Signature signer = Signature.getInstance("SHA1withRSA");
+        Signature signer = Signature.getInstance(getSignatureAlgorithm(privateKey));
         signer.initSign(privateKey);
         signer.update(input);
         return signer.sign();

@@ -19,12 +19,17 @@ package com.android.verity;
 import java.io.IOException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.security.Security;
 import java.security.Signature;
+import java.security.cert.X509Certificate;
+import java.util.Enumeration;
 import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1EncodableVector;
+import org.bouncycastle.asn1.ASN1InputStream;
 import org.bouncycastle.asn1.ASN1Integer;
 import org.bouncycastle.asn1.ASN1Object;
 import org.bouncycastle.asn1.ASN1Primitive;
+import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.DERPrintableString;
 import org.bouncycastle.asn1.DERSequence;
@@ -32,6 +37,7 @@ import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.asn1.pkcs.RSAPublicKey;
 import org.bouncycastle.asn1.util.ASN1Dump;
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 /**
  * AndroidVerifiedBootKeystore DEFINITIONS ::=
@@ -61,8 +67,7 @@ class BootKey extends ASN1Object
         this.keyMaterial = new RSAPublicKey(
                 k.getModulus(),
                 k.getPublicExponent());
-        this.algorithmIdentifier = new AlgorithmIdentifier(
-                PKCSObjectIdentifiers.sha256WithRSAEncryption);
+        this.algorithmIdentifier = Utils.getSignatureAlgorithmIdentifier(key);
     }
 
     public ASN1Primitive toASN1Primitive() {
@@ -79,12 +84,15 @@ class BootKey extends ASN1Object
 
 class BootKeystore extends ASN1Object
 {
-    private ASN1Integer                     formatVersion;
-    private ASN1EncodableVector             keyBag;
-    private BootSignature    signature;
+    private ASN1Integer             formatVersion;
+    private ASN1EncodableVector     keyBag;
+    private BootSignature           signature;
+    private X509Certificate         certificate;
+
+    private static final int FORMAT_VERSION = 0;
 
     public BootKeystore() {
-        this.formatVersion = new ASN1Integer(0);
+        this.formatVersion = new ASN1Integer(FORMAT_VERSION);
         this.keyBag = new ASN1EncodableVector();
     }
 
@@ -92,6 +100,10 @@ class BootKeystore extends ASN1Object
         PublicKey pubkey = Utils.loadDERPublicKey(der);
         BootKey k = new BootKey(pubkey);
         keyBag.add(k);
+    }
+
+    public void setCertificate(X509Certificate cert) {
+        certificate = cert;
     }
 
     public byte[] getInnerKeystore() throws Exception {
@@ -109,29 +121,87 @@ class BootKeystore extends ASN1Object
         return new DERSequence(v);
     }
 
+    public void parse(byte[] input) throws Exception {
+        ASN1InputStream stream = new ASN1InputStream(input);
+        ASN1Sequence sequence = (ASN1Sequence) stream.readObject();
+
+        formatVersion = (ASN1Integer) sequence.getObjectAt(0);
+        if (formatVersion.getValue().intValue() != FORMAT_VERSION) {
+            throw new IllegalArgumentException("Unsupported format version");
+        }
+
+        ASN1Sequence keys = (ASN1Sequence) sequence.getObjectAt(1);
+        Enumeration e = keys.getObjects();
+        while (e.hasMoreElements()) {
+            keyBag.add((ASN1Encodable) e.nextElement());
+        }
+
+        ASN1Object sig = sequence.getObjectAt(2).toASN1Primitive();
+        signature = new BootSignature(sig.getEncoded());
+    }
+
+    public boolean verify() throws Exception {
+        byte[] innerKeystore = getInnerKeystore();
+        return Utils.verify(signature.getPublicKey(), innerKeystore,
+                signature.getSignature(), signature.getAlgorithmIdentifier());
+    }
+
     public void sign(PrivateKey privateKey) throws Exception {
         byte[] innerKeystore = getInnerKeystore();
         byte[] rawSignature = Utils.sign(privateKey, innerKeystore);
         signature = new BootSignature("keystore", innerKeystore.length);
-        signature.setSignature(rawSignature);
+        signature.setCertificate(certificate);
+        signature.setSignature(rawSignature,
+                Utils.getSignatureAlgorithmIdentifier(privateKey));
     }
 
     public void dump() throws Exception {
         System.out.println(ASN1Dump.dumpAsString(toASN1Primitive()));
     }
 
-    // USAGE:
-    //      AndroidVerifiedBootKeystoreSigner <privkeyFile> <outfile> <pubkeyFile0> ... <pubkeyFileN-1>
-    // EG:
-    //     java -cp ../../../out/host/common/obj/JAVA_LIBRARIES/AndroidVerifiedBootKeystoreSigner_intermediates/classes/ com.android.verity.AndroidVerifiedBootKeystoreSigner ../../../build/target/product/security/verity_private_dev_key /tmp/keystore.out /tmp/k
+    private static void usage() {
+        System.err.println("usage: KeystoreSigner <privatekey.pk8> " +
+                "<certificate.x509.pem> <outfile> <publickey0.der> " +
+                "... <publickeyN-1.der> | -verify <keystore>");
+        System.exit(1);
+    }
+
     public static void main(String[] args) throws Exception {
-        String privkeyFname = args[0];
-        String outfileFname = args[1];
-        BootKeystore ks = new BootKeystore();
-        for (int i=2; i < args.length; i++) {
-            ks.addPublicKey(Utils.read(args[i]));
+        if (args.length < 2) {
+            usage();
+            return;
         }
-        ks.sign(Utils.loadPEMPrivateKeyFromFile(privkeyFname));
-        Utils.write(ks.getEncoded(), outfileFname);
+
+        Security.addProvider(new BouncyCastleProvider());
+        BootKeystore ks = new BootKeystore();
+
+        if ("-verify".equals(args[0])) {
+            ks.parse(Utils.read(args[1]));
+
+            try {
+                if (ks.verify()) {
+                    System.err.println("Signature is VALID");
+                    System.exit(0);
+                } else {
+                    System.err.println("Signature is INVALID");
+                }
+            } catch (Exception e) {
+                e.printStackTrace(System.err);
+            }
+            System.exit(1);
+        } else {
+            String privkeyFname = args[0];
+            String certFname = args[1];
+            String outfileFname = args[2];
+
+            ks.setCertificate(Utils.loadPEMCertificate(certFname));
+
+            for (int i = 3; i < args.length; i++) {
+                ks.addPublicKey(Utils.read(args[i]));
+            }
+
+            ks.sign(Utils.loadDERPrivateKeyFromFile(privkeyFname));
+            Utils.write(ks.getEncoded(), outfileFname);
+        }
     }
 }
