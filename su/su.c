@@ -1,54 +1,45 @@
 /*
-**
-** Copyright 2008, The Android Open Source Project
-**
-** Licensed under the Apache License, Version 2.0 (the "License"); 
-** you may not use this file except in compliance with the License. 
-** You may obtain a copy of the License at 
-**
-**     http://www.apache.org/licenses/LICENSE-2.0 
-**
-** Unless required by applicable law or agreed to in writing, software 
-** distributed under the License is distributed on an "AS IS" BASIS, 
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
-** See the License for the specific language governing permissions and 
-** limitations under the License.
-*/
+ * Copyright (C) 2008 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#define LOG_TAG "su"
-
+#include <errno.h>
+#include <error.h>
+#include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
-#include <dirent.h>
-#include <errno.h>
-
 #include <unistd.h>
-#include <time.h>
-
-#include <pwd.h>
 
 #include <private/android_filesystem_config.h>
 
-
-void pwtoid(const char *tok, uid_t *uid, gid_t *gid)
-{
-    struct passwd *pw;
-    pw = getpwnam(tok);
+void pwtoid(const char* tok, uid_t* uid, gid_t* gid) {
+    struct passwd* pw = getpwnam(tok);
     if (pw) {
         if (uid) *uid = pw->pw_uid;
         if (gid) *gid = pw->pw_gid;
     } else {
-        uid_t tmpid = atoi(tok);
+        char* end;
+        errno = 0;
+        uid_t tmpid = strtoul(tok, &end, 10);
+        if (errno != 0 || end == tok) error(1, errno, "invalid uid/gid '%s'", tok);
         if (uid) *uid = tmpid;
         if (gid) *gid = tmpid;
     }
 }
 
-void extract_uidgids(const char *uidgids, uid_t *uid, gid_t *gid, gid_t *gids,
-                     int *gids_count)
-{
+void extract_uidgids(const char* uidgids, uid_t* uid, gid_t* gid, gid_t* gids, int* gids_count) {
     char *clobberablegids;
     char *nexttok;
     char *tok;
@@ -59,6 +50,7 @@ void extract_uidgids(const char *uidgids, uid_t *uid, gid_t *gid, gid_t *gids,
         *gids_count = 0;
         return;
     }
+
     clobberablegids = strdup(uidgids);
     strcpy(clobberablegids, uidgids);
     nexttok = clobberablegids;
@@ -87,7 +79,7 @@ void extract_uidgids(const char *uidgids, uid_t *uid, gid_t *gid, gid_t *gids,
 
 /*
  * SU can be given a specific command to exec. UID _must_ be
- * specified for this (ie argc => 3).
+ * specified for this.
  *
  * Usage:
  *   su 1000
@@ -99,61 +91,45 @@ void extract_uidgids(const char *uidgids, uid_t *uid, gid_t *gid, gid_t *gids,
  * will return
  *  uid=1000(system) gid=2000(shell) groups=3006(net_bw_stats),3007(net_bw_acct)
  */
-int main(int argc, char **argv)
-{
-    struct passwd *pw;
-    uid_t uid, myuid;
-    gid_t gid, gids[10];
+int main(int argc, char** argv) {
+    uid_t current_uid = getuid();
+    if (current_uid != AID_ROOT && current_uid != AID_SHELL) error(1, 0, "not allowed");
 
-    /* Until we have something better, only root and the shell can use su. */
-    myuid = getuid();
-    if (myuid != AID_ROOT && myuid != AID_SHELL) {
-        fprintf(stderr,"su: uid %d not allowed to su\n", myuid);
-        return 1;
-    }
+    // The default user is root.
+    uid_t uid = 0;
+    gid_t gid = 0;
 
-    if(argc < 2) {
-        uid = gid = 0;
-    } else {
+    // TODO: use getopt and support at least -- and --help.
+
+    // If there are any arguments, the first argument is the uid/gid/supplementary groups.
+    if (argc >= 2) {
+        gid_t gids[10];
         int gids_count = sizeof(gids)/sizeof(gids[0]);
         extract_uidgids(argv[1], &uid, &gid, gids, &gids_count);
-        if(gids_count) {
-            if(setgroups(gids_count, gids)) {
-                fprintf(stderr, "su: failed to set groups\n");
-                return 1;
+        if (gids_count) {
+            if (setgroups(gids_count, gids)) {
+                error(1, errno, "setgroups failed");
             }
         }
+        ++argv;
     }
 
-    if(setgid(gid) || setuid(uid)) {
-        fprintf(stderr,"su: permission denied\n");
-        return 1;
+    if (setgid(gid)) error(1, errno, "setgid failed");
+    if (setuid(uid)) error(1, errno, "setuid failed");
+
+    // TODO: reset $PATH.
+
+    // Set up the arguments for exec.
+    char* exec_args[argc];  // Having too much space is fine.
+    memset(exec_args, 0, sizeof(exec_args));
+    // Skip "su" and copy any other args. We already skipped the optional uid above.
+    ++argv;
+    for (size_t i = 0; argv[i] != NULL; ++i) {
+      exec_args[i] = argv[i];
     }
+    // Default to the standard shell.
+    if (!exec_args[0]) exec_args[0] = "/system/bin/sh";
 
-    /* User specified command for exec. */
-    if (argc == 3 ) {
-        if (execlp(argv[2], argv[2], NULL) < 0) {
-            int saved_errno = errno;
-            fprintf(stderr, "su: exec failed for %s Error:%s\n", argv[2],
-                    strerror(errno));
-            return -saved_errno;
-        }
-    } else if (argc > 3) {
-        /* Copy the rest of the args from main. */
-        char *exec_args[argc - 1];
-        memset(exec_args, 0, sizeof(exec_args));
-        memcpy(exec_args, &argv[2], sizeof(exec_args));
-        if (execvp(argv[2], exec_args) < 0) {
-            int saved_errno = errno;
-            fprintf(stderr, "su: exec failed for %s Error:%s\n", argv[2],
-                    strerror(errno));
-            return -saved_errno;
-        }
-    }
-
-    /* Default exec shell. */
-    execlp("/system/bin/sh", "sh", NULL);
-
-    fprintf(stderr, "su: exec failed\n");
-    return 1;
+    execvp(exec_args[0], exec_args);
+    error(1, errno, "failed to exec %s", exec_args[0]);
 }
