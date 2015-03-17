@@ -120,15 +120,16 @@ int main(int argc, char** argv) {
     // TODO: reset $PATH.
 
     // Set up the arguments for exec.
-    char* exec_args[argc];  // Having too much space is fine.
-    memset(exec_args, 0, sizeof(exec_args));
+    char* exec_args[argc + 1];  // Having too much space is fine.
     // Skip "su" and copy any other args. We already skipped the optional uid above.
     ++argv;
-    for (size_t i = 0; argv[i] != NULL; ++i) {
-      exec_args[i] = argv[i];
+    size_t i = 0;
+    for (; *argv != NULL; ++i) {
+      exec_args[i] = *argv++;
     }
     // Default to the standard shell.
-    if (!exec_args[0]) exec_args[0] = "/system/bin/sh";
+    if (i == 0) exec_args[i++] = "/system/bin/sh";
+    exec_args[i] = NULL;
 
     execvp(exec_args[0], exec_args);
     error(1, errno, "failed to exec %s", exec_args[0]);
