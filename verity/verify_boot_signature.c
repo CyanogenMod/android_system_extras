@@ -24,6 +24,7 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include <openssl/asn1.h>
 #include <openssl/asn1t.h>
@@ -68,6 +69,14 @@ ASN1_SEQUENCE(BootSignature) = {
 IMPLEMENT_ASN1_FUNCTIONS(BootSignature)
 
 static BIO *g_error = NULL;
+
+#if defined(OPENSSL_IS_BORINGSSL)
+/* In BoringSSL, ERR_print_errors has been moved to the BIO functions in order
+ * to avoid the incorrect dependency of ERR on BIO. */
+static void ERR_print_errors(BIO *bio) {
+    BIO_print_errors(bio);
+}
+#endif
 
 /**
  * Rounds n up to the nearest multiple of page_size
