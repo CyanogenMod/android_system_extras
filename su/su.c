@@ -16,7 +16,10 @@
 
 #include <errno.h>
 #include <error.h>
+#include <getopt.h>
+#include <paths.h>
 #include <pwd.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -77,35 +80,46 @@ void extract_uidgids(const char* uidgids, uid_t* uid, gid_t* gid, gid_t* gids, i
     free(clobberablegids);
 }
 
-/*
- * SU can be given a specific command to exec. UID _must_ be
- * specified for this.
- *
- * Usage:
- *   su 1000
- *   su 1000 ls -l
- *  or
- *   su [uid[,gid[,group1]...] [cmd]]
- *  E.g.
- *  su 1000,shell,net_bw_acct,net_bw_stats id
- * will return
- *  uid=1000(system) gid=2000(shell) groups=3006(net_bw_stats),3007(net_bw_acct)
- */
 int main(int argc, char** argv) {
     uid_t current_uid = getuid();
     if (current_uid != AID_ROOT && current_uid != AID_SHELL) error(1, 0, "not allowed");
+
+    // Handle -h and --help.
+    while (true) {
+        int option_index = 0;
+        static struct option long_options[] = {
+            { "help", no_argument, 0, 'h' },
+            { 0, 0, 0, 0 },
+        };
+
+        int c = getopt_long(argc, argv, "h", long_options, &option_index);
+        if (c == -1) break;
+        switch (c) {
+          case 'h':
+          default:
+            fprintf(stderr,
+                    "usage: su [UID[,GID[,GID2]...]] [COMMAND [ARG...]]\n"
+                    "\n"
+                    "Switch to WHO (default 'root') and run the given command (default sh).\n"
+                    "\n"
+                    "where WHO is a comma-separated list of user, group,\n"
+                    "and supplementary groups in that order.\n"
+                    "\n");
+            return 0;
+        }
+    }
+    // Bump argv to the first non-option argument.
+    argv += optind;
 
     // The default user is root.
     uid_t uid = 0;
     gid_t gid = 0;
 
-    // TODO: use getopt and support at least -- and --help.
-
     // If there are any arguments, the first argument is the uid/gid/supplementary groups.
-    if (argc >= 2) {
+    if (*argv) {
         gid_t gids[10];
         int gids_count = sizeof(gids)/sizeof(gids[0]);
-        extract_uidgids(argv[1], &uid, &gid, gids, &gids_count);
+        extract_uidgids(*argv, &uid, &gid, gids, &gids_count);
         if (gids_count) {
             if (setgroups(gids_count, gids)) {
                 error(1, errno, "setgroups failed");
@@ -117,12 +131,15 @@ int main(int argc, char** argv) {
     if (setgid(gid)) error(1, errno, "setgid failed");
     if (setuid(uid)) error(1, errno, "setuid failed");
 
-    // TODO: reset $PATH.
+    // Reset parts of the environment.
+    setenv("PATH", _PATH_DEFPATH, 1);
+    unsetenv("IFS");
+    struct passwd* pw = getpwuid(uid);
+    setenv("LOGNAME", pw->pw_name, 1);
+    setenv("USER", pw->pw_name, 1);
 
     // Set up the arguments for exec.
     char* exec_args[argc + 1];  // Having too much space is fine.
-    // Skip "su" and copy any other args. We already skipped the optional uid above.
-    ++argv;
     size_t i = 0;
     for (; *argv != NULL; ++i) {
       exec_args[i] = *argv++;
