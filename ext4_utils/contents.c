@@ -18,6 +18,8 @@
 #include <string.h>
 #include <stdio.h>
 
+#include <sys/xattr.h>
+
 #ifdef HAVE_ANDROID_OS
 #include <linux/capability.h>
 #else
@@ -461,6 +463,44 @@ static int xattr_add(u32 inode_num, int name_index, const char *name,
 		result = xattr_addto_block(inode, name_index, name, value, value_len);
 	}
 	return result;
+}
+
+int inode_set_userattr(u32 inode_num, const char *pathname)
+{
+	char attrlist[4096];
+	ssize_t count, listidx;
+	char *attr;
+	unsigned int n;
+
+	count = listxattr(pathname, attrlist, sizeof(attrlist));
+	if (count < 0) {
+		return count;
+	}
+	attr = attrlist;
+	for (listidx = 0; listidx < count; ++listidx) {
+		char *key;
+		char val[256];
+		ssize_t len;
+		int ret;
+
+		key = attr;
+		attr += strlen(attr) + 1;
+
+		if (memcmp(key, "user.", 5) != 0) {
+			continue;
+		}
+		memset(val, 0, sizeof(val));
+		len = getxattr(pathname, key, val, sizeof(val));
+		if (len < 0)
+			return len;
+
+		ret = xattr_add(inode_num, EXT4_XATTR_INDEX_USER,
+			key+5, val, strlen(val)+1);
+		if (ret != 0)
+			return ret;
+	}
+
+	return 0;
 }
 
 int inode_set_selinux(u32 inode_num, const char *secon)

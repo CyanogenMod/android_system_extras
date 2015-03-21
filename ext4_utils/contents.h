@@ -38,6 +38,7 @@ u32 make_directory(u32 dir_inode_num, u32 entries, struct dentry *dentries,
 u32 make_file(const char *filename, u64 len);
 u32 make_link(const char *link);
 int inode_set_permissions(u32 inode_num, u16 mode, u16 uid, u16 gid, u32 mtime);
+int inode_set_userattr(u32 inode_num, const char *pathname);
 int inode_set_selinux(u32 inode_num, const char *secon);
 int inode_set_capabilities(u32 inode_num, uint64_t capabilities);
 struct block_allocation* get_saved_allocation_chain();

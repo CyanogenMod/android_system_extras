@@ -296,12 +296,12 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 			error("failed to set permissions on %s\n", dentries[i].path);
 
 		/*
-		 * It's important to call inode_set_selinux() before
-		 * inode_set_capabilities(). Extended attributes need to
-		 * be stored sorted order, and we guarantee this by making
-		 * the calls in the proper order.
+		 * It's important to call these functions in order.  Extended
+		 * attributes need to be stored sorted order, and we guarantee
+		 * this by making the calls in the proper order.
 		 * Please see xattr_assert_sane() in contents.c
 		 */
+		ret = inode_set_userattr(entry_inode, dentries[i].full_path);
 		ret = inode_set_selinux(entry_inode, dentries[i].secon);
 		if (ret)
 			error("failed to set SELinux context on %s\n", dentries[i].path);
