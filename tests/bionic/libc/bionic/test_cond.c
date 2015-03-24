@@ -33,7 +33,7 @@
 #include <string.h>
 #include <unistd.h>
 
-static pthread_mutex_t lock = PTHREAD_RECURSIVE_MUTEX_INITIALIZER;
+static pthread_mutex_t lock = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
 static pthread_cond_t  wait = PTHREAD_COND_INITIALIZER;
 
 static void* _thread1(void *__u __attribute__((unused)))
