@@ -2,6 +2,10 @@
 
 LOCAL_PATH:= $(call my-dir)
 
+ifneq ($(wildcard $(ANDROID_BUILD_TOP)/external/lz4/Android.mk),)
+LOCAL_HAVE_LZ4 := true
+endif
+
 libext4_utils_src_files := \
     make_ext4fs.c \
     ext4fixup.c \
@@ -27,9 +31,17 @@ LOCAL_MODULE := libext4_utils_host
 LOCAL_STATIC_LIBRARIES := \
     libsparse_host \
     libz
+
 ifneq ($(HOST_OS),windows)
   LOCAL_STATIC_LIBRARIES += libselinux
 endif
+
+ifeq ($(LOCAL_HAVE_LZ4),true)
+LOCAL_CFLAGS += -DHAVE_LZ4
+LOCAL_C_INCLUDES += external/lz4/lib
+LOCAL_STATIC_LIBRARIES += liblz4-host
+endif
+
 include $(BUILD_HOST_STATIC_LIBRARY)
 
 
@@ -46,6 +58,11 @@ else
   LOCAL_STATIC_LIBRARIES += libselinux
   LOCAL_CFLAGS := -DHOST
 endif
+ifeq ($(LOCAL_HAVE_LZ4),true)
+LOCAL_CFLAGS += -DHAVE_LZ4
+LOCAL_C_INCLUDES += external/lz4/lib
+LOCAL_STATIC_LIBRARIES += liblz4-host
+endif
 include $(BUILD_HOST_EXECUTABLE)
 
 
@@ -57,20 +74,32 @@ ifneq ($(HOST_OS),windows)
 
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(libext4_utils_src_files)
+LOCAL_C_INCLUDES += external/zlib
 LOCAL_MODULE := libext4_utils
 LOCAL_SHARED_LIBRARIES := \
     libselinux \
     libsparse \
     libz
+ifeq ($(LOCAL_HAVE_LZ4),true)
+LOCAL_CFLAGS += -DHAVE_LZ4
+LOCAL_C_INCLUDES += external/lz4/lib
+LOCAL_STATIC_LIBRARIES += liblz4-static
+endif
 include $(BUILD_SHARED_LIBRARY)
 
 
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(libext4_utils_src_files)
+LOCAL_C_INCLUDES += external/zlib
 LOCAL_MODULE := libext4_utils_static
 LOCAL_STATIC_LIBRARIES += \
     libselinux \
     libsparse_static
+ifeq ($(LOCAL_HAVE_LZ4),true)
+LOCAL_CFLAGS += -DHAVE_LZ4
+LOCAL_C_INCLUDES += external/lz4/lib
+LOCAL_STATIC_LIBRARIES += liblz4-static
+endif
 include $(BUILD_STATIC_LIBRARY)
 
 
@@ -81,6 +110,11 @@ LOCAL_SHARED_LIBRARIES := \
     libext4_utils \
     libselinux \
     libz
+ifeq ($(LOCAL_HAVE_LZ4),true)
+LOCAL_CFLAGS += -DHAVE_LZ4
+LOCAL_C_INCLUDES += external/lz4/lib
+LOCAL_STATIC_LIBRARIES += liblz4-static
+endif
 include $(BUILD_EXECUTABLE)
 
 
