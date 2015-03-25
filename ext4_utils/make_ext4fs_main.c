@@ -55,6 +55,7 @@ static void usage(char *path)
 	fprintf(stderr, "    [ -L <label> ] [ -f ] [ -a <android mountpoint> ]\n");
 	fprintf(stderr, "    [ -S file_contexts ] [ -C fs_config ] [ -T timestamp ]\n");
 	fprintf(stderr, "    [ -z | -s ] [ -w ] [ -c ] [ -J ] [ -v ] [ -B <block_list_file> ]\n");
+	fprintf(stderr, "    [-M <zlib|lz4> ]\n");
 	fprintf(stderr, "    <filename> [<directory>]\n");
 }
 
@@ -76,11 +77,12 @@ int main(int argc, char **argv)
 	time_t fixed_time = -1;
 	struct selabel_handle *sehnd = NULL;
 	FILE* block_list_file = NULL;
+	const char *xcomp_method = NULL;
 #ifndef USE_MINGW
 	struct selinux_opt seopts[] = { { SELABEL_OPT_PATH, "" } };
 #endif
 
-	while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:S:T:C:B:fwzJsctv")) != -1) {
+	while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:S:T:C:B:fwzJsctvM:")) != -1) {
 		switch (opt) {
 		case 'l':
 			info.len = parse_num(optarg);
@@ -159,6 +161,9 @@ int main(int argc, char **argv)
 				exit(EXIT_FAILURE);
 			}
 			break;
+		case 'M':
+			xcomp_method = optarg;
+			break;
 		default: /* '?' */
 			usage(argv[0]);
 			exit(EXIT_FAILURE);
@@ -199,6 +204,14 @@ int main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 
+	if (xcomp_method &&
+	    strcmp(xcomp_method, "zlib") != 0 &&
+	    strcmp(xcomp_method, "lz4") != 0) {
+		fprintf(stderr, "Unrecognized compression method %s\n", xcomp_method);
+		usage(argv[0]);
+		exit(EXIT_FAILURE);
+	}
+
 	if (optind >= argc) {
 		fprintf(stderr, "Expected filename after options\n");
 		usage(argv[0]);
@@ -227,7 +240,8 @@ int main(int argc, char **argv)
 	}
 
 	exitcode = make_ext4fs_internal(fd, directory, mountpoint, fs_config_func, gzip,
-		sparse, crc, wipe, sehnd, verbose, fixed_time, block_list_file);
+		sparse, crc, wipe, sehnd, verbose, fixed_time, block_list_file,
+		xcomp_method);
 	close(fd);
 	if (block_list_file)
 		fclose(block_list_file);

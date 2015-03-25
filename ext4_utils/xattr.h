@@ -4,6 +4,7 @@
 #define _SYSTEM_EXTRAS_EXT4_UTILS_XATTR_H 1
 
 #define EXT4_XATTR_MAGIC 0xEA020000
+#define EXT4_XATTR_INDEX_USER     1
 #define EXT4_XATTR_INDEX_SECURITY 6
 
 struct ext4_xattr_header {

@@ -18,6 +18,8 @@
 #include <string.h>
 #include <stdio.h>
 
+#include <sys/xattr.h>
+
 #ifdef HAVE_ANDROID_OS
 #include <linux/capability.h>
 #else
@@ -175,7 +177,7 @@ u32 make_directory(u32 dir_inode_num, u32 entries, struct dentry *dentries,
 }
 
 /* Creates a file on disk.  Returns the inode number of the new file */
-u32 make_file(const char *filename, u64 len)
+u32 make_file(const char *filename, const char *datafile, u64 len)
 {
 	struct ext4_inode *inode;
 	u32 inode_num;
@@ -193,7 +195,7 @@ u32 make_file(const char *filename, u64 len)
 	}
 
 	if (len > 0) {
-		struct block_allocation* alloc = inode_allocate_file_extents(inode, len, filename);
+		struct block_allocation* alloc = inode_allocate_file_extents(inode, len, datafile);
 		if (alloc) {
 			alloc->filename = strdup(filename);
 			alloc->next = saved_allocation_head;
@@ -461,6 +463,25 @@ static int xattr_add(u32 inode_num, int name_index, const char *name,
 		result = xattr_addto_block(inode, name_index, name, value, value_len);
 	}
 	return result;
+}
+
+int inode_set_compress(u32 inode_num, const char *method, u64 realsize)
+{
+	char realsize_str[80];
+	int ret;
+
+	snprintf(realsize_str, sizeof(realsize_str),
+		 "%llu", (unsigned long long)realsize);
+	ret = xattr_add(inode_num, EXT4_XATTR_INDEX_USER,
+			"compression.method", method, strlen(method)+1);
+	if (ret)
+		return ret;
+	ret = xattr_add(inode_num, EXT4_XATTR_INDEX_USER,
+			"compression.realsize", realsize_str, strlen(realsize_str)+1);
+	if (ret)
+		return ret;
+
+	return 0;
 }
 
 int inode_set_selinux(u32 inode_num, const char *secon)
