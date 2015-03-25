@@ -57,6 +57,7 @@ ifneq ($(HOST_OS),windows)
 
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(libext4_utils_src_files)
+LOCAL_C_INCLUDES += external/zlib
 LOCAL_MODULE := libext4_utils
 LOCAL_SHARED_LIBRARIES := \
     libselinux \
@@ -67,6 +68,7 @@ include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(libext4_utils_src_files)
+LOCAL_C_INCLUDES += external/zlib
 LOCAL_MODULE := libext4_utils_static
 LOCAL_STATIC_LIBRARIES += \
     libselinux \
