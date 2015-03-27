@@ -85,31 +85,18 @@ int main(int argc, char** argv) {
     if (current_uid != AID_ROOT && current_uid != AID_SHELL) error(1, 0, "not allowed");
 
     // Handle -h and --help.
-    while (true) {
-        int option_index = 0;
-        static struct option long_options[] = {
-            { "help", no_argument, 0, 'h' },
-            { 0, 0, 0, 0 },
-        };
-
-        int c = getopt_long(argc, argv, "h", long_options, &option_index);
-        if (c == -1) break;
-        switch (c) {
-          case 'h':
-          default:
-            fprintf(stderr,
-                    "usage: su [UID[,GID[,GID2]...]] [COMMAND [ARG...]]\n"
-                    "\n"
-                    "Switch to WHO (default 'root') and run the given command (default sh).\n"
-                    "\n"
-                    "where WHO is a comma-separated list of user, group,\n"
-                    "and supplementary groups in that order.\n"
-                    "\n");
-            return 0;
-        }
+    ++argv;
+    if (*argv && (strcmp(*argv, "--help") == 0 || strcmp(*argv, "-h") == 0)) {
+        fprintf(stderr,
+                "usage: su [UID[,GID[,GID2]...]] [COMMAND [ARG...]]\n"
+                "\n"
+                "Switch to WHO (default 'root') and run the given command (default sh).\n"
+                "\n"
+                "where WHO is a comma-separated list of user, group,\n"
+                "and supplementary groups in that order.\n"
+                "\n");
+        return 0;
     }
-    // Bump argv to the first non-option argument.
-    argv += optind;
 
     // The default user is root.
     uid_t uid = 0;
