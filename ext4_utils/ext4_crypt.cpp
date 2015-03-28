@@ -1,3 +1,5 @@
+#define TAG "ext4_utils"
+
 #include "ext4_crypt.h"
 
 #include <string>
@@ -6,10 +8,9 @@
 
 #include <errno.h>
 #include <sys/mount.h>
-#include <cutils/properties.h>
 
-// ext4enc:TODO Use include paths
-#include "../../core/init/log.h"
+#include <cutils/klog.h>
+#include <cutils/properties.h>
 
 // ext4enc::TODO remove this duplicated const
 static const std::string unencrypted_path = "/unencrypted";
@@ -26,19 +27,19 @@ int e4crypt_get_password_type(const char* path)
 {
     auto full_path = std::string() + path + unencrypted_path;
     if (!std::ifstream(full_path + "/key")) {
-        INFO("No master key, so not ext4enc\n");
+        KLOG_INFO(TAG, "No master key, so not ext4enc\n");
         return -1;
     }
 
     std::ifstream type(full_path + "/type");
     if (!type) {
-        INFO("No password type so default\n");
+        KLOG_INFO(TAG, "No password type so default\n");
         return 1; // Default
     }
 
     int value = 0;
     type >> value;
-    INFO("Password type is %d\n", value);
+    KLOG_INFO(TAG, "Password type is %d\n", value);
     return value;
 }
 
@@ -55,11 +56,11 @@ int e4crypt_change_password(const char* path, int crypt_type,
 
 int  e4crypt_crypto_complete(const char* path)
 {
-    INFO("ext4 crypto complete called on %s\n", path);
+    KLOG_INFO(TAG, "ext4 crypto complete called on %s\n", path);
 
     auto full_path = std::string() + path + unencrypted_path;
     if (!std::ifstream(full_path + "/key")) {
-        INFO("No master key, so not ext4enc\n");
+        KLOG_INFO(TAG, "No master key, so not ext4enc\n");
         return -1;
     }
 
@@ -70,7 +71,7 @@ int e4crypt_check_passwd(const char* path, const char* password)
 {
     auto full_path = std::string() + path + unencrypted_path;
     if (!std::ifstream(full_path + "/key")) {
-        INFO("No master key, so not ext4enc\n");
+        KLOG_INFO(TAG, "No master key, so not ext4enc\n");
         return -1;
     }
 
@@ -89,9 +90,9 @@ int e4crypt_restart(const char* path)
 {
     int rc = 0;
 
-    INFO("ext4 restart called on %s\n", path);
+    KLOG_INFO(TAG, "ext4 restart called on %s\n", path);
     property_set("vold.decrypt", "trigger_reset_main");
-    INFO("Just asked init to shut down class main\n");
+    KLOG_INFO(TAG, "Just asked init to shut down class main\n");
     sleep(2);
 
     std::string tmp_path = std::string() + path + "/tmp_mnt";
@@ -99,16 +100,16 @@ int e4crypt_restart(const char* path)
     // ext4enc:TODO add retry logic
     rc = umount(tmp_path.c_str());
     if (rc) {
-        ERROR("umount %s failed with rc %d, msg %s\n",
-              tmp_path.c_str(), rc, strerror(errno));
+        KLOG_ERROR(TAG, "umount %s failed with rc %d, msg %s\n",
+                   tmp_path.c_str(), rc, strerror(errno));
         return rc;
     }
 
     // ext4enc:TODO add retry logic
     rc = umount(path);
     if (rc) {
-        ERROR("umount %s failed with rc %d, msg %s\n",
-              path, rc, strerror(errno));
+        KLOG_ERROR(TAG, "umount %s failed with rc %d, msg %s\n",
+                   path, rc, strerror(errno));
         return rc;
     }
 
