@@ -2,6 +2,8 @@
  * Copyright (c) 2015 Google, Inc.
  */
 
+#define TAG "ext4_utils"
+
 #include <dirent.h>
 #include <errno.h>
 #include <string.h>
@@ -11,8 +13,7 @@
 #include <sys/syscall.h>
 #include <sys/stat.h>
 
-// ext4enc:TODO Use include paths
-#include "../../core/init/log.h"
+#include <cutils/klog.h>
 
 #include "ext4_crypt.h"
 
@@ -28,7 +29,7 @@
 static int is_path_valid(const char *path)
 {
     if (access(path, W_OK)) {
-        ERROR("Can't access %s: %s\n",strerror(errno), path);
+        KLOG_ERROR(TAG, "Can't access %s: %s\n",strerror(errno), path);
         return 0;
     }
 
@@ -85,7 +86,7 @@ int do_policy_set(const char *directory, const char *policy)
     ssize_t ret;
 
     if (!is_keyref_valid(policy)) {
-        ERROR("Policy has invalid format.\n");
+        KLOG_ERROR(TAG, "Policy has invalid format.\n");
         return -EINVAL;
     }
 
@@ -95,12 +96,12 @@ int do_policy_set(const char *directory, const char *policy)
 
     stat(directory, &st);
     if (!S_ISDIR(st.st_mode)) {
-        ERROR("Can only set policy on a directory (%s)\n", directory);
+        KLOG_ERROR(TAG, "Can only set policy on a directory (%s)\n", directory);
         return -EINVAL;
     }
 
     if (!is_dir_empty(directory)) {
-        ERROR("Can only set policy on an empty directory (%s)\n", directory);
+        KLOG_ERROR(TAG, "Can only set policy on an empty directory (%s)\n", directory);
         return -EINVAL;
     }
 
@@ -108,12 +109,12 @@ int do_policy_set(const char *directory, const char *policy)
                     strlen(policy), 0);
 
     if (ret) {
-        ERROR("Failed to set encryption policy for %s: %s\n",
-               directory, strerror(errno));
+        KLOG_ERROR(TAG, "Failed to set encryption policy for %s: %s\n",
+                   directory, strerror(errno));
         return -EINVAL;
     }
 
-    INFO("Encryption policy for %s is set to %s\n", directory, policy);
+    KLOG_INFO(TAG, "Encryption policy for %s is set to %s\n", directory, policy);
     return 0;
 }
 

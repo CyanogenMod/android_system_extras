@@ -1,3 +1,5 @@
+#define TAG "ext4_utils"
+
 #include "ext4_crypt.h"
 
 #include <string>
@@ -5,15 +7,14 @@
 #include <iomanip>
 #include <sstream>
 
-#include <sys/mount.h>
-
 #include <errno.h>
+#include <sys/mount.h>
 #include <sys/stat.h>
+
+#include <cutils/klog.h>
 #include <cutils/properties.h>
 #include <cutils/sockets.h>
 
-// ext4enc:TODO Use include paths
-#include "../../core/init/log.h"
 #include "../../core/init/util.h"
 
 #include "ext2fs/ext2_fs.h"
@@ -26,13 +27,13 @@ static key_serial_t device_keyring = -1;
 
 static std::string vold_command(std::string const& command)
 {
-    INFO("Running command %s\n", command.c_str());
+    KLOG_INFO(TAG, "Running command %s\n", command.c_str());
     int sock = socket_local_client("vold",
                                    ANDROID_SOCKET_NAMESPACE_RESERVED,
                                    SOCK_STREAM);
 
     if (sock < 0) {
-        INFO("Cannot open vold, failing command\n");
+        KLOG_INFO(TAG, "Cannot open vold, failing command\n");
         return "";
     }
 
@@ -50,7 +51,7 @@ static std::string vold_command(std::string const& command)
     // framework is down, so this is (mostly) OK.
     std::string actual_command = arbitrary_sequence_number + " " + command;
     if (write(sock, actual_command.c_str(), actual_command.size() + 1) < 0) {
-        ERROR("Cannot write command\n");
+        KLOG_ERROR(TAG, "Cannot write command\n");
         return "";
     }
 
@@ -65,10 +66,10 @@ static std::string vold_command(std::string const& command)
 
         int rc = select(sock + 1, &read_fds, NULL, NULL, &to);
         if (rc < 0) {
-            ERROR("Error in select %s\n", strerror(errno));
+            KLOG_ERROR(TAG, "Error in select %s\n", strerror(errno));
             return "";
         } else if (!rc) {
-            ERROR("Timeout\n");
+            KLOG_ERROR(TAG, "Timeout\n");
             return "";
         } else if (FD_ISSET(sock, &read_fds)) {
             char buffer[4096];
@@ -76,9 +77,9 @@ static std::string vold_command(std::string const& command)
             rc = read(sock, buffer, sizeof(buffer));
             if (rc <= 0) {
                 if (rc == 0) {
-                    ERROR("Lost connection to Vold - did it crash?\n");
+                    KLOG_ERROR(TAG, "Lost connection to Vold - did it crash?\n");
                 } else {
-                    ERROR("Error reading data (%s)\n", strerror(errno));
+                    KLOG_ERROR(TAG, "Error reading data (%s)\n", strerror(errno));
                 }
                 return "";
             }
@@ -96,11 +97,11 @@ static std::string vold_command(std::string const& command)
 int e4crypt_create_device_key(const char* dir)
 {
     // Make sure folder exists. Use make_dir to set selinux permissions.
-    INFO("Creating test device key\n");
+    KLOG_INFO(TAG, "Creating test device key\n");
     std::string path = std::string() + dir + unencrypted_path;
     if (make_dir(path.c_str(), 0700) && errno != EEXIST) {
-        ERROR("Failed to create %s with error %s\n",
-              path.c_str(), strerror(errno));
+        KLOG_ERROR(TAG, "Failed to create %s with error %s\n",
+                   path.c_str(), strerror(errno));
         return -1;
     }
 
@@ -112,26 +113,26 @@ int e4crypt_create_device_key(const char* dir)
         // Create new key if it doesn't
         std::ofstream new_key(key_path.c_str(), std::ofstream::binary);
         if (!new_key) {
-            ERROR("Failed to open %s\n", key_path.c_str());
+            KLOG_ERROR(TAG, "Failed to open %s\n", key_path.c_str());
             return -1;
         }
 
         std::ifstream urandom("/dev/urandom", std::ifstream::binary);
         if (!urandom) {
-            ERROR("Failed to open /dev/urandom\n");
+            KLOG_ERROR(TAG, "Failed to open /dev/urandom\n");
             return -1;
         }
 
         char key_material[32];
         urandom.read(key_material, 32);
         if (!urandom) {
-            ERROR("Failed to read random bytes\n");
+            KLOG_ERROR(TAG, "Failed to read random bytes\n");
             return -1;
         }
 
         new_key.write(key_material, 32);
         if (!new_key) {
-            ERROR("Failed to write key material");
+            KLOG_ERROR(TAG, "Failed to write key material");
             return -1;
         }
     }
@@ -149,16 +150,16 @@ int e4crypt_install_keyring()
                              KEY_SPEC_SESSION_KEYRING);
 
     if (device_keyring == -1) {
-        ERROR("Failed to create keyring\n");
+        KLOG_ERROR(TAG, "Failed to create keyring\n");
         return -1;
     }
 
-    INFO("Keyring created wth id %d in process %d\n", device_keyring, getpid());
+    KLOG_INFO(TAG, "Keyring created wth id %d in process %d\n", device_keyring, getpid());
 
     // ext4enc:TODO set correct permissions
     long result = keyctl_setperm(device_keyring, 0x3f3f3f3f);
     if (result) {
-        ERROR("KEYCTL_SETPERM failed with error %ld\n", result);
+        KLOG_ERROR(TAG, "KEYCTL_SETPERM failed with error %ld\n", result);
         return -1;
     }
 
@@ -173,7 +174,7 @@ int e4crypt_install_key(const char* dir)
     std::string key_path = path + "/key";
     std::ifstream key(key_path.c_str(), std::ifstream::binary);
     if (!key.good()) {
-        ERROR("Failed to open key %s\n", key_path.c_str());
+        KLOG_ERROR(TAG, "Failed to open key %s\n", key_path.c_str());
         return -1;
     }
 
@@ -181,7 +182,7 @@ int e4crypt_install_key(const char* dir)
     key.read(keyblob, sizeof(keyblob));
     std::streamsize keyblob_size = key.gcount();
     if (keyblob_size <= 0) {
-        ERROR("Failed to read key data\n");
+        KLOG_ERROR(TAG, "Failed to read key data\n");
         return -1;
     }
 
@@ -197,19 +198,19 @@ int e4crypt_install_key(const char* dir)
         std::string bit;
         i >> bit;
         if (bit != "200") {
-            ERROR("Expecting 200\n");
+            KLOG_ERROR(TAG, "Expecting 200\n");
             return -1;
         }
 
         i >> bit;
         if (bit != arbitrary_sequence_number) {
-            ERROR("Expecting %s\n", arbitrary_sequence_number.c_str());
+            KLOG_ERROR(TAG, "Expecting %s\n", arbitrary_sequence_number.c_str());
             return -1;
         }
 
         i >> bit;
         if (bit != "{{sensitive}}") {
-            INFO("Not encrypted\n");
+            KLOG_INFO(TAG, "Not encrypted\n");
             return -1;
         }
 
@@ -235,18 +236,18 @@ int e4crypt_install_key(const char* dir)
                                   device_keyring);
 
     if (key_id == -1) {
-        ERROR("Failed to insert key into keyring with error %s\n",
-              strerror(errno));
+        KLOG_ERROR(TAG, "Failed to insert key into keyring with error %s\n",
+                   strerror(errno));
         return -1;
     }
 
-    INFO("Added key %d to keyring %d in process %d\n",
-         key_id, device_keyring, getpid());
+    KLOG_INFO(TAG, "Added key %d to keyring %d in process %d\n",
+              key_id, device_keyring, getpid());
 
     // ext4enc:TODO set correct permissions
     long result = keyctl_setperm(key_id, 0x3f3f3f3f);
     if (result) {
-        ERROR("KEYCTL_SETPERM failed with error %ld\n", result);
+        KLOG_ERROR(TAG, "KEYCTL_SETPERM failed with error %ld\n", result);
         return -1;
     }
 
@@ -265,16 +266,16 @@ int e4crypt_set_directory_policy(const char* dir)
 
     std::ifstream ref_file("/data/unencrypted/ref");
     if (!ref_file) {
-        ERROR("Cannot open key reference file\n");
+        KLOG_ERROR(TAG, "Cannot open key reference file\n");
         return -1;
     }
 
     std::string ref;
     std::getline(ref_file, ref);
     std::string policy = std::string() + keyring + "." + ref;
-    INFO("Setting poliy %s\n", policy.c_str());
+    KLOG_INFO(TAG, "Setting policy %s\n", policy.c_str());
     if (do_policy_set(dir, policy.c_str())) {
-        ERROR("Setting policy on %s failed!", dir);
+        KLOG_ERROR(TAG, "Setting policy on %s failed!", dir);
         return -1;
     }
 
