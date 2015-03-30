@@ -7,7 +7,8 @@ __BEGIN_DECLS
 // They will not operate properly outside of init
 int e4crypt_install_keyring();
 int e4crypt_install_key(const char* dir);
-int e4crypt_create_device_key(const char* dir);
+int e4crypt_create_device_key(const char* dir,
+                              int ensure_dir_exists(const char* dir));
 
 // General functions
 bool e4crypt_non_default_key(const char* dir);
