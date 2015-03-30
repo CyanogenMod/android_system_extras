@@ -15,9 +15,14 @@
 #include <cutils/properties.h>
 #include <cutils/sockets.h>
 
-#include "../../core/init/util.h"
-
-#include "ext2fs/ext2_fs.h"
+// ext4enc:TODO Include structure from somewhere sensible
+// MUST be in sync with ext4_crypto.c in kernel
+#define EXT4_MAX_KEY_SIZE 76
+struct ext4_encryption_key {
+        uint32_t mode;
+        char raw[EXT4_MAX_KEY_SIZE];
+        uint32_t size;
+};
 
 static const std::string unencrypted_path = "/unencrypted";
 static const std::string keyring = "@s";
@@ -94,12 +99,13 @@ static std::string vold_command(std::string const& command)
     }
 }
 
-int e4crypt_create_device_key(const char* dir)
+int e4crypt_create_device_key(const char* dir,
+                              int ensure_dir_exists(const char*))
 {
     // Make sure folder exists. Use make_dir to set selinux permissions.
     KLOG_INFO(TAG, "Creating test device key\n");
     std::string path = std::string() + dir + unencrypted_path;
-    if (make_dir(path.c_str(), 0700) && errno != EEXIST) {
+    if (ensure_dir_exists(path.c_str())) {
         KLOG_ERROR(TAG, "Failed to create %s with error %s\n",
                    path.c_str(), strerror(errno));
         return -1;
@@ -218,14 +224,6 @@ int e4crypt_install_key(const char* dir)
     }
 
     // Add key to keyring
-    // ext4enc:TODO Include structure from somewhere sensible
-    // MUST be in sync with ext4_crypto.c in kernel
-    struct ext4_encryption_key {
-            uint32_t mode;
-            char raw[EXT4_MAX_KEY_SIZE];
-            uint32_t size;
-    };
-
     ext4_encryption_key ext4_key = {0, {0}, 0};
     memcpy(ext4_key.raw, keyblob, keyblob_size);
     ext4_key.size = keyblob_size;
