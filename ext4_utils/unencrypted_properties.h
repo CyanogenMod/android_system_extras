@@ -5,8 +5,7 @@
 namespace properties {
     extern const char* key;
     extern const char* ref;
-    extern const char* type;
-    extern const char* password;
+    extern const char* is_default;
 }
 
 /**
@@ -18,34 +17,38 @@ namespace properties {
 class UnencryptedProperties
 {
 public:
+    // Get path of folder. Must create before using any properties
+    // This is to allow proper setting of SELinux policy
+    static std::string GetPath(const char* device);
+
     // Opens properties folder on named device.
-    // If folder does not exist, construction will succeed, but all
+    // If folder does not exist, OK will return false, all
     // getters will return default properties and setters will fail.
     UnencryptedProperties(const char* device);
 
     // Get named object. Return default if object does not exist or error.
-    template<typename t> t Get(const char* name, t default_value = t());
+    template<typename t> t Get(const char* name, t default_value = t()) const;
 
     // Set named object. Return true if success, false otherwise
     template<typename t> bool Set(const char* name, t const& value);
 
     // Get child properties
-    UnencryptedProperties GetChild(const char* name);
+    UnencryptedProperties GetChild(const char* name) const;
 
     // Remove named object
     bool Remove(const char* name);
 
-    // Get path of folder
-    std::string const& GetPath() const {return folder_;}
+    // Does folder exist?
+    bool OK() const;
+
 private:
     UnencryptedProperties();
-    bool OK() const;
     std::string folder_;
 };
 
 
 template<typename t> t UnencryptedProperties::Get(const char* name,
-                                                  t default_value)
+                                                  t default_value) const
 {
     if (!OK()) return default_value;
     t value = default_value;
@@ -64,7 +67,7 @@ template<typename t> bool UnencryptedProperties::Set(const char* name,
 
 // Specialized getters/setters for strings
 template<> std::string UnencryptedProperties::Get(const char* name,
-                                      std::string default_value);
+                                      std::string default_value) const;
 
 template<> bool UnencryptedProperties::Set(const char* name,
                                            std::string const& value);
