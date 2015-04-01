@@ -94,7 +94,7 @@ int main(int argc, char **argv)
 
             if (timeout < 0 || timeout >= LONG_MAX) {
                 timeout = NEXT_TIMEOUT_MS;
-                LOGE("invalid timeout %s, defaulting to %u\n", optarg,
+                LOGE("invalid timeout %s, defaulting to %ld\n", optarg,
                     timeout);
             }
             break;
