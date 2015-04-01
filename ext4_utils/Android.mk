@@ -36,6 +36,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := make_ext4fs_main.c canned_fs_config.c
 LOCAL_MODULE := make_ext4fs
 LOCAL_STATIC_LIBRARIES += \
+    libcutils \
     libext4_utils_host \
     libsparse_host \
     libz
@@ -63,10 +64,10 @@ LOCAL_SRC_FILES := $(libext4_utils_src_files)
 LOCAL_MODULE := libext4_utils
 LOCAL_C_INCLUDES += system/core/logwrapper/include
 LOCAL_SHARED_LIBRARIES := \
+    libcutils \
     libselinux \
     libsparse \
-    libz \
-    libcutils
+    libz
 include $(BUILD_SHARED_LIBRARY)
 
 
@@ -83,6 +84,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := make_ext4fs_main.c canned_fs_config.c
 LOCAL_MODULE := make_ext4fs
 LOCAL_SHARED_LIBRARIES := \
+    libcutils \
     libext4_utils \
     libselinux \
     libz
