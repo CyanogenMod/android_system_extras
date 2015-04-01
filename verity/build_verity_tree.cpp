@@ -115,6 +115,7 @@ void usage(void)
            "  -A,--salt-hex=<hex digits>   set salt to <hex digits>\n"
            "  -h                           show this help\n"
            "  -s,--verity-size=<data size> print the size of the verity tree\n"
+           "  -v,                          enable verbose logging\n"
            "  -S                           treat <data image> as a sparse file\n"
         );
 }
@@ -128,6 +129,7 @@ int main(int argc, char **argv)
     bool sparse = false;
     size_t block_size = 4096;
     uint64_t calculate_size = 0;
+    bool verbose = false;
 
     while (1) {
         const static struct option long_options[] = {
@@ -136,9 +138,10 @@ int main(int argc, char **argv)
             {"help", no_argument, 0, 'h'},
             {"sparse", no_argument, 0, 'S'},
             {"verity-size", required_argument, 0, 's'},
+            {"verbose", no_argument, 0, 'v'},
             {NULL, 0, 0, 0}
         };
-        int c = getopt_long(argc, argv, "a:A:hSs:", long_options, NULL);
+        int c = getopt_long(argc, argv, "a:A:hSs:v", long_options, NULL);
         if (c < 0) {
             break;
         }
@@ -186,6 +189,9 @@ int main(int argc, char **argv)
                 }
                 calculate_size = (uint64_t)inSize;
             }
+            break;
+        case 'v':
+            verbose = true;
             break;
         case '?':
             usage();
@@ -260,7 +266,7 @@ int main(int argc, char **argv)
     if (sparse) {
         file = sparse_file_import(fd, false, false);
     } else {
-        file = sparse_file_import_auto(fd, false);
+        file = sparse_file_import_auto(fd, false, verbose);
     }
 
     if (!file) {
