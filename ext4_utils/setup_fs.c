@@ -9,7 +9,7 @@
 
 const char *mkfs = "/system/bin/make_ext4fs";
 
-int setup_fs(const char *blockdev)
+int setup_fs(const char *blockdev, int reboot_on_success)
 {
     char buf[256], path[128];
     pid_t child;
@@ -61,17 +61,22 @@ int setup_fs(const char *blockdev)
     }
 
     fprintf(stderr,"---\n");
-    return 1;
+    return reboot_on_success;
 }
 
 
 int main(int argc, char **argv)
 {
     int need_reboot = 0;
+    int reboot_on_success = 1;
 
     while (argc > 1) {
-        if (strlen(argv[1]) < 128)
-            need_reboot |= setup_fs(argv[1]);
+        size_t len = strlen(argv[1]);
+
+        if (len == 2 && strcmp(argv[1], "-n") == 0)
+            reboot_on_success = 0;
+        else if (len < 128)
+            need_reboot |= setup_fs(argv[1], reboot_on_success);
         argv++;
         argc--;
     }
