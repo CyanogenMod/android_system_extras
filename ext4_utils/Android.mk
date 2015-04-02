@@ -54,7 +54,8 @@ include $(BUILD_HOST_EXECUTABLE)
 
 libext4_utils_src_files += \
     ext4_crypt.cpp \
-    e4crypt_static.c
+    e4crypt_static.c \
+    unencrypted_properties.cpp
 
 ifneq ($(HOST_OS),windows)
 

@@ -15,6 +15,8 @@
 #include <cutils/properties.h>
 #include <cutils/sockets.h>
 
+#include "unencrypted_properties.h"
+
 // ext4enc:TODO Include structure from somewhere sensible
 // MUST be in sync with ext4_crypto.c in kernel
 #define EXT4_MAX_KEY_SIZE 76
@@ -24,7 +26,6 @@ struct ext4_encryption_key {
         uint32_t size;
 };
 
-static const std::string unencrypted_path = "/unencrypted";
 static const std::string keyring = "@s";
 static const std::string arbitrary_sequence_number = "42";
 
@@ -104,46 +105,40 @@ int e4crypt_create_device_key(const char* dir,
 {
     // Make sure folder exists. Use make_dir to set selinux permissions.
     KLOG_INFO(TAG, "Creating test device key\n");
-    std::string path = std::string() + dir + unencrypted_path;
-    if (ensure_dir_exists(path.c_str())) {
+    UnencryptedProperties props(dir);
+    if (ensure_dir_exists(props.GetPath().c_str())) {
         KLOG_ERROR(TAG, "Failed to create %s with error %s\n",
-                   path.c_str(), strerror(errno));
+                   props.GetPath().c_str(), strerror(errno));
         return -1;
     }
 
-    // Open key if it exists
-    std::string key_path = path + "/key";
-    std::ifstream key(key_path.c_str(), std::ifstream::binary);
-
-    if (!key.good()) {
-        // Create new key if it doesn't
-        std::ofstream new_key(key_path.c_str(), std::ofstream::binary);
-        if (!new_key) {
-            KLOG_ERROR(TAG, "Failed to open %s\n", key_path.c_str());
-            return -1;
-        }
-
+    if (props.Get<std::string>(properties::key).empty()) {
+        // Create new key since it doesn't already exist
         std::ifstream urandom("/dev/urandom", std::ifstream::binary);
         if (!urandom) {
             KLOG_ERROR(TAG, "Failed to open /dev/urandom\n");
             return -1;
         }
 
-        char key_material[32];
-        urandom.read(key_material, 32);
+        // ext4enc:TODO Don't hardcode 32
+        std::string key_material(32, '\0');
+        urandom.read(&key_material[0], key_material.length());
         if (!urandom) {
             KLOG_ERROR(TAG, "Failed to read random bytes\n");
             return -1;
         }
 
-        new_key.write(key_material, 32);
-        if (!new_key) {
+        if (!props.Set(properties::key, key_material)) {
             KLOG_ERROR(TAG, "Failed to write key material");
             return -1;
         }
     }
 
-    remove((std::string(dir) + "/ref").c_str());
+    if (!props.Remove(properties::ref)) {
+        KLOG_ERROR(TAG, "Failed to remove key ref\n");
+        return -1;
+    }
+
     return 0;
 }
 
@@ -160,7 +155,8 @@ int e4crypt_install_keyring()
         return -1;
     }
 
-    KLOG_INFO(TAG, "Keyring created wth id %d in process %d\n", device_keyring, getpid());
+    KLOG_INFO(TAG, "Keyring created wth id %d in process %d\n",
+              device_keyring, getpid());
 
     // ext4enc:TODO set correct permissions
     long result = keyctl_setperm(device_keyring, 0x3f3f3f3f);
@@ -174,23 +170,8 @@ int e4crypt_install_keyring()
 
 int e4crypt_install_key(const char* dir)
 {
-    std::string path = std::string() + dir + unencrypted_path;
-
-    // Open key if it exists
-    std::string key_path = path + "/key";
-    std::ifstream key(key_path.c_str(), std::ifstream::binary);
-    if (!key.good()) {
-        KLOG_ERROR(TAG, "Failed to open key %s\n", key_path.c_str());
-        return -1;
-    }
-
-    char keyblob[256];
-    key.read(keyblob, sizeof(keyblob));
-    std::streamsize keyblob_size = key.gcount();
-    if (keyblob_size <= 0) {
-        KLOG_ERROR(TAG, "Failed to read key data\n");
-        return -1;
-    }
+    UnencryptedProperties props(dir);
+    auto key = props.Get<std::string>(properties::key);
 
     // Get password to decrypt as needed
     if (e4crypt_non_default_key(dir)) {
@@ -225,8 +206,14 @@ int e4crypt_install_key(const char* dir)
 
     // Add key to keyring
     ext4_encryption_key ext4_key = {0, {0}, 0};
-    memcpy(ext4_key.raw, keyblob, keyblob_size);
-    ext4_key.size = keyblob_size;
+    if (key.length() > sizeof(ext4_key.raw)) {
+        KLOG_ERROR(TAG, "Key too long\n");
+        return -1;
+    }
+
+    ext4_key.mode = 0;
+    memcpy(ext4_key.raw, &key[0], key.length());
+    ext4_key.size = key.length();
 
     // ext4enc:TODO Use better reference not 1234567890
     key_serial_t key_id = add_key("logon", "ext4-key:1234567890",
@@ -250,29 +237,30 @@ int e4crypt_install_key(const char* dir)
     }
 
     // Save reference to key so we can set policy later
-    std::ofstream(path + "/ref") << "ext4-key:1234567890";
+    if (!props.Set(properties::ref, "ext4-key:1234567890")) {
+        KLOG_ERROR(TAG, "Cannot save key reference\n");
+        return -1;
+    }
+
     return 0;
 }
 
 int e4crypt_set_directory_policy(const char* dir)
 {
     // Only set policy on first level /data directories
-    // ext4enc:TODO don't hard code /data/
+    // To make this less restrictive, consider using a policy file.
+    // However this is overkill for as long as the policy is simply
+    // to apply a global policy to all /data folders created via makedir
     if (!dir || strncmp(dir, "/data/", 6) || strchr(dir + 6, '/')) {
         return 0;
     }
 
-    std::ifstream ref_file("/data/unencrypted/ref");
-    if (!ref_file) {
-        KLOG_ERROR(TAG, "Cannot open key reference file\n");
-        return -1;
-    }
-
-    std::string ref;
-    std::getline(ref_file, ref);
-    std::string policy = std::string() + keyring + "." + ref;
+    UnencryptedProperties props("/data");
+    std::string ref = props.Get<std::string>(properties::ref);
+    std::string policy = keyring + "." + ref;
     KLOG_INFO(TAG, "Setting policy %s\n", policy.c_str());
-    if (do_policy_set(dir, policy.c_str())) {
+    int result = do_policy_set(dir, policy.c_str());
+    if (result) {
         KLOG_ERROR(TAG, "Setting policy on %s failed!", dir);
         return -1;
     }

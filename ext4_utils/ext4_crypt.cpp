@@ -12,35 +12,29 @@
 #include <cutils/klog.h>
 #include <cutils/properties.h>
 
-// ext4enc::TODO remove this duplicated const
-static const std::string unencrypted_path = "/unencrypted";
+#include "unencrypted_properties.h"
 
-static std::map<std::string, std::string> s_password_store;
+namespace {
+    std::map<std::string, std::string> s_password_store;
+}
 
 bool e4crypt_non_default_key(const char* dir)
 {
     int type = e4crypt_get_password_type(dir);
+
+    // ext4enc:TODO Use consts, not 1 here
     return type != -1 && type != 1;
 }
 
 int e4crypt_get_password_type(const char* path)
 {
-    auto full_path = std::string() + path + unencrypted_path;
-    if (!std::ifstream(full_path + "/key")) {
+    UnencryptedProperties props(path);
+    if (props.Get<std::string>(properties::key).empty()) {
         KLOG_INFO(TAG, "No master key, so not ext4enc\n");
         return -1;
     }
 
-    std::ifstream type(full_path + "/type");
-    if (!type) {
-        KLOG_INFO(TAG, "No password type so default\n");
-        return 1; // Default
-    }
-
-    int value = 0;
-    type >> value;
-    KLOG_INFO(TAG, "Password type is %d\n", value);
-    return value;
+    return props.Get<int>(properties::type, 1);
 }
 
 int e4crypt_change_password(const char* path, int crypt_type,
@@ -48,18 +42,17 @@ int e4crypt_change_password(const char* path, int crypt_type,
 {
     // ext4enc:TODO Encrypt master key with password securely. Store hash of
     // master key for validation
-    auto full_path = std::string() + path + unencrypted_path;
-    std::ofstream(full_path + "/password") << password;
-    std::ofstream(full_path + "/type") << crypt_type;
-    return 0;
+    UnencryptedProperties props(path);
+    if (   props.Set(properties::password, password)
+        && props.Set(properties::type, crypt_type))
+        return 0;
+    return -1;
 }
 
-int  e4crypt_crypto_complete(const char* path)
+int e4crypt_crypto_complete(const char* path)
 {
     KLOG_INFO(TAG, "ext4 crypto complete called on %s\n", path);
-
-    auto full_path = std::string() + path + unencrypted_path;
-    if (!std::ifstream(full_path + "/key")) {
+    if (UnencryptedProperties(path).Get<std::string>(properties::key).empty()) {
         KLOG_INFO(TAG, "No master key, so not ext4enc\n");
         return -1;
     }
@@ -69,14 +62,13 @@ int  e4crypt_crypto_complete(const char* path)
 
 int e4crypt_check_passwd(const char* path, const char* password)
 {
-    auto full_path = std::string() + path + unencrypted_path;
-    if (!std::ifstream(full_path + "/key")) {
+    UnencryptedProperties props(path);
+    if (props.Get<std::string>(properties::key).empty()) {
         KLOG_INFO(TAG, "No master key, so not ext4enc\n");
         return -1;
     }
 
-    std::string actual_password;
-    std::ifstream(full_path + "/password") >> actual_password;
+    auto actual_password = props.Get<std::string>(properties::password);
 
     if (actual_password == password) {
         s_password_store[path] = password;
