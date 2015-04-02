@@ -2,6 +2,13 @@
 
 LOCAL_PATH:= $(call my-dir)
 
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := squashfs_utils.c
+LOCAL_STATIC_LIBRARIES := libcutils
+LOCAL_C_INCLUDES := external/squashfs-tools/squashfs-tools
+LOCAL_MODULE := libsquashfs_utils
+include $(BUILD_STATIC_LIBRARY)
+
 ifeq ($(HOST_OS),linux)
 
 include $(CLEAR_VARS)
