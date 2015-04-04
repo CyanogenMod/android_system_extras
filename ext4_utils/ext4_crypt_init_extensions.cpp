@@ -129,7 +129,7 @@ int e4crypt_create_device_key(const char* dir,
         }
 
         if (!props.Set(properties::key, key_material)) {
-            KLOG_ERROR(TAG, "Failed to write key material");
+            KLOG_ERROR(TAG, "Failed to write key material\n");
             return -1;
         }
     }
@@ -261,7 +261,7 @@ int e4crypt_set_directory_policy(const char* dir)
     KLOG_INFO(TAG, "Setting policy %s\n", policy.c_str());
     int result = do_policy_set(dir, policy.c_str());
     if (result) {
-        KLOG_ERROR(TAG, "Setting policy on %s failed!", dir);
+        KLOG_ERROR(TAG, "Setting policy on %s failed!\n", dir);
         return -1;
     }
 
