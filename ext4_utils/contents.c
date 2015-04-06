@@ -277,7 +277,7 @@ static size_t xattr_free_space(struct ext4_xattr_entry *entry, char *end)
 		return 0;
 	}
 
-	return end - ((char *) entry);
+	return (end - ((char *) entry)) - sizeof(uint32_t);
 }
 
 /*
