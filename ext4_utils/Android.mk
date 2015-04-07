@@ -35,15 +35,15 @@ include $(BUILD_HOST_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := make_ext4fs_main.c canned_fs_config.c
 LOCAL_MODULE := make_ext4fs
+LOCAL_SHARED_LIBRARIES += libcutils
 LOCAL_STATIC_LIBRARIES += \
-    libcutils \
     libext4_utils_host \
     libsparse_host \
     libz
 ifeq ($(HOST_OS),windows)
   LOCAL_LDLIBS += -lws2_32
 else
-  LOCAL_STATIC_LIBRARIES += libselinux
+  LOCAL_SHARED_LIBRARIES += libselinux
   LOCAL_CFLAGS := -DHOST
 endif
 include $(BUILD_HOST_EXECUTABLE)
@@ -106,9 +106,10 @@ include $(BUILD_EXECUTABLE)
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := ext2simg.c
 LOCAL_MODULE := ext2simg
+LOCAL_SHARED_LIBRARIES += \
+    libselinux
 LOCAL_STATIC_LIBRARIES += \
     libext4_utils_host \
-    libselinux \
     libsparse_host \
     libz
 include $(BUILD_HOST_EXECUTABLE)
