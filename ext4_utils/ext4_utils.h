@@ -138,7 +138,7 @@ void write_sb(int fd, unsigned long long offset, struct ext4_super_block *sb);
 void write_ext4_image(int fd, int gz, int sparse, int crc);
 void ext4_create_fs_aux_info(void);
 void ext4_free_fs_aux_info(void);
-void ext4_fill_in_sb(void);
+void ext4_fill_in_sb(int real_uuid);
 void ext4_create_resize_inode(void);
 void ext4_create_journal_inode(void);
 void ext4_update_free(void);
@@ -157,7 +157,7 @@ struct selabel_handle;
 
 int make_ext4fs_internal(int fd, const char *directory,
 						 const char *mountpoint, fs_config_func_t fs_config_func, int gzip,
-						 int sparse, int crc, int wipe,
+						 int sparse, int crc, int wipe, int real_uuid,
 						 struct selabel_handle *sehnd, int verbose, time_t fixed_time,
 						 FILE* block_list_file);
 

@@ -52,7 +52,7 @@ static void usage(char *path)
 {
 	fprintf(stderr, "%s [ -l <len> ] [ -j <journal size> ] [ -b <block_size> ]\n", basename(path));
 	fprintf(stderr, "    [ -g <blocks per group> ] [ -i <inodes> ] [ -I <inode size> ]\n");
-	fprintf(stderr, "    [ -L <label> ] [ -f ] [ -a <android mountpoint> ]\n");
+	fprintf(stderr, "    [ -L <label> ] [ -f ] [ -a <android mountpoint> ] [ -u ]\n");
 	fprintf(stderr, "    [ -S file_contexts ] [ -C fs_config ] [ -T timestamp ]\n");
 	fprintf(stderr, "    [ -z | -s ] [ -w ] [ -c ] [ -J ] [ -v ] [ -B <block_list_file> ]\n");
 	fprintf(stderr, "    <filename> [<directory>]\n");
@@ -70,6 +70,7 @@ int main(int argc, char **argv)
 	int sparse = 0;
 	int crc = 0;
 	int wipe = 0;
+	int real_uuid = 0;
 	int fd;
 	int exitcode;
 	int verbose = 0;
@@ -80,7 +81,7 @@ int main(int argc, char **argv)
 	struct selinux_opt seopts[] = { { SELABEL_OPT_PATH, "" } };
 #endif
 
-	while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:S:T:C:B:fwzJsctv")) != -1) {
+	while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:S:T:C:B:fwzJsctvu")) != -1) {
 		switch (opt) {
 		case 'l':
 			info.len = parse_num(optarg);
@@ -117,6 +118,9 @@ int main(int argc, char **argv)
 			break;
 		case 'w':
 			wipe = 1;
+			break;
+		case 'u':
+			real_uuid = 1;
 			break;
 		case 'z':
 			gzip = 1;
@@ -227,7 +231,7 @@ int main(int argc, char **argv)
 	}
 
 	exitcode = make_ext4fs_internal(fd, directory, mountpoint, fs_config_func, gzip,
-		sparse, crc, wipe, sehnd, verbose, fixed_time, block_list_file);
+		sparse, crc, wipe, real_uuid, sehnd, verbose, fixed_time, block_list_file);
 	close(fd);
 	if (block_list_file)
 		fclose(block_list_file);
