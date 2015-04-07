@@ -15,12 +15,15 @@
  */
 
 #include "ext4_utils.h"
-#include "uuid.h"
 #include "allocate.h"
 #include "indirect.h"
 #include "extent.h"
+#include "sha1.h"
 
 #include <sparse/sparse.h>
+#ifdef REAL_UUID
+#include <uuid.h>
+#endif
 
 #include <fcntl.h>
 #include <inttypes.h>
@@ -48,6 +51,44 @@ struct fs_aux_info aux_info;
 struct sparse_file *ext4_sparse_file;
 
 jmp_buf setjmp_env;
+
+/* Definition from RFC-4122 */
+struct uuid {
+    u32 time_low;
+    u16 time_mid;
+    u16 time_hi_and_version;
+    u8 clk_seq_hi_res;
+    u8 clk_seq_low;
+    u16 node0_1;
+    u32 node2_5;
+};
+
+static void sha1_hash(const char *namespace, const char *name,
+    unsigned char sha1[SHA1_DIGEST_LENGTH])
+{
+    SHA1_CTX ctx;
+    SHA1Init(&ctx);
+    SHA1Update(&ctx, (const u8*)namespace, strlen(namespace));
+    SHA1Update(&ctx, (const u8*)name, strlen(name));
+    SHA1Final(sha1, &ctx);
+}
+
+static void generate_sha1_uuid(const char *namespace, const char *name, u8 result[16])
+{
+    unsigned char sha1[SHA1_DIGEST_LENGTH];
+    struct uuid *uuid = (struct uuid *)result;
+
+    sha1_hash(namespace, name, (unsigned char*)sha1);
+    memcpy(uuid, sha1, sizeof(struct uuid));
+
+    uuid->time_low = ntohl(uuid->time_low);
+    uuid->time_mid = ntohs(uuid->time_mid);
+    uuid->time_hi_and_version = ntohs(uuid->time_hi_and_version);
+    uuid->time_hi_and_version &= 0x0FFF;
+    uuid->time_hi_and_version |= (5 << 12);
+    uuid->clk_seq_hi_res &= ~(1 << 6);
+    uuid->clk_seq_hi_res |= 1 << 7;
+}
 
 /* returns 1 if a is a power of b */
 static int is_power_of(int a, int b)
@@ -188,7 +229,7 @@ void ext4_free_fs_aux_info()
 }
 
 /* Fill in the superblock memory buffer based on the filesystem parameters */
-void ext4_fill_in_sb()
+void ext4_fill_in_sb(int real_uuid)
 {
 	unsigned int i;
 	struct ext4_super_block *sb = aux_info.sb;
@@ -225,7 +266,16 @@ void ext4_fill_in_sb()
 	sb->s_feature_compat = info.feat_compat;
 	sb->s_feature_incompat = info.feat_incompat;
 	sb->s_feature_ro_compat = info.feat_ro_compat;
-	generate_uuid("extandroid/make_ext4fs", info.label, sb->s_uuid);
+	if (real_uuid == 1) {
+#ifdef REAL_UUID
+	    uuid_generate(sb->s_uuid);
+#else
+	    fprintf(stderr, "Not compiled with real UUID support\n");
+	    abort();
+#endif
+	} else {
+	    generate_sha1_uuid("extandroid/make_ext4fs", info.label, sb->s_uuid);
+	}
 	memset(sb->s_volume_name, 0, sizeof(sb->s_volume_name));
 	strncpy(sb->s_volume_name, info.label, sizeof(sb->s_volume_name));
 	memset(sb->s_last_mounted, 0, sizeof(sb->s_last_mounted));

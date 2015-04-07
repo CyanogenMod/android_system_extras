@@ -10,7 +10,6 @@ libext4_utils_src_files := \
     contents.c \
     extent.c \
     indirect.c \
-    uuid.c \
     sha1.c \
     wipe.c \
     crc16.c \
@@ -66,9 +65,11 @@ LOCAL_MODULE := libext4_utils
 LOCAL_C_INCLUDES += system/core/logwrapper/include
 LOCAL_SHARED_LIBRARIES := \
     libcutils \
+    libext2_uuid \
     libselinux \
     libsparse \
     libz
+LOCAL_CFLAGS := -DREAL_UUID
 include $(BUILD_SHARED_LIBRARY)
 
 
@@ -86,9 +87,11 @@ LOCAL_SRC_FILES := make_ext4fs_main.c canned_fs_config.c
 LOCAL_MODULE := make_ext4fs
 LOCAL_SHARED_LIBRARIES := \
     libcutils \
+    libext2_uuid \
     libext4_utils \
     libselinux \
     libz
+LOCAL_CFLAGS := -DREAL_UUID
 include $(BUILD_EXECUTABLE)
 
 
