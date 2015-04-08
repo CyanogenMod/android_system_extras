@@ -432,6 +432,22 @@ int benchmarkMemcpyCold(const char *name, const command_data_t &cmd_data, void_f
     return 0;
 }
 
+int benchmarkMemmoveBackwards(const char *name, const command_data_t &cmd_data, void_func_t func) {
+    memcpy_func_t memmove_func = reinterpret_cast<memcpy_func_t>(func);
+
+    size_t size = cmd_data.args[0];
+    size_t alloc_size = size * 2 + 3 * cmd_data.dst_align;
+    uint8_t* src = allocateAlignedMemory(size, cmd_data.src_align, cmd_data.src_or_mask);
+    if (!src)
+        return -1;
+    // Force memmove to do a backwards copy by getting a pointer into the source buffer.
+    uint8_t* dst = getAlignedMemory(src+1, cmd_data.dst_align, cmd_data.dst_or_mask);
+    if (!dst)
+        return -1;
+    MAINLOOP_DATA(name, cmd_data, size, memmove_func(dst, src, size));
+    return 0;
+}
+
 int benchmarkMemread(const char *name, const command_data_t &cmd_data, void_func_t /*func*/) {
     int size = cmd_data.args[0];
 
@@ -578,6 +594,8 @@ function_t function_table[] = {
     { "cpu", benchmarkCpu, NULL },
     { "memcpy", benchmarkMemcpy, reinterpret_cast<void_func_t>(memcpy) },
     { "memcpy_cold", benchmarkMemcpyCold, reinterpret_cast<void_func_t>(memcpy) },
+    { "memmove_forward", benchmarkMemcpy, reinterpret_cast<void_func_t>(memmove) },
+    { "memmove_backward", benchmarkMemmoveBackwards, reinterpret_cast<void_func_t>(memmove) },
     { "memread", benchmarkMemread, NULL },
     { "memset", benchmarkMemset, reinterpret_cast<void_func_t>(memset) },
     { "memset_cold", benchmarkMemsetCold, reinterpret_cast<void_func_t>(memset) },
