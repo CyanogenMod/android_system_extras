@@ -11,9 +11,11 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <sys/xattr.h>
+#include <fcntl.h>
+#include <asm/ioctl.h>
 #include <sys/syscall.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 
 #include <cutils/klog.h>
 
@@ -24,12 +26,20 @@
 
 // ext4enc:TODO Include structure from somewhere sensible
 // MUST be in sync with ext4_crypto.c in kernel
-#define EXT4_MAX_KEY_SIZE 76
-struct ext4_encryption_key {
-        uint32_t mode;
-        char raw[EXT4_MAX_KEY_SIZE];
-        uint32_t size;
-};
+#define EXT4_KEY_DESCRIPTOR_SIZE 8
+struct ext4_encryption_policy {
+    char version;
+    char contents_encryption_mode;
+    char filenames_encryption_mode;
+    char master_key_descriptor[EXT4_KEY_DESCRIPTOR_SIZE];
+} __attribute__((__packed__));
+
+#define EXT4_ENCRYPTION_MODE_AES_256_XTS    1
+#define EXT4_ENCRYPTION_MODE_AES_256_CTS    4
+
+// ext4enc:TODO Get value from somewhere sensible
+#define EXT4_IOC_SET_ENCRYPTION_POLICY \
+    _IOR('f', 19, struct ext4_encryption_policy)
 
 /* Validate that all path items are available and accessible. */
 static int is_path_valid(const char *path)
@@ -40,32 +50,6 @@ static int is_path_valid(const char *path)
     }
 
     return 1;
-}
-
-/* Checks whether the policy provided is valid */
-static int is_keyref_valid(const char *keyref)
-{
-    char *period = 0;
-    size_t key_location_len = 0;
-
-    /* Key ref must have a key and location delimiter character. */
-    period = strchr(keyref, EXT4_KEYREF_DELIMITER);
-    if (!period) {
-        return 0;
-    }
-
-    /* period must be >= keyref. */
-    key_location_len = period - keyref;
-
-    if (strncmp(keyref, "@t", key_location_len) == 0 ||
-        strncmp(keyref, "@p", key_location_len) == 0 ||
-        strncmp(keyref, "@s", key_location_len) == 0 ||
-        strncmp(keyref, "@u", key_location_len) == 0 ||
-        strncmp(keyref, "@g", key_location_len) == 0 ||
-        strncmp(keyref, "@us", key_location_len) == 0)
-        return 1;
-
-    return 0;
 }
 
 static int is_dir_empty(const char *dirname)
@@ -86,13 +70,13 @@ static int is_dir_empty(const char *dirname)
     return n <= 2;
 }
 
-int do_policy_set(const char *directory, const char *policy)
+int do_policy_set(const char *directory, const char *policy, int policy_length)
 {
     struct stat st;
     ssize_t ret;
 
-    if (!is_keyref_valid(policy)) {
-        KLOG_ERROR(TAG, "Policy has invalid format.\n");
+    if (policy_length != EXT4_KEY_DESCRIPTOR_SIZE) {
+        KLOG_ERROR("Policy wrong length\n");
         return -EINVAL;
     }
 
@@ -112,12 +96,24 @@ int do_policy_set(const char *directory, const char *policy)
         return -EINVAL;
     }
 
-    ret = lsetxattr(directory, XATTR_NAME_ENCRYPTION_POLICY, policy,
-                    strlen(policy), 0);
+    int fd = open(directory, O_DIRECTORY);
+    if (fd == -1) {
+        KLOG_ERROR(TAG, "Failed to open directory (%s)\n", directory);
+        return -EINVAL;
+    }
+
+    ext4_encryption_policy eep;
+    eep.version = 0;
+    eep.contents_encryption_mode = EXT4_ENCRYPTION_MODE_AES_256_XTS;
+    eep.filenames_encryption_mode = EXT4_ENCRYPTION_MODE_AES_256_CTS;
+    memcpy(eep.master_key_descriptor, policy, EXT4_KEY_DESCRIPTOR_SIZE);
+    ret = ioctl(fd, EXT4_IOC_SET_ENCRYPTION_POLICY, &eep);
+    auto preserve_errno = errno;
+    close(fd);
 
     if (ret) {
         KLOG_ERROR(TAG, "Failed to set encryption policy for %s: %s\n",
-                   directory, strerror(errno));
+                   directory, strerror(preserve_errno));
         return -EINVAL;
     }
 
