@@ -101,7 +101,6 @@ int e4crypt_create_device_key(const char* dir,
     }
 
     // Make sure folder exists. Use make_dir to set selinux permissions.
-    KLOG_INFO(TAG, "Creating test device key\n");
     if (ensure_dir_exists(UnencryptedProperties::GetPath(dir).c_str())) {
         KLOG_ERROR(TAG, "Failed to create %s with error %s\n",
                    UnencryptedProperties::GetPath(dir).c_str(),
@@ -152,8 +151,12 @@ int e4crypt_set_directory_policy(const char* dir)
 
     UnencryptedProperties props("/data");
     std::string policy = props.Get<std::string>(properties::ref);
+    if (policy.empty()) {
+        return 0;
+    }
+
     KLOG_INFO(TAG, "Setting policy %s\n", policy.c_str());
-    int result = do_policy_set(dir, policy.c_str());
+    int result = do_policy_set(dir, policy.c_str(), policy.size());
     if (result) {
         KLOG_ERROR(TAG, "Setting %s policy on %s failed!\n",
                    policy.c_str(), dir);
