@@ -6,6 +6,7 @@
 namespace properties {
     const char* key = "key";
     const char* ref = "ref";
+    const char* props = "props";
     const char* is_default = "is_default";
 }
 
