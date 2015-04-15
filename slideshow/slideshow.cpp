@@ -54,7 +54,7 @@ static void clear()
 
 static void draw(const char *resname)
 {
-    gr_surface surface;
+    GRSurface* surface;
     int w, h, x, y;
 
     if (res_create_display_surface(resname, &surface) < 0) {
