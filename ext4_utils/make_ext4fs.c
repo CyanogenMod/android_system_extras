@@ -503,6 +503,13 @@ int make_ext4fs_internal(int fd, const char *_directory,
 	if (setjmp(setjmp_env))
 		return EXIT_FAILURE; /* Handle a call to longjmp() */
 
+	info.block_device = is_block_device_fd(fd);
+
+	if (info.block_device && (sparse || gzip || crc)) {
+		fprintf(stderr, "No sparse/gzip/crc allowed for block device\n");
+		return EXIT_FAILURE;
+	}
+
 	if (_mountpoint == NULL) {
 		mountpoint = strdup("");
 	} else {
@@ -628,8 +635,6 @@ int make_ext4fs_internal(int fd, const char *_directory,
 #endif
 
 	ext4_update_free();
-
-	ext4_queue_sb();
 
 	if (block_list_file) {
 		size_t dirlen = directory ? strlen(directory) : 0;
