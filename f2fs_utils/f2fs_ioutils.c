@@ -148,6 +148,11 @@ int f2fs_trim_device()
 /*
  * IO interfaces
  */
+int dev_read_version(void *buf, __u64 offset, size_t len)
+{
+        return 0;
+}
+
 int dev_read(void  *buf, __u64 offset, size_t len)
 {
 	return 0;
