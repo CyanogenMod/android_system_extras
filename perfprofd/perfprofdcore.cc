@@ -25,9 +25,11 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 #include <string>
+#include <sstream>
 #include <map>
 #include <cctype>
 
@@ -36,11 +38,12 @@
 #include "perfprofdcore.h"
 #include "perfprofdutils.h"
 #include "perf_data_converter.h"
+#include "cpuconfig.h"
 
 //
 // Perf profiling daemon -- collects system-wide profiles using
 //
-//       /system/bin/perf record -a
+//       simpleperf record -a
 //
 // and encodes them so that they can be uploaded by a separate service.
 //
@@ -48,8 +51,7 @@
 //......................................................................
 
 //
-// Output file from 'perf record'. The linux 'perf' tool by default
-// creates a file with this name.
+// Output file from 'perf record'.
 //
 #define PERF_OUTPUT "perf.data"
 
@@ -119,8 +121,8 @@ class ConfigReader {
   ~ConfigReader();
 
   // Ask for the current setting of a config item
-  unsigned getUnsignedValue(const char *key);
-  std::string getStringValue(const char *key);
+  unsigned getUnsignedValue(const char *key) const;
+  std::string getStringValue(const char *key) const;
 
   // read the specified config file, applying any settings it contains
   void readFile(const char *configFilePath);
@@ -175,8 +177,8 @@ void ConfigReader::addDefaultEntries()
   addStringEntry("destination_directory",
                  "/data/data/com.google.android.gms/files");
 
-  // Path to 'perf' executable.
-  addStringEntry("perf_path", "/system/bin/perf");
+  // Full path to 'perf' executable.
+  addStringEntry("perf_path", "/system/bin/simpleperf");
 
   // Desired sampling period (passed to perf -c option). Small
   // sampling periods can perturb the collected profiles, so enforce
@@ -192,7 +194,15 @@ void ConfigReader::addDefaultEntries()
   // Currently defaults to 1 (true).
   addUnsignedEntry("only_debug_build", 1, 0, 1);
 
-  // If set to 1, pass the -g option when invoking perf (requests
+  // If the "mpdecision" service is running at the point we are ready
+  // to kick off a profiling run, then temporarily disable the service
+  // and hard-wire all cores on prior to the collection run, provided
+  // that the duration of the recording is less than or equal to the value of
+  // 'hardwire_cpus_max_duration'.
+  addUnsignedEntry("hardwire_cpus", 1, 0, 1);
+  addUnsignedEntry("hardwire_cpus_max_duration", 5, 1, UINT32_MAX);
+
+  // If set to 1, pass the -g option when invoking 'perf' (requests
   // stack traces as opposed to flat profile).
   addUnsignedEntry("stack_profile", 0, 0, 1);
 
@@ -227,14 +237,14 @@ void ConfigReader::addStringEntry(const char *key, const char *default_value)
     W_ALOGE("internal error -- duplicate entry for key %s", key);
     exit(9);
   }
-  if (! default_value) {
+  if (default_value == nullptr) {
     W_ALOGE("internal error -- bad default value for key %s", key);
     exit(9);
   }
   s_entries[ks] = std::string(default_value);
 }
 
-unsigned ConfigReader::getUnsignedValue(const char *key)
+unsigned ConfigReader::getUnsignedValue(const char *key) const
 {
   std::string ks(key);
   auto it = u_entries.find(ks);
@@ -242,7 +252,7 @@ unsigned ConfigReader::getUnsignedValue(const char *key)
   return it->second;
 }
 
-std::string ConfigReader::getStringValue(const char *key)
+std::string ConfigReader::getStringValue(const char *key) const
 {
   std::string ks(key);
   auto it = s_entries.find(ks);
@@ -265,7 +275,7 @@ void ConfigReader::parseLine(const char *key,
   auto uit = u_entries.find(key);
   if (uit != u_entries.end()) {
     unsigned uvalue = 0;
-    if (! isdigit(value[0]) || sscanf(value, "%u", &uvalue) != 1) {
+    if (isdigit(value[0]) == 0 || sscanf(value, "%u", &uvalue) != 1) {
       W_ALOGW("line %d: malformed unsigned value (ignored)", linecount);
     } else {
       values vals;
@@ -303,7 +313,7 @@ static bool isblank(const std::string &line)
 {
   for (std::string::const_iterator it = line.begin(); it != line.end(); ++it)
   {
-    if (! isspace(*it)) {
+    if (isspace(*it) == 0) {
       return false;
     }
   }
@@ -384,7 +394,7 @@ static void parse_args(int argc, char** argv)
 //
 const char *ckprofile_result_to_string(CKPROFILE_RESULT result)
 {
-  switch(result) {
+  switch (result) {
     case DO_COLLECT_PROFILE:
       return "DO_COLLECT_PROFILE";
     case DONT_PROFILE_MISSING_DESTINATION_DIR:
@@ -474,7 +484,7 @@ static CKPROFILE_RESULT check_profiling_enabled(ConfigReader &config)
   // Reread aux config file -- it may have changed
   read_aux_config(config);
 
-  // Check for existence of perf executable
+  // Check for existence of simpleperf/perf executable
   std::string pp = config.getStringValue("perf_path");
   if (access(pp.c_str(), R_OK|X_OK) == -1) {
     W_ALOGW("unable to access/execute %s", pp.c_str());
@@ -515,16 +525,12 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
   const wireless_android_play_playlog::AndroidPerfProfile &encodedProfile =
       wireless_android_logging_awp::RawPerfDataToAndroidPerfProfile(data_file_path);
 
-  fprintf(stderr, "data file path is %s\n", data_file_path.c_str());
-  fprintf(stderr, "encoded file path is %s\n", encoded_file_path.c_str());
-
   //
   // Issue error if no samples
   //
   if (encodedProfile.programs().size() == 0) {
     return ERR_PERF_ENCODE_FAILED;
   }
-
 
   //
   // Serialize protobuf to array
@@ -551,6 +557,99 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
   fclose(fp);
 
   return OK_PROFILE_COLLECTION;
+}
+
+//
+// Invoke "perf record". Return value is OK_PROFILE_COLLECTION for
+// success, or some other error code if something went wrong.
+//
+static PROFILE_RESULT invoke_perf(const std::string &perf_path,
+                                  unsigned sampling_period,
+                                  const char *stack_profile_opt,
+                                  unsigned duration,
+                                  const std::string &data_file_path,
+                                  const std::string &perf_stderr_path)
+{
+  pid_t pid = fork();
+
+  if (pid == -1) {
+    return ERR_FORK_FAILED;
+  }
+
+  if (pid == 0) {
+    // child
+
+    // Open file to receive stderr/stdout from perf
+    FILE *efp = fopen(perf_stderr_path.c_str(), "w");
+    if (efp) {
+      dup2(fileno(efp), STDERR_FILENO);
+      dup2(fileno(efp), STDOUT_FILENO);
+    } else {
+      W_ALOGW("unable to open %s for writing", perf_stderr_path.c_str());
+    }
+
+    // marshall arguments
+    constexpr unsigned max_args = 12;
+    const char *argv[max_args];
+    unsigned slot = 0;
+    argv[slot++] = perf_path.c_str();
+    argv[slot++] = "record";
+
+    // -o perf.data
+    argv[slot++] = "-o";
+    argv[slot++] = data_file_path.c_str();
+
+    // -c N
+    argv[slot++] = "-c";
+    char pbuf[64]; snprintf(pbuf, 64, "%u", sampling_period);
+    argv[slot++] = pbuf;
+
+    // -g if desired
+    if (stack_profile_opt)
+      argv[slot++] = stack_profile_opt;
+
+    // system wide profiling
+    argv[slot++] = "-a";
+
+    // sleep <duration>
+    argv[slot++] = "/system/bin/sleep";
+    char dbuf[64]; snprintf(dbuf, 64, "%u", duration);
+    argv[slot++] = dbuf;
+
+    // terminator
+    argv[slot++] = nullptr;
+    assert(slot < max_args);
+
+    // record the final command line in the error output file for
+    // posterity/debugging purposes
+    fprintf(stderr, "perf invocation (pid=%d):\n", getpid());
+    for (unsigned i = 0; argv[i] != nullptr; ++i) {
+      fprintf(stderr, "%s%s", i ? " " : "", argv[i]);
+    }
+    fprintf(stderr, "\n");
+
+    // exec
+    execvp(argv[0], (char * const *)argv);
+    fprintf(stderr, "exec failed: %s\n", strerror(errno));
+    exit(1);
+
+  } else {
+    // parent
+    int st = 0;
+    pid_t reaped = TEMP_FAILURE_RETRY(waitpid(pid, &st, 0));
+
+    if (reaped == -1) {
+      W_ALOGW("waitpid failed: %s", strerror(errno));
+    } else if (WIFSIGNALED(st)) {
+      W_ALOGW("perf killed by signal %d", WTERMSIG(st));
+    } else if (WEXITSTATUS(st) != 0) {
+      W_ALOGW("perf bad exit status %d", WEXITSTATUS(st));
+    } else {
+      return OK_PROFILE_COLLECTION;
+    }
+  }
+
+  return ERR_PERF_RECORD_FAILED;
 }
 
 //
@@ -582,28 +681,44 @@ static PROFILE_RESULT collect_profile(ConfigReader &config)
   }
 
   //
-  // NB: it would probably be better to use explicit fork/exec with an
-  // alarm timeout in case of funny business. For now, call system().
+  // The "mpdecision" daemon can cause problems for profile
+  // collection: if it decides to online a CPU partway through the
+  // 'perf record' run, the activity on that CPU will be invisible to
+  // perf, and if it offlines a CPU during the recording this can
+  // sometimes leave the PMU in an unusable state (dmesg errors of the
+  // form "perfevents: unable to request IRQXXX for ...").  To avoid
+  // these issues, if "mpdecision" is running the helper below will
+  // stop the service and then online all available CPUs. The object
+  // destructor (invoked when this routine terminates) will then
+  // restart the service again when needed.
   //
-  std::string perf_path = config.getStringValue("perf_path");
   unsigned duration = config.getUnsignedValue("sample_duration");
+  unsigned hardwire = config.getUnsignedValue("hardwire_cpus");
+  unsigned max_duration = config.getUnsignedValue("hardwire_cpus_max_duration");
+  bool take_action = (hardwire && duration <= max_duration);
+  HardwireCpuHelper helper(take_action);
+
+  //
+  // Invoke perf
+  //
+  const char *stack_profile_opt =
+      (config.getUnsignedValue("stack_profile") != 0 ? "-g" : nullptr);
+  std::string perf_path = config.getStringValue("perf_path");
   unsigned period = config.getUnsignedValue("sampling_period");
-  const char *gopt = (config.getUnsignedValue("stack_profile") != 0 ? "-g" : "");
-  char cmd[8192];
-  snprintf(cmd, 8192, "%s record %s -c %u -o %s -a -- sleep %d 1> %s 2>&1 ",
-           perf_path.c_str(), gopt, period, data_file_path.c_str(), duration,
-           perf_stderr_path.c_str());
-  int rc = system(cmd);
-  if (rc == -1) {
-    return ERR_FORK_FAILED;
-  }
-  if (rc != 0) {
-    return ERR_PERF_RECORD_FAILED;
+
+  PROFILE_RESULT ret = invoke_perf(perf_path.c_str(),
+                                  period,
+                                  stack_profile_opt,
+                                  duration,
+                                  data_file_path,
+                                  perf_stderr_path);
+  if (ret != OK_PROFILE_COLLECTION) {
+    return ret;
   }
 
   //
   // Read the resulting perf.data file, encode into protocol buffer, then write
-  // the result to a *.pdb file
+  // the result to the file perf.data.encoded
   //
   std::string encoded_file_path(data_file_path);
   encoded_file_path += ".encoded";
@@ -705,7 +820,7 @@ int perfprofd_main(int argc, char** argv)
   }
 
   unsigned iterations = 0;
-  while(!config.getUnsignedValue("main_loop_iterations") ||
+  while(config.getUnsignedValue("main_loop_iterations") == 0 ||
         iterations < config.getUnsignedValue("main_loop_iterations")) {
 
     // Figure out where in the collection interval we're going to actually

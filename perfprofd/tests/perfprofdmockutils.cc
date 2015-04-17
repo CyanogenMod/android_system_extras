@@ -54,6 +54,7 @@ std::string mock_perfprofdutils_getlogged()
   for (const std::string &s : (*mock_log)) {
     result += s;
   }
+  mock_log->clear();
   return result;
 }
 
