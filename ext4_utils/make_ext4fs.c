@@ -218,12 +218,21 @@ static int compress_file_lz4(const char *ifile, const char *ofile)
 {
 	FILE *ifp;
 	FILE* ofp;
-	char ibuf[LZ4BUFSIZE];
-	char obuf[LZ4_COMPRESSBOUND(LZ4BUFSIZE)];
+	char *ibuf = NULL;
+	char *obuf = NULL;
 	uint32_t isize, osize;
 	uint32_t blksize;
 	ssize_t len;
 	int ret = -1;
+
+	ibuf = (char*)malloc(LZ4BUFSIZE);
+	obuf = (char*)malloc(LZ4_compressBound(LZ4BUFSIZE));
+	if (!ibuf || !obuf) {
+		fprintf(stderr, "Unable to allocate LZ4 buffers!");
+		free(ibuf);
+		free(obuf);
+		return -1;
+	}
 
 	ifp = fopen(ifile, "r");
 	ofp = fopen(ofile, "wb");
@@ -260,6 +269,8 @@ static int compress_file_lz4(const char *ifile, const char *ofile)
 out:
 	fclose(ofp);
 	fclose(ifp);
+	free(ibuf);
+	free(obuf);
 	return ret;
 }
 
