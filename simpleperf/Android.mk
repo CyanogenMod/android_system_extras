@@ -16,22 +16,48 @@
 
 LOCAL_PATH := $(call my-dir)
 
-simpleperf_src_files := \
+simpleperf_common_cppflags := -std=c++11 -Wall -Wextra -Werror -Wunused
+
+libsimpleperf_src_files := \
   cmd_help.cpp \
   cmd_list.cpp \
+  cmd_stat.cpp \
   command.cpp \
+  environment.cpp \
   event_attr.cpp \
   event_fd.cpp \
   event_type.cpp \
-  main.cpp \
   utils.cpp \
-
-simpleperf_cppflags := -std=c++11 -Wall -Wextra -Werror -Wunused
+  workload.cpp \
 
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
-LOCAL_CPPFLAGS := $(simpleperf_cppflags)
-LOCAL_SRC_FILES := $(simpleperf_src_files)
+LOCAL_CPPFLAGS := $(simpleperf_common_cppflags)
+LOCAL_SRC_FILES := $(libsimpleperf_src_files)
+LOCAL_STATIC_LIBRARIES := libbase libcutils liblog
+LOCAL_MODULE := libsimpleperf
+LOCAL_MODULE_TAGS := optional
+LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
+include $(BUILD_STATIC_LIBRARY)
+
+ifeq ($(HOST_OS),linux)
+include $(CLEAR_VARS)
+LOCAL_CLANG := true
+LOCAL_CPPFLAGS := $(simpleperf_common_cppflags)
+LOCAL_SRC_FILES := $(libsimpleperf_src_files)
+LOCAL_STATIC_LIBRARIES := libbase libcutils liblog
+LOCAL_LDLIBS := -lrt
+LOCAL_MODULE := libsimpleperf
+LOCAL_MODULE_TAGS := optional
+LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
+include $(BUILD_HOST_STATIC_LIBRARY)
+endif
+
+include $(CLEAR_VARS)
+LOCAL_CLANG := true
+LOCAL_CPPFLAGS := $(simpleperf_common_cppflags)
+LOCAL_SRC_FILES := main.cpp
+LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
 LOCAL_STATIC_LIBRARIES := libbase libcutils liblog
 LOCAL_MODULE := simpleperf
 LOCAL_MODULE_TAGS := optional
@@ -41,12 +67,45 @@ include $(BUILD_EXECUTABLE)
 ifeq ($(HOST_OS),linux)
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
-LOCAL_CPPFLAGS := $(simpleperf_cppflags)
-LOCAL_SRC_FILES := $(simpleperf_src_files)
+LOCAL_CPPFLAGS := $(simpleperf_common_cppflags)
+LOCAL_SRC_FILES := main.cpp
+LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
 LOCAL_STATIC_LIBRARIES := libbase libcutils liblog
 LOCAL_LDLIBS := -lrt
 LOCAL_MODULE := simpleperf
 LOCAL_MODULE_TAGS := optional
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
 include $(BUILD_HOST_EXECUTABLE)
+endif
+
+simpleperf_unit_test_src_files := \
+  cmd_list_test.cpp \
+  cmd_stat_test.cpp \
+  command_test.cpp \
+  environment_test.cpp \
+  gtest_main.cpp \
+  workload_test.cpp \
+
+include $(CLEAR_VARS)
+LOCAL_CLANG := true
+LOCAL_CPPFLAGS := $(simpleperf_common_cppflags)
+LOCAL_SRC_FILES := $(simpleperf_unit_test_src_files)
+LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
+LOCAL_STATIC_LIBRARIES := libbase libcutils liblog
+LOCAL_MODULE := simpleperf_unit_test
+LOCAL_MODULE_TAGS := optional
+LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
+include $(BUILD_NATIVE_TEST)
+
+ifeq ($(HOST_OS),linux)
+include $(CLEAR_VARS)
+LOCAL_CLANG := true
+LOCAL_CPPFLAGS := $(simpleperf_common_cppflags)
+LOCAL_SRC_FILES := $(simpleperf_unit_test_src_files)
+LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
+LOCAL_STATIC_LIBRARIES := libbase libcutils liblog
+LOCAL_MODULE := simpleperf_unit_test
+LOCAL_MODULE_TAGS := optional
+LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
+include $(BUILD_HOST_NATIVE_TEST)
 endif
