@@ -258,12 +258,16 @@ static int read_maps(pm_process_t *proc) {
     maps_count = 0; maps_size = INITIAL_MAPS;
 
     error = snprintf(filename, MAX_FILENAME, "/proc/%d/maps", proc->pid);
-    if (error < 0 || error >= MAX_FILENAME)
+    if (error < 0 || error >= MAX_FILENAME) {
+        free(maps);
         return (error < 0) ? (errno) : (-1);
+    }
 
     maps_f = fopen(filename, "r");
-    if (!maps_f)
+    if (!maps_f) {
+        free(maps);
         return errno;
+    }
 
     while (fgets(line, MAX_LINE, maps_f)) {
         if (maps_count >= maps_size) {
@@ -292,6 +296,7 @@ static int read_maps(pm_process_t *proc) {
             for (; maps_count > 0; maps_count--)
                 pm_map_destroy(maps[maps_count]);
             free(maps);
+            fclose(maps_f);
             return error;
         }
         strcpy(map->name, name);
