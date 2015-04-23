@@ -48,3 +48,12 @@ const std::vector<Command*>& Command::GetAllCommands() {
 void Command::RegisterCommand(Command* cmd) {
   Commands().push_back(cmd);
 }
+
+void Command::UnRegisterCommand(Command* cmd) {
+  for (auto it = Commands().begin(); it != Commands().end(); ++it) {
+    if (*it == cmd) {
+      Commands().erase(it);
+      break;
+    }
+  }
+}

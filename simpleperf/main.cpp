@@ -39,12 +39,12 @@ int main(int argc, char** argv) {
     LOG(ERROR) << "malformed command line: unknown command " << args[0];
     return 1;
   }
+  std::string command_name = args[0];
   args.erase(args.begin());
+
+  LOG(DEBUG) << "command '" << command_name << "' starts running";
   bool result = command->Run(args);
-  if (result == true) {
-    LOG(DEBUG) << "run command " << args[0] << " successfully";
-  } else {
-    LOG(DEBUG) << "run command " << args[0] << "unsuccessfully";
-  }
+  LOG(DEBUG) << "command '" << command_name << "' "
+             << (result ? "finished successfully" : "failed");
   return result ? 0 : 1;
 }

@@ -31,6 +31,7 @@ class Command {
   }
 
   virtual ~Command() {
+    UnRegisterCommand(this);
   }
 
   const std::string& Name() const {
@@ -56,6 +57,7 @@ class Command {
   const std::string long_help_string_;
 
   static void RegisterCommand(Command* cmd);
+  static void UnRegisterCommand(Command* cmd);
 
   DISALLOW_COPY_AND_ASSIGN(Command);
 };
