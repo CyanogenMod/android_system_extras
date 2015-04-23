@@ -65,6 +65,7 @@ class PerfProfdTest : public testing::Test {
   virtual void SetUp() {
     mock_perfprofdutils_init();
     create_dest_dir();
+    yesclean();
   }
 
   virtual void TearDown() {
@@ -72,11 +73,24 @@ class PerfProfdTest : public testing::Test {
     remove_dest_dir();
   }
 
+  void noclean() {
+    clean_ = false;
+  }
+  void yesclean() {
+    clean_ = true;
+  }
+
  private:
+  bool clean_;
 
   void create_dest_dir() {
     setup_dirs();
     ASSERT_FALSE(dest_dir == "");
+    if (clean_) {
+      std::string cmd("rm -rf ");
+      cmd += dest_dir;
+      system(cmd.c_str());
+    }
     std::string cmd("mkdir -p ");
     cmd += dest_dir;
     system(cmd.c_str());
@@ -85,9 +99,6 @@ class PerfProfdTest : public testing::Test {
   void remove_dest_dir() {
     setup_dirs();
     ASSERT_FALSE(dest_dir == "");
-    std::string cmd("rm -rf ");
-    cmd += dest_dir;
-    system(cmd.c_str());
   }
 
   void setup_dirs()
@@ -181,6 +192,7 @@ class PerfProfdRunner {
     if (aux_config_text_.length()) {
       writeConfigFile(aux_config_path_, aux_config_text_);
     }
+
 
     // execute daemon main
     return perfprofd_main(3, (char **) argv);
@@ -348,9 +360,10 @@ TEST_F(PerfProfdTest, MissingOptInSemaphoreFile)
 TEST_F(PerfProfdTest, MissingPerfExecutable)
 {
   //
-  // AWP currently relies on the 'perf' tool to collect profiles (although
-  // this may conceivably change in the future). This test checks to make
-  // sure that if 'perf' is not present we bail out from collecting profiles.
+  // Perfprofd uses the 'simpleperf' tool to collect profiles
+  // (although this may conceivably change in the future). This test
+  // checks to make sure that if 'simpleperf' is not present we bail out
+  // from collecting profiles.
   //
   PerfProfdRunner runner;
   runner.addToConfig("only_debug_build=0");
@@ -383,10 +396,10 @@ TEST_F(PerfProfdTest, MissingPerfExecutable)
 TEST_F(PerfProfdTest, BadPerfRun)
 {
   //
-  // The linux 'perf' tool tends to be tightly coupled with a
-  // specific kernel version -- if things are out of sync perf could
-  // easily fail or crash. This test makes sure that we detect such a
-  // case and log the error.
+  // Perf tools tend to be tightly coupled with a specific kernel
+  // version -- if things are out of sync perf could fail or
+  // crash. This test makes sure that we detect such a case and log
+  // the error.
   //
   PerfProfdRunner runner;
   runner.addToConfig("only_debug_build=0");
@@ -593,7 +606,6 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf)
   runner.addToConfig("main_loop_iterations=1");
   runner.addToConfig("use_fixed_seed=12345678");
   runner.addToConfig("collection_interval=9999");
-  runner.addToConfig("stack_profile=1");
   runner.addToConfig("sample_duration=5");
 
   // Create semaphore file

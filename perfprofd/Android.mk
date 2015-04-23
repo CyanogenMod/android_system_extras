@@ -26,6 +26,7 @@ LOCAL_SRC_FILES :=  \
 	quipper/perf_reader.cc \
 	quipper/perf_parser.cc \
 	perf_data_converter.cc \
+	cpuconfig.cc \
 	perfprofdcore.cc \
 
 LOCAL_CPPFLAGS += $(perfprofd_cppflags)
