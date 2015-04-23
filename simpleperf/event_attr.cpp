@@ -66,9 +66,12 @@ EventAttr EventAttr::CreateDefaultAttrToMonitorEvent(const EventType& event_type
   attr.config = event_type.config;
   attr.mmap = 1;
   attr.comm = 1;
+  // Changing read_format affects the layout of the data read from perf_event_file, namely
+  // PerfCounter in event_fd.h.
   attr.read_format =
       PERF_FORMAT_TOTAL_TIME_ENABLED | PERF_FORMAT_TOTAL_TIME_RUNNING | PERF_FORMAT_ID;
   attr.sample_type |= PERF_SAMPLE_IP | PERF_SAMPLE_TID | PERF_SAMPLE_TIME | PERF_SAMPLE_PERIOD;
+  attr.disabled = 1;
   return EventAttr(attr);
 }
 

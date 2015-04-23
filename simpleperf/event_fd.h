@@ -24,7 +24,16 @@
 
 #include <base/macros.h>
 
+#include "perf_event.h"
+
 class EventAttr;
+
+struct PerfCounter {
+  uint64_t value;         // The value of the event specified by the perf_event_file.
+  uint64_t time_enabled;  // The enabled time.
+  uint64_t time_running;  // The running time.
+  uint64_t id;            // The id of the perf_event_file.
+};
 
 // EventFd represents an opened perf_event_file.
 class EventFd {
@@ -43,6 +52,8 @@ class EventFd {
 
   // It tells the kernel to stop counting and recording events specified by this file.
   bool DisableEvent();
+
+  bool ReadCounter(PerfCounter* counter);
 
  private:
   EventFd(int perf_event_fd, const std::string& event_name, pid_t pid, int cpu)

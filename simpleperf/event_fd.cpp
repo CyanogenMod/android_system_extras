@@ -94,3 +94,12 @@ bool EventFd::DisableEvent() {
   }
   return true;
 }
+
+bool EventFd::ReadCounter(PerfCounter* counter) {
+  CHECK(counter != nullptr);
+  if (!ReadNBytesFromFile(perf_event_fd_, counter, sizeof(*counter))) {
+    PLOG(ERROR) << "ReadCounter from " << Name() << " failed";
+    return false;
+  }
+  return true;
+}

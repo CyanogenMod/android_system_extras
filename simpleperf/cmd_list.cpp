@@ -24,6 +24,17 @@
 #include "event_type.h"
 #include "perf_event.h"
 
+static void PrintEventTypesOfType(uint32_t type, const char* type_name,
+                                  const std::vector<const EventType>& event_types) {
+  printf("List of %s:\n", type_name);
+  for (auto& event_type : event_types) {
+    if (event_type.type == type && event_type.IsSupportedByKernel()) {
+      printf("  %s\n", event_type.name);
+    }
+  }
+  printf("\n");
+}
+
 class ListCommand : public Command {
  public:
   ListCommand()
@@ -33,10 +44,6 @@ class ListCommand : public Command {
   }
 
   bool Run(const std::vector<std::string>& args) override;
-
- private:
-  void PrintEventTypesOfType(uint32_t type, const char* type_name,
-                             const std::vector<const EventType>& event_types);
 };
 
 bool ListCommand::Run(const std::vector<std::string>& args) {
@@ -51,17 +58,6 @@ bool ListCommand::Run(const std::vector<std::string>& args) {
   PrintEventTypesOfType(PERF_TYPE_SOFTWARE, "software events", event_types);
   PrintEventTypesOfType(PERF_TYPE_HW_CACHE, "hw-cache events", event_types);
   return true;
-}
-
-void ListCommand::PrintEventTypesOfType(uint32_t type, const char* type_name,
-                                        const std::vector<const EventType>& event_types) {
-  printf("List of %s:\n", type_name);
-  for (auto& event_type : event_types) {
-    if (event_type.type == type && event_type.IsSupportedByKernel()) {
-      printf("  %s\n", event_type.name);
-    }
-  }
-  printf("\n");
 }
 
 ListCommand list_command;
