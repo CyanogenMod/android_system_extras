@@ -103,9 +103,6 @@ LOCAL_C_INCLUDES += external/lz4/lib
 LOCAL_STATIC_LIBRARIES += liblz4-static
 include $(BUILD_EXECUTABLE)
 
-
-include $(BUILD_EXECUTABLE)
-
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := ext2simg.c
 LOCAL_MODULE := ext2simg
