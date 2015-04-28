@@ -26,22 +26,21 @@
 void PrintIndented(size_t indent, const char* fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
-  printf("%*s", static_cast<int>(indent), "");
+  printf("%*s", static_cast<int>(indent * 2), "");
   vprintf(fmt, ap);
   va_end(ap);
 }
 
-bool ReadNBytesFromFile(int fd, void* buf, size_t nbytes) {
-  char* p = reinterpret_cast<char*>(buf);
-  size_t bytes_left = nbytes;
-  while (bytes_left > 0) {
-    ssize_t nread = TEMP_FAILURE_RETRY(read(fd, p, bytes_left));
-    if (nread <= 0) {
-      return false;
-    } else {
-      p += nread;
-      bytes_left -= nread;
-    }
+bool IsPowerOfTwo(uint64_t value) {
+  return (value != 0 && ((value & (value - 1)) == 0));
+}
+
+bool NextArgumentOrError(const std::vector<std::string>& args, size_t* pi) {
+  if (*pi + 1 == args.size()) {
+    LOG(ERROR) << "No argument following " << args[*pi] << " option. Try `simpleperf help "
+               << args[0] << "`";
+    return false;
   }
+  ++*pi;
   return true;
 }

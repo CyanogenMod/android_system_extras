@@ -26,7 +26,7 @@ TEST(workload, smoke) {
   auto workload = Workload::CreateWorkload({"sleep", "1"});
   ASSERT_TRUE(workload != nullptr);
   ASSERT_FALSE(workload->IsFinished());
-  ASSERT_TRUE(workload->GetWorkPid() != 0);
+  ASSERT_TRUE(workload->GetPid() != 0);
   auto start_time = steady_clock::now();
   ASSERT_TRUE(workload->Start());
   ASSERT_FALSE(workload->IsFinished());

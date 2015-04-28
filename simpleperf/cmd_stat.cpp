@@ -25,8 +25,7 @@
 
 #include "command.h"
 #include "environment.h"
-#include "event_attr.h"
-#include "event_fd.h"
+#include "event_selection_set.h"
 #include "event_type.h"
 #include "perf_event.h"
 #include "utils.h"
@@ -46,27 +45,12 @@ class StatCommandImpl {
 
  private:
   bool ParseOptions(const std::vector<std::string>& args, std::vector<std::string>* non_option_args);
-  bool AddMeasuredEventType(const std::string& event_type_name,
-                            bool report_unsupported_types = true);
+  bool AddMeasuredEventType(const std::string& event_type_name, bool report_unsupported_type = true);
   bool AddDefaultMeasuredEventTypes();
-  bool OpenEventFilesForCpus(const std::vector<int>& cpus);
-  bool OpenEventFilesForProcess(pid_t pid);
-  bool StartCounting();
-  bool StopCounting();
-  bool ReadCounters();
-  bool ShowCounters(std::chrono::steady_clock::duration counting_duration);
+  bool ShowCounters(const std::map<const EventType*, std::vector<PerfCounter>>& counters_map,
+                    std::chrono::steady_clock::duration counting_duration);
 
-  struct EventElem {
-    const EventType* const event_type;
-    std::vector<std::unique_ptr<EventFd>> event_fds;
-    std::vector<PerfCounter> event_counters;
-    PerfCounter sum_counter;
-
-    EventElem(const EventType* event_type) : event_type(event_type) {
-    }
-  };
-
-  std::vector<EventElem> measured_events_;
+  EventSelectionSet event_selection_set_;
   bool verbose_mode_;
   bool system_wide_collection_;
 };
@@ -79,7 +63,7 @@ bool StatCommandImpl::Run(const std::vector<std::string>& args) {
   }
 
   // 2. Add default measured event types.
-  if (measured_events_.empty()) {
+  if (event_selection_set_.Empty()) {
     if (!AddDefaultMeasuredEventTypes()) {
       return false;
     }
@@ -87,6 +71,7 @@ bool StatCommandImpl::Run(const std::vector<std::string>& args) {
 
   // 3. Create workload.
   if (workload_args.empty()) {
+    // TODO: change default workload to sleep 99999, and run stat until Ctrl-C.
     workload_args = std::vector<std::string>({"sleep", "1"});
   }
   std::unique_ptr<Workload> workload = Workload::CreateWorkload(workload_args);
@@ -96,53 +81,52 @@ bool StatCommandImpl::Run(const std::vector<std::string>& args) {
 
   // 4. Open perf_event_files.
   if (system_wide_collection_) {
-    std::vector<int> cpus = GetOnlineCpus();
-    if (cpus.empty() || !OpenEventFilesForCpus(cpus)) {
+    if (!event_selection_set_.OpenEventFilesForAllCpus()) {
       return false;
     }
   } else {
-    if (!OpenEventFilesForProcess(workload->GetWorkPid())) {
+    event_selection_set_.EnableOnExec();
+    if (!event_selection_set_.OpenEventFilesForProcess(workload->GetPid())) {
       return false;
     }
   }
 
   // 5. Count events while workload running.
   auto start_time = std::chrono::steady_clock::now();
-  if (!StartCounting()) {
-    return false;
+  // If monitoring only one process, we use the enable_on_exec flag, and don't need to start
+  // counting manually.
+  if (system_wide_collection_) {
+    if (!event_selection_set_.EnableEvents()) {
+      return false;
+    }
   }
   if (!workload->Start()) {
     return false;
   }
   workload->WaitFinish();
-  if (!StopCounting()) {
-    return false;
-  }
   auto end_time = std::chrono::steady_clock::now();
 
   // 6. Read and print counters.
-  if (!ReadCounters()) {
+  std::map<const EventType*, std::vector<PerfCounter>> counters_map;
+  if (!event_selection_set_.ReadCounters(&counters_map)) {
     return false;
   }
-  if (!ShowCounters(end_time - start_time)) {
+  if (!ShowCounters(counters_map, end_time - start_time)) {
     return false;
   }
-
   return true;
 }
 
 bool StatCommandImpl::ParseOptions(const std::vector<std::string>& args,
                                    std::vector<std::string>* non_option_args) {
   size_t i;
-  for (i = 0; i < args.size() && args[i].size() > 0 && args[i][0] == '-'; ++i) {
+  for (i = 1; i < args.size() && args[i].size() > 0 && args[i][0] == '-'; ++i) {
     if (args[i] == "-a") {
       system_wide_collection_ = true;
     } else if (args[i] == "-e") {
-      if (i + 1 == args.size()) {
-        LOG(ERROR) << "No event list following -e option. Try `simpleperf help stat`";
+      if (!NextArgumentOrError(args, &i)) {
         return false;
       }
-      ++i;
       std::vector<std::string> event_types = android::base::Split(args[i], ",");
       for (auto& event_type : event_types) {
         if (!AddMeasuredEventType(event_type)) {
@@ -168,19 +152,13 @@ bool StatCommandImpl::ParseOptions(const std::vector<std::string>& args,
 }
 
 bool StatCommandImpl::AddMeasuredEventType(const std::string& event_type_name,
-                                           bool report_unsupported_types) {
-  const EventType* event_type = EventTypeFactory::FindEventTypeByName(event_type_name);
+                                           bool report_unsupported_type) {
+  const EventType* event_type =
+      EventTypeFactory::FindEventTypeByName(event_type_name, report_unsupported_type);
   if (event_type == nullptr) {
-    LOG(ERROR) << "Unknown event_type: " << event_type_name;
-    LOG(ERROR) << "Try `simpleperf help list` to list all possible event type names";
     return false;
   }
-  if (!event_type->IsSupportedByKernel()) {
-    (report_unsupported_types ? LOG(ERROR) : LOG(DEBUG)) << "Event type " << event_type->name
-                                                         << " is not supported by the kernel";
-    return false;
-  }
-  measured_events_.push_back(EventElem(event_type));
+  event_selection_set_.AddEventType(*event_type);
   return true;
 }
 
@@ -189,129 +167,52 @@ bool StatCommandImpl::AddDefaultMeasuredEventTypes() {
     // It is not an error when some event types in the default list are not supported by the kernel.
     AddMeasuredEventType(name, false);
   }
-  if (measured_events_.empty()) {
+  if (event_selection_set_.Empty()) {
     LOG(ERROR) << "Failed to add any supported default measured types";
     return false;
   }
   return true;
 }
 
-bool StatCommandImpl::OpenEventFilesForCpus(const std::vector<int>& cpus) {
-  for (auto& elem : measured_events_) {
-    EventAttr attr = EventAttr::CreateDefaultAttrToMonitorEvent(*elem.event_type);
-    std::vector<std::unique_ptr<EventFd>> event_fds;
-    for (auto& cpu : cpus) {
-      auto event_fd = EventFd::OpenEventFileForCpu(attr, cpu);
-      if (event_fd != nullptr) {
-        event_fds.push_back(std::move(event_fd));
-      }
-    }
-    // As the online cpus can be enabled or disabled at runtime, we may not open perf_event_file
-    // for all cpus successfully. But we should open at least one cpu successfully for each event
-    // type.
-    if (event_fds.empty()) {
-      LOG(ERROR) << "failed to open perf_event_files for event_type " << elem.event_type->name
-                 << " on all cpus";
-      return false;
-    }
-    elem.event_fds = std::move(event_fds);
-  }
-  return true;
-}
-
-bool StatCommandImpl::OpenEventFilesForProcess(pid_t pid) {
-  for (auto& elem : measured_events_) {
-    EventAttr attr = EventAttr::CreateDefaultAttrToMonitorEvent(*elem.event_type);
-    std::vector<std::unique_ptr<EventFd>> event_fds;
-    auto event_fd = EventFd::OpenEventFileForProcess(attr, pid);
-    if (event_fd == nullptr) {
-      PLOG(ERROR) << "failed to open perf_event_file for event_type " << elem.event_type->name
-                  << " on pid " << pid;
-      return false;
-    }
-    event_fds.push_back(std::move(event_fd));
-    elem.event_fds = std::move(event_fds);
-  }
-  return true;
-}
-
-bool StatCommandImpl::StartCounting() {
-  for (auto& elem : measured_events_) {
-    for (auto& event_fd : elem.event_fds) {
-      if (!event_fd->EnableEvent()) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-bool StatCommandImpl::StopCounting() {
-  for (auto& elem : measured_events_) {
-    for (auto& event_fd : elem.event_fds) {
-      if (!event_fd->DisableEvent()) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-bool StatCommandImpl::ReadCounters() {
-  for (auto& elem : measured_events_) {
-    std::vector<PerfCounter> event_counters;
-    for (auto& event_fd : elem.event_fds) {
-      PerfCounter counter;
-      if (!event_fd->ReadCounter(&counter)) {
-        return false;
-      }
-      event_counters.push_back(counter);
-    }
-    PerfCounter sum_counter = event_counters.front();
-    for (size_t i = 1; i < event_counters.size(); ++i) {
-      sum_counter.value += event_counters[i].value;
-      sum_counter.time_enabled += event_counters[i].time_enabled;
-      sum_counter.time_running += event_counters[i].time_running;
-    }
-    elem.event_counters = event_counters;
-    elem.sum_counter = sum_counter;
-  }
-  return true;
-}
-
-bool StatCommandImpl::ShowCounters(std::chrono::steady_clock::duration counting_duration) {
+bool StatCommandImpl::ShowCounters(
+    const std::map<const EventType*, std::vector<PerfCounter>>& counters_map,
+    std::chrono::steady_clock::duration counting_duration) {
   printf("Performance counter statistics:\n\n");
-  for (auto& elem : measured_events_) {
-    std::string event_type_name = elem.event_type->name;
 
+  for (auto& pair : counters_map) {
+    auto& event_type = pair.first;
+    auto& counters = pair.second;
     if (verbose_mode_) {
-      auto& event_fds = elem.event_fds;
-      auto& counters = elem.event_counters;
-      for (size_t i = 0; i < elem.event_fds.size(); ++i) {
-        printf("%s: value %'" PRId64 ", time_enabled %" PRId64 ", time_disabled %" PRId64
+      for (auto& counter : counters) {
+        printf("%s: value %'" PRId64 ", time_enabled %" PRId64 ", time_running %" PRId64
                ", id %" PRId64 "\n",
-               event_fds[i]->Name().c_str(), counters[i].value, counters[i].time_enabled,
-               counters[i].time_running, counters[i].id);
+               event_selection_set_.FindEventFileNameById(counter.id).c_str(), counter.value,
+               counter.time_enabled, counter.time_running, counter.id);
       }
     }
 
-    auto& counter = elem.sum_counter;
+    PerfCounter sum_counter;
+    memset(&sum_counter, 0, sizeof(sum_counter));
+    for (auto& counter : counters) {
+      sum_counter.value += counter.value;
+      sum_counter.time_enabled += counter.time_enabled;
+      sum_counter.time_running += counter.time_running;
+    }
     bool scaled = false;
-    int64_t scaled_count = counter.value;
-    if (counter.time_running < counter.time_enabled) {
-      if (counter.time_running == 0) {
+    int64_t scaled_count = sum_counter.value;
+    if (sum_counter.time_running < sum_counter.time_enabled) {
+      if (sum_counter.time_running == 0) {
         scaled_count = 0;
       } else {
         scaled = true;
-        scaled_count = static_cast<int64_t>(static_cast<double>(counter.value) *
-                                            counter.time_enabled / counter.time_running);
+        scaled_count = static_cast<int64_t>(static_cast<double>(sum_counter.value) *
+                                            sum_counter.time_enabled / sum_counter.time_running);
       }
     }
     printf("%'30" PRId64 "%s  %s\n", scaled_count, scaled ? "(scaled)" : "       ",
-           event_type_name.c_str());
+           event_type->name);
   }
-  printf("\n");
-  printf("Total test time: %lf seconds.\n",
+  printf("\nTotal test time: %lf seconds.\n",
          std::chrono::duration_cast<std::chrono::duration<double>>(counting_duration).count());
   return true;
 }
@@ -326,17 +227,13 @@ class StatCommand : public Command {
                 "    -a           Collect system-wide information.\n"
                 "    -e event1,event2,... Select the event list to count. Use `simpleperf list`\n"
                 "                         to find all possible event names.\n"
-                "    --verbose    Show result in verbose mode.\n"
-                "    --help       Print this help information.\n") {
+                "    --verbose    Show result in verbose mode.\n") {
   }
 
   bool Run(const std::vector<std::string>& args) override {
-    for (auto& arg : args) {
-      if (arg == "--help") {
-        printf("%s\n", LongHelpString().c_str());
-        return true;
-      }
-    }
+    // Keep the implementation in StatCommandImpl, so the resources used are cleaned up when the
+    // command finishes. This is useful when we need to call some commands multiple times, like
+    // in unit tests.
     StatCommandImpl impl;
     return impl.Run(args);
   }
