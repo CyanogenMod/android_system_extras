@@ -36,7 +36,8 @@ LOCAL_CPPFLAGS := $(simpleperf_common_cppflags)
 LOCAL_SRC_FILES := $(libsimpleperf_src_files)
 LOCAL_STATIC_LIBRARIES := libbase libcutils liblog
 LOCAL_MODULE := libsimpleperf
-LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_TAGS := debug
+LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
 include $(BUILD_STATIC_LIBRARY)
 
@@ -60,7 +61,8 @@ LOCAL_SRC_FILES := main.cpp
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
 LOCAL_STATIC_LIBRARIES := libbase libcutils liblog
 LOCAL_MODULE := simpleperf
-LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_TAGS := debug
+LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
 include $(BUILD_EXECUTABLE)
 
