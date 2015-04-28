@@ -1,28 +1,7 @@
-#include <stdbool.h>
 #include <sys/cdefs.h>
 #include <sys/types.h>
 
 __BEGIN_DECLS
-// These functions assume they are being called from init
-// They will not operate properly outside of init
-int e4crypt_install_keyring();
-int e4crypt_install_key(const char* dir);
-int e4crypt_create_device_key(const char* dir,
-                              int ensure_dir_exists(const char* dir));
-
-// General functions
-bool e4crypt_non_default_key(const char* dir);
-int e4crypt_set_directory_policy(const char* dir);
-int e4crypt_main(int argc, char* argv[]);
-int e4crypt_change_password(const char* path, int crypt_type,
-                            const char* password);
-int e4crypt_get_password_type(const char* path);
-int e4crypt_crypto_complete(const char* dir);
-int e4crypt_check_passwd(const char* dir, const char* password);
-const char* e4crypt_get_password(const char* dir);
-int e4crypt_restart(const char* dir);
-
-// Key functions. ext4enc:TODO Move to own file
 
 // ext4enc:TODO - get these keyring standard definitions from proper system file
 // keyring serial number type
@@ -44,7 +23,7 @@ key_serial_t add_key(const char *type,
 
 long keyctl_setperm(key_serial_t id, int permissions);
 
-// Set policy on directory
-int do_policy_set(const char *directory, const char *policy);
+long keyctl_search(key_serial_t ringid, const char *type,
+                   const char *description, key_serial_t destringid);
 
 __END_DECLS
