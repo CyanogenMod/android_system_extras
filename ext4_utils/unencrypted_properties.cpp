@@ -1,12 +1,12 @@
 #include "unencrypted_properties.h"
 
 #include <sys/stat.h>
-#include <dirent.h>
 
 namespace properties {
     const char* key = "key";
     const char* ref = "ref";
-    const char* is_default = "is_default";
+    const char* type = "type";
+    const char* password = "password";
 }
 
 namespace
@@ -14,20 +14,9 @@ namespace
     const char* unencrypted_folder = "unencrypted";
 }
 
-std::string UnencryptedProperties::GetPath(const char* device)
-{
-    return std::string() + device + "/" + unencrypted_folder;
-}
-
 UnencryptedProperties::UnencryptedProperties(const char* device)
-  : folder_(GetPath(device))
+  : folder_(std::string() + device + "/" + unencrypted_folder)
 {
-    DIR* dir = opendir(folder_.c_str());
-    if (dir) {
-        closedir(dir);
-    } else {
-        folder_.clear();
-    }
 }
 
 UnencryptedProperties::UnencryptedProperties()
@@ -35,7 +24,7 @@ UnencryptedProperties::UnencryptedProperties()
 }
 
 template<> std::string UnencryptedProperties::Get(const char* name,
-                                      std::string default_value) const
+                                      std::string default_value)
 {
     if (!OK()) return default_value;
     std::ifstream i(folder_ + "/" + name, std::ios::binary);
@@ -67,18 +56,18 @@ template<> bool UnencryptedProperties::Set(const char* name, std::string const& 
     return !o.fail();
 }
 
-UnencryptedProperties UnencryptedProperties::GetChild(const char* name) const
+UnencryptedProperties UnencryptedProperties::GetChild(const char* name)
 {
-    UnencryptedProperties up;
-    if (!OK()) return up;
+    UnencryptedProperties e4p;
+    if (!OK()) return e4p;
 
     std::string directory(folder_ + "/" + name);
     if (mkdir(directory.c_str(), 700) == -1 && errno != EEXIST) {
-        return up;
+        return e4p;
     }
 
-    up.folder_ = directory;
-    return up;
+    e4p.folder_ = directory;
+    return e4p;
 }
 
 bool UnencryptedProperties::Remove(const char* name)
