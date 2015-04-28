@@ -28,7 +28,7 @@ static std::vector<Command*>& Commands() {
 }
 
 Command* Command::FindCommandByName(const std::string& cmd_name) {
-  for (auto command : Commands()) {
+  for (auto& command : Commands()) {
     if (command->Name() == cmd_name) {
       return command;
     }

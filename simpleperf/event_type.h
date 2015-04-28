@@ -37,7 +37,8 @@ struct EventType {
 class EventTypeFactory {
  public:
   static const std::vector<const EventType>& GetAllEventTypes();
-  static const EventType* FindEventTypeByName(const std::string& name);
+  static const EventType* FindEventTypeByName(const std::string& name,
+                                              bool report_unsupported_type = true);
   static const EventType* FindEventTypeByConfig(uint32_t type, uint64_t config);
 };
 
