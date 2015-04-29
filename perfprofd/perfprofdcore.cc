@@ -102,7 +102,7 @@ static unsigned short random_seed[3];
 //
 // Config file path. May be overridden with -c command line option
 //
-static const char *config_file_path = "/system/etc/perfprofd.conf";
+static const char *config_file_path = NULL;
 
 //
 // Set by SIGHUP signal handler
@@ -435,7 +435,7 @@ const char *profile_result_to_string(PROFILE_RESULT result)
 
 //
 // The daemon does a read of the main config file on startup, however
-// if the destination directory also contains a configf file, then we
+// if the destination directory also contains a config file, then we
 // read parameters from that as well. This provides a mechanism for
 // changing/controlling the behavior of the daemon via the settings
 // established in the uploader service (which may be easier to update
@@ -780,7 +780,9 @@ static void set_seed(ConfigReader &config)
 //
 static void init(ConfigReader &config)
 {
-  config.readFile(config_file_path);
+  if (config_file_path != NULL) {
+    config.readFile(config_file_path);
+  }
   set_seed(config);
 
   char propBuf[PROPERTY_VALUE_MAX];
@@ -833,7 +835,11 @@ int perfprofd_main(int argc, char** argv)
 
     // Reread config file if someone sent a SIGHUP
     if (please_reread_config_file) {
-      config.readFile(config_file_path);
+      if (config_file_path) {
+        config.readFile(config_file_path);
+      } else {
+        read_aux_config(config);
+      }
       please_reread_config_file = 0;
     }
 
