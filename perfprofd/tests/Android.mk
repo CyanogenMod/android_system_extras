@@ -37,7 +37,7 @@ LOCAL_CXX_STL := libc++
 LOCAL_STATIC_LIBRARIES := \
     libperfprofdcore \
     libperfprofdmockutils
-LOCAL_SHARED_LIBRARIES := libprotobuf-cpp-full
+LOCAL_SHARED_LIBRARIES := libprotobuf-cpp-lite
 LOCAL_C_INCLUDES += system/extras/perfprofd external/protobuf/src
 LOCAL_SRC_FILES := perfprofd_test.cc
 LOCAL_CPPFLAGS += $(perfprofd_test_cppflags)

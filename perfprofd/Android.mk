@@ -57,7 +57,7 @@ LOCAL_CPP_EXTENSION := cc
 LOCAL_CXX_STL := libc++
 LOCAL_SRC_FILES := perfprofdmain.cc
 LOCAL_STATIC_LIBRARIES := libperfprofdcore libperfprofdutils
-LOCAL_SHARED_LIBRARIES := liblog libprotobuf-cpp-full
+LOCAL_SHARED_LIBRARIES := liblog libprotobuf-cpp-lite
 LOCAL_SYSTEM_SHARED_LIBRARIES := libc libstdc++
 LOCAL_CPPFLAGS += $(perfprofd_cppflags)
 LOCAL_CFLAGS := -Wall -Werror -std=gnu++11

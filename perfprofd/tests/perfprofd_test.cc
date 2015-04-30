@@ -217,8 +217,7 @@ class PerfProfdRunner {
 //......................................................................
 
 static void readEncodedProfile(const char *testpoint,
-                               wireless_android_play_playlog::AndroidPerfProfile &encodedProfile,
-                               bool debugDump=false)
+                               wireless_android_play_playlog::AndroidPerfProfile &encodedProfile)
 {
   struct stat statb;
   int perf_data_stat_result = stat(encoded_file_path().c_str(), &statb);
@@ -235,17 +234,35 @@ static void readEncodedProfile(const char *testpoint,
 
   // decode
   encodedProfile.ParseFromString(encoded);
+}
 
-  if (debugDump) {
-    std::string textdump;
-    ::google::protobuf::TextFormat::PrintToString(encodedProfile, &textdump);
-    std::string dfp(dest_dir); dfp += "/"; dfp += testpoint; dfp += ".dump_encoded.txt";
-    FILE *ofp = fopen(dfp.c_str(), "w");
-    if (ofp) {
-      fwrite(textdump.c_str(), textdump.size(), 1, ofp);
-      fclose(ofp);
-    }
+static std::string encodedLoadModuleToString(const wireless_android_play_playlog::LoadModule &lm)
+{
+  std::stringstream ss;
+  ss << "name: \"" << lm.name() << "\"\n";
+  if (lm.build_id() != "") {
+    ss << "build_id: \"" << lm.build_id() << "\"\n";
   }
+  return ss.str();
+}
+
+static std::string encodedModuleSamplesToString(const wireless_android_play_playlog::LoadModuleSamples &mod)
+{
+  std::stringstream ss;
+
+  ss << "load_module_id: " << mod.load_module_id() << "\n";
+  for (size_t k = 0; k < mod.address_samples_size(); k++) {
+    const auto &sample = mod.address_samples(k);
+    ss << "  address_samples {\n";
+    for (size_t l = 0; l < mod.address_samples(k).address_size();
+         l++) {
+      auto address = mod.address_samples(k).address(l);
+      ss << "    address: " << address << "\n";
+    }
+    ss << "    count: " << sample.count() << "\n";
+    ss << "  }\n";
+  }
+  return ss.str();
 }
 
 #define RAW_RESULT(x) #x
@@ -546,8 +563,7 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
 
   // Check a couple of load modules
   { const auto &lm0 = encodedProfile.load_modules(0);
-    std::string act_lm0;
-    ::google::protobuf::TextFormat::PrintToString(lm0, &act_lm0);
+    std::string act_lm0 = encodedLoadModuleToString(lm0);
     std::string sqact0 = squeezeWhite(act_lm0, "actual for lm 0");
     const std::string expected_lm0 = RAW_RESULT(
         name: "/data/app/com.google.android.apps.plus-1/lib/arm/libcronet.so"
@@ -556,8 +572,7 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
     EXPECT_STREQ(sqexp0.c_str(), sqact0.c_str());
   }
   { const auto &lm9 = encodedProfile.load_modules(9);
-    std::string act_lm9;
-    ::google::protobuf::TextFormat::PrintToString(lm9, &act_lm9);
+    std::string act_lm9 = encodedLoadModuleToString(lm9);
     std::string sqact9 = squeezeWhite(act_lm9, "actual for lm 9");
     const std::string expected_lm9 = RAW_RESULT(
         name: "/system/lib/libandroid_runtime.so" build_id: "8164ed7b3a8b8f5a220d027788922510"
@@ -569,8 +584,7 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
   // Examine some of the samples now
   { const auto &p1 = encodedProfile.programs(0);
     const auto &lm1 = p1.modules(0);
-    std::string act_lm1;
-    ::google::protobuf::TextFormat::PrintToString(lm1, &act_lm1);
+    std::string act_lm1 = encodedModuleSamplesToString(lm1);
     std::string sqact1 = squeezeWhite(act_lm1, "actual for lm1");
     const std::string expected_lm1 = RAW_RESULT(
         load_module_id: 9 address_samples { address: 296100 count: 1 }
@@ -580,8 +594,7 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
   }
   { const auto &p1 = encodedProfile.programs(2);
     const auto &lm2 = p1.modules(0);
-    std::string act_lm2;
-    ::google::protobuf::TextFormat::PrintToString(lm2, &act_lm2);
+    std::string act_lm2 = encodedModuleSamplesToString(lm2);
     std::string sqact2 = squeezeWhite(act_lm2, "actual for lm2");
     const std::string expected_lm2 = RAW_RESULT(
         load_module_id: 2
