@@ -3,6 +3,8 @@ syntax = "proto2";
 
 option java_package = "com.google.common.logging";
 
+option optimize_for = LITE_RUNTIME;
+
 package wireless_android_play_playlog;
 
 // An entry of the map from a stack of addresses to count.
