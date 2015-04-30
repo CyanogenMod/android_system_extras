@@ -22,6 +22,7 @@
 #include <sys/mman.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
+#include <atomic>
 #include <memory>
 
 #include <base/file.h>

@@ -32,8 +32,9 @@
 #include "workload.h"
 
 static std::vector<std::string> default_measured_event_types{
-    "cpu-cycles", "stalled-cycles-frontend", "stalled-cycles-backend", "instructions",
-    "branch-instructions", "branch-misses", "task-clock", "context-switches", "page-faults",
+    "cpu-cycles",   "stalled-cycles-frontend", "stalled-cycles-backend",
+    "instructions", "branch-instructions",     "branch-misses",
+    "task-clock",   "context-switches",        "page-faults",
 };
 
 class StatCommandImpl {
@@ -210,7 +211,7 @@ bool StatCommandImpl::ShowCounters(
       }
     }
     printf("%'30" PRId64 "%s  %s\n", scaled_count, scaled ? "(scaled)" : "       ",
-           event_type->name);
+           event_type->name.c_str());
   }
   printf("\nTotal test time: %lf seconds.\n",
          std::chrono::duration_cast<std::chrono::duration<double>>(counting_duration).count());

@@ -46,17 +46,17 @@ static std::string BitsToString(const std::string& name, uint64_t bits,
 
 static std::string SampleTypeToString(uint64_t sample_type) {
   static std::vector<std::pair<int, std::string>> sample_type_names = {
+      {PERF_SAMPLE_ADDR, "addr"},
+      {PERF_SAMPLE_CALLCHAIN, "callchain"},
+      {PERF_SAMPLE_CPU, "cpu"},
+      {PERF_SAMPLE_ID, "id"},
       {PERF_SAMPLE_IP, "ip"},
+      {PERF_SAMPLE_PERIOD, "period"},
+      {PERF_SAMPLE_RAW, "raw"},
+      {PERF_SAMPLE_READ, "read"},
+      {PERF_SAMPLE_STREAM_ID, "stream_id"},
       {PERF_SAMPLE_TID, "tid"},
       {PERF_SAMPLE_TIME, "time"},
-      {PERF_SAMPLE_ADDR, "addr"},
-      {PERF_SAMPLE_READ, "read"},
-      {PERF_SAMPLE_CALLCHAIN, "callchain"},
-      {PERF_SAMPLE_ID, "id"},
-      {PERF_SAMPLE_CPU, "cpu"},
-      {PERF_SAMPLE_PERIOD, "period"},
-      {PERF_SAMPLE_STREAM_ID, "stream_id"},
-      {PERF_SAMPLE_RAW, "raw"},
   };
   return BitsToString("sample_type", sample_type, sample_type_names);
 }
@@ -85,6 +85,11 @@ perf_event_attr CreateDefaultPerfEventAttr(const EventType& event_type) {
   attr.read_format =
       PERF_FORMAT_TOTAL_TIME_ENABLED | PERF_FORMAT_TOTAL_TIME_RUNNING | PERF_FORMAT_ID;
   attr.sample_type |= PERF_SAMPLE_IP | PERF_SAMPLE_TID | PERF_SAMPLE_TIME | PERF_SAMPLE_PERIOD;
+
+  if (attr.type == PERF_TYPE_TRACEPOINT) {
+    attr.sample_freq = 0;
+    attr.sample_period = 1;
+  }
   return attr;
 }
 

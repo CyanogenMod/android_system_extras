@@ -17,19 +17,22 @@
 #include "event_type.h"
 
 #include <unistd.h>
+#include <algorithm>
 #include <string>
 #include <vector>
 
+#include <base/file.h>
 #include <base/logging.h>
 
 #include "event_attr.h"
 #include "event_fd.h"
+#include "utils.h"
 
 #define EVENT_TYPE_TABLE_ENTRY(name, type, config) \
   { name, type, config }                           \
   ,
 
-static std::vector<const EventType> event_type_array = {
+static const std::vector<EventType> static_event_type_array = {
 #include "event_type_table.h"
 };
 
@@ -42,14 +45,51 @@ bool EventType::IsSupportedByKernel() const {
   return IsEventTypeSupportedByKernel(*this);
 }
 
-const std::vector<const EventType>& EventTypeFactory::GetAllEventTypes() {
+static const std::vector<EventType> GetTracepointEventTypes() {
+  std::vector<EventType> result;
+  const std::string tracepoint_dirname = "/sys/kernel/debug/tracing/events";
+  std::vector<std::string> system_dirs;
+  GetEntriesInDir(tracepoint_dirname, nullptr, &system_dirs);
+  for (auto& system_name : system_dirs) {
+    std::string system_path = tracepoint_dirname + "/" + system_name;
+    std::vector<std::string> event_dirs;
+    GetEntriesInDir(system_path, nullptr, &event_dirs);
+    for (auto& event_name : event_dirs) {
+      std::string id_path = system_path + "/" + event_name + "/id";
+      std::string id_content;
+      if (!android::base::ReadFileToString(id_path, &id_content)) {
+        continue;
+      }
+      char* endptr;
+      uint64_t id = strtoull(id_content.c_str(), &endptr, 10);
+      if (endptr == id_content.c_str()) {
+        LOG(DEBUG) << "unexpected id '" << id_content << "' in " << id_path;
+        continue;
+      }
+      result.push_back(EventType(system_name + ":" + event_name, PERF_TYPE_TRACEPOINT, id));
+    }
+  }
+  std::sort(result.begin(), result.end(),
+            [](const EventType& type1, const EventType& type2) { return type1.name < type2.name; });
+  return result;
+}
+
+const std::vector<EventType>& EventTypeFactory::GetAllEventTypes() {
+  static std::vector<EventType> event_type_array;
+  if (event_type_array.empty()) {
+    event_type_array.insert(event_type_array.end(), static_event_type_array.begin(),
+                            static_event_type_array.end());
+    const std::vector<EventType> tracepoint_array = GetTracepointEventTypes();
+    event_type_array.insert(event_type_array.end(), tracepoint_array.begin(),
+                            tracepoint_array.end());
+  }
   return event_type_array;
 }
 
 const EventType* EventTypeFactory::FindEventTypeByName(const std::string& name,
                                                        bool report_unsupported_type) {
   const EventType* result = nullptr;
-  for (auto& event_type : event_type_array) {
+  for (auto& event_type : GetAllEventTypes()) {
     if (event_type.name == name) {
       result = &event_type;
       break;
@@ -69,7 +109,7 @@ const EventType* EventTypeFactory::FindEventTypeByName(const std::string& name,
 }
 
 const EventType* EventTypeFactory::FindEventTypeByConfig(uint32_t type, uint64_t config) {
-  for (auto& event_type : event_type_array) {
+  for (auto& event_type : GetAllEventTypes()) {
     if (event_type.type == type && event_type.config == config) {
       return &event_type;
     }
