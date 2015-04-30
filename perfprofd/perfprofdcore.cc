@@ -178,7 +178,7 @@ void ConfigReader::addDefaultEntries()
                  "/data/data/com.google.android.gms/files");
 
   // Full path to 'perf' executable.
-  addStringEntry("perf_path", "/system/bin/simpleperf");
+  addStringEntry("perf_path", "/system/xbin/simpleperf");
 
   // Desired sampling period (passed to perf -c option). Small
   // sampling periods can perturb the collected profiles, so enforce
