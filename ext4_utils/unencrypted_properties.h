@@ -5,6 +5,7 @@
 namespace properties {
     extern const char* key;
     extern const char* ref;
+    extern const char* props;
     extern const char* is_default;
 }
 
