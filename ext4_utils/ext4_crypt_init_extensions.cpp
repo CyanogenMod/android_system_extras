@@ -155,7 +155,7 @@ int e4crypt_set_directory_policy(const char* dir)
         return 0;
     }
 
-    KLOG_INFO(TAG, "Setting policy %s\n", policy.c_str());
+    KLOG_INFO(TAG, "Setting policy on %s\n", dir);
     int result = do_policy_set(dir, policy.c_str(), policy.size());
     if (result) {
         KLOG_ERROR(TAG, "Setting %s policy on %s failed!\n",
