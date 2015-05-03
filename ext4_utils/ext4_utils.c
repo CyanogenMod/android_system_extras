@@ -363,7 +363,7 @@ void ext4_fill_in_sb(int real_uuid)
 		if (ext4_bg_has_super_block(i)) {
 			if (i != 0) {
 				aux_info.backup_sb[i] = calloc(info.block_size, 1);
-				memcpy(aux_info.backup_sb[i], sb, info.block_size);
+				memcpy(aux_info.backup_sb[i], sb, sizeof(struct ext4_super_block));
 				/* Update the block group nr of this backup superblock */
 				aux_info.backup_sb[i]->s_block_group_nr = i;
 				ext4_queue_sb(group_start_block, info.block_device ?
