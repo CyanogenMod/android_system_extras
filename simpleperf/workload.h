@@ -48,7 +48,7 @@ class Workload {
   bool Start();
   bool IsFinished();
   void WaitFinish();
-  pid_t GetWorkPid() {
+  pid_t GetPid() {
     return work_pid_;
   }
 
