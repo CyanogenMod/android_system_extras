@@ -555,6 +555,8 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
     return ERR_WRITE_ENCODED_FILE_FAILED;
   }
   fclose(fp);
+  chmod(encoded_file_path.c_str(),
+        S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 
   return OK_PROFILE_COLLECTION;
 }
