@@ -16,7 +16,7 @@
 
 #include <gtest/gtest.h>
 
-#include <command.h>
+#include "command.h"
 
 class DumpRecordCommandTest : public ::testing::Test {
  protected:

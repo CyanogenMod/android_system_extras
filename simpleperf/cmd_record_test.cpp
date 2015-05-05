@@ -16,7 +16,10 @@
 
 #include <gtest/gtest.h>
 
-#include <command.h>
+#include "command.h"
+#include "environment.h"
+#include "record.h"
+#include "record_file.h"
 
 class RecordCommandTest : public ::testing::Test {
  protected:
@@ -51,4 +54,23 @@ TEST_F(RecordCommandTest, freq_option) {
 
 TEST_F(RecordCommandTest, output_file_option) {
   ASSERT_TRUE(record_cmd->Run({"record", "-o", "perf2.data", "sleep", "1"}));
+}
+
+TEST_F(RecordCommandTest, dump_kernel_mmap) {
+  ASSERT_TRUE(record_cmd->Run({"record", "sleep", "1"}));
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance("perf.data");
+  ASSERT_TRUE(reader != nullptr);
+  std::vector<std::unique_ptr<const Record>> records = reader->DataSection();
+  ASSERT_GT(records.size(), 0U);
+  bool have_kernel_mmap = false;
+  for (auto& record : records) {
+    if (record->header.type == PERF_RECORD_MMAP) {
+      const MmapRecord* mmap_record = static_cast<const MmapRecord*>(record.get());
+      if (mmap_record->filename == DEFAULT_KERNEL_MMAP_NAME) {
+        have_kernel_mmap = true;
+        break;
+      }
+    }
+  }
+  ASSERT_TRUE(have_kernel_mmap);
 }

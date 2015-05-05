@@ -16,6 +16,7 @@
 
 #include "utils.h"
 
+#include <dirent.h>
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -43,4 +44,35 @@ bool NextArgumentOrError(const std::vector<std::string>& args, size_t* pi) {
   }
   ++*pi;
   return true;
+}
+
+void GetEntriesInDir(const std::string& dirpath, std::vector<std::string>* files,
+                     std::vector<std::string>* subdirs) {
+  if (files != nullptr) {
+    files->clear();
+  }
+  if (subdirs != nullptr) {
+    subdirs->clear();
+  }
+  DIR* dir = opendir(dirpath.c_str());
+  if (dir == nullptr) {
+    PLOG(DEBUG) << "can't open dir " << dirpath;
+    return;
+  }
+  dirent* entry;
+  while ((entry = readdir(dir)) != nullptr) {
+    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+      continue;
+    }
+    if (entry->d_type == DT_DIR) {
+      if (subdirs != nullptr) {
+        subdirs->push_back(entry->d_name);
+      }
+    } else {
+      if (files != nullptr) {
+        files->push_back(entry->d_name);
+      }
+    }
+  }
+  closedir(dir);
 }

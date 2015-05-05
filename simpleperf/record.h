@@ -176,5 +176,9 @@ struct SampleRecord : public Record {
 
 std::unique_ptr<const Record> ReadRecordFromBuffer(const perf_event_attr& attr,
                                                    const perf_event_header* pheader);
-
+MmapRecord CreateMmapRecord(const perf_event_attr& attr, bool in_kernel, uint32_t pid, uint32_t tid,
+                            uint64_t addr, uint64_t len, uint64_t pgoff,
+                            const std::string& filename);
+CommRecord CreateCommRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid,
+                            const std::string& comm);
 #endif  // SIMPLE_PERF_RECORD_H_
