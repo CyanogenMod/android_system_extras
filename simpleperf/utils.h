@@ -23,7 +23,7 @@
 #include <string>
 #include <vector>
 
-void PrintIndented(size_t indent, const char* fmt, ...);
+#define ALIGN(value, alignment) (((value) + (alignment)-1) & ~((alignment)-1))
 
 class LineReader {
  public:
@@ -52,10 +52,13 @@ class LineReader {
   size_t bufsize_;
 };
 
+void PrintIndented(size_t indent, const char* fmt, ...);
+
 bool IsPowerOfTwo(uint64_t value);
 
 bool NextArgumentOrError(const std::vector<std::string>& args, size_t* pi);
 
-#define ALIGN(value, alignment) (((value) + (alignment)-1) & ~((alignment)-1))
+void GetEntriesInDir(const std::string& dirpath, std::vector<std::string>* files,
+                     std::vector<std::string>* subdirs);
 
 #endif  // SIMPLE_PERF_UTILS_H_

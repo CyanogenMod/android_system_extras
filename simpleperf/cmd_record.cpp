@@ -25,6 +25,7 @@
 #include "environment.h"
 #include "event_selection_set.h"
 #include "event_type.h"
+#include "record.h"
 #include "record_file.h"
 #include "utils.h"
 #include "workload.h"
@@ -57,6 +58,8 @@ class RecordCommandImpl {
   bool SetMeasuredEventType(const std::string& event_type_name);
   void SetEventSelection();
   bool WriteData(const char* data, size_t size);
+  bool DumpKernelAndModuleMmaps();
+  bool DumpThreadCommAndMmaps();
 
   bool use_sample_freq_;    // Use sample_freq_ when true, otherwise using sample_period_.
   uint64_t sample_freq_;    // Sample 'sample_freq_' times per second.
@@ -116,15 +119,21 @@ bool RecordCommandImpl::Run(const std::vector<std::string>& args) {
   std::vector<pollfd> pollfds;
   event_selection_set_.PreparePollForEventFiles(&pollfds);
 
-  // 4. Open record file writer.
+  // 4. Open record file writer, and dump kernel/modules/threads mmap information.
   record_file_writer_ = RecordFileWriter::CreateInstance(
       record_filename_, event_selection_set_.FindEventAttrByType(*measured_event_type_),
       event_selection_set_.FindEventFdsByType(*measured_event_type_));
   if (record_file_writer_ == nullptr) {
     return false;
   }
+  if (!DumpKernelAndModuleMmaps()) {
+    return false;
+  }
+  if (system_wide_collection_ && !DumpThreadCommAndMmaps()) {
+    return false;
+  }
 
-  // 5. Dump records in mmap buffers of perf_event_files to output file while workload is running.
+  // 5. Write records in mmap buffers of perf_event_files to output file while workload is running.
 
   // If monitoring only one process, we use the enable_on_exec flag, and don't need to start
   // recording manually.
@@ -232,6 +241,65 @@ void RecordCommandImpl::SetEventSelection() {
 
 bool RecordCommandImpl::WriteData(const char* data, size_t size) {
   return record_file_writer_->WriteData(data, size);
+}
+
+bool RecordCommandImpl::DumpKernelAndModuleMmaps() {
+  KernelMmap kernel_mmap;
+  std::vector<ModuleMmap> module_mmaps;
+  if (!GetKernelAndModuleMmaps(&kernel_mmap, &module_mmaps)) {
+    return false;
+  }
+  const perf_event_attr& attr = event_selection_set_.FindEventAttrByType(*measured_event_type_);
+  MmapRecord mmap_record = CreateMmapRecord(attr, true, UINT_MAX, 0, kernel_mmap.start_addr,
+                                            kernel_mmap.len, kernel_mmap.pgoff, kernel_mmap.name);
+  if (!record_file_writer_->WriteData(mmap_record.BinaryFormat())) {
+    return false;
+  }
+  for (auto& module_mmap : module_mmaps) {
+    std::string filename = module_mmap.filepath;
+    if (filename.empty()) {
+      filename = "[" + module_mmap.name + "]";
+    }
+    MmapRecord mmap_record = CreateMmapRecord(attr, true, UINT_MAX, 0, module_mmap.start_addr,
+                                              module_mmap.len, 0, filename);
+    if (!record_file_writer_->WriteData(mmap_record.BinaryFormat())) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool RecordCommandImpl::DumpThreadCommAndMmaps() {
+  std::vector<ThreadComm> thread_comms;
+  if (!GetThreadComms(&thread_comms)) {
+    return false;
+  }
+  const perf_event_attr& attr = event_selection_set_.FindEventAttrByType(*measured_event_type_);
+  for (auto& thread : thread_comms) {
+    CommRecord record = CreateCommRecord(attr, thread.tgid, thread.tid, thread.comm);
+    if (!record_file_writer_->WriteData(record.BinaryFormat())) {
+      return false;
+    }
+    if (thread.is_process) {
+      std::vector<ThreadMmap> thread_mmaps;
+      if (!GetThreadMmapsInProcess(thread.tgid, &thread_mmaps)) {
+        // The thread may exit before we get its info.
+        continue;
+      }
+      for (auto& thread_mmap : thread_mmaps) {
+        if (thread_mmap.executable == 0) {
+          continue;  // No need to dump non-executable mmap info.
+        }
+        MmapRecord record =
+            CreateMmapRecord(attr, false, thread.tgid, thread.tid, thread_mmap.start_addr,
+                             thread_mmap.len, thread_mmap.pgoff, thread_mmap.name);
+        if (!record_file_writer_->WriteData(record.BinaryFormat())) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
 }
 
 class RecordCommand : public Command {
