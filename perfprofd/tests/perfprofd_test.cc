@@ -70,7 +70,6 @@ class PerfProfdTest : public testing::Test {
 
   virtual void TearDown() {
     mock_perfprofdutils_finish();
-    remove_dest_dir();
   }
 
   void noclean() {
@@ -94,11 +93,6 @@ class PerfProfdTest : public testing::Test {
     std::string cmd("mkdir -p ");
     cmd += dest_dir;
     system(cmd.c_str());
-  }
-
-  void remove_dest_dir() {
-    setup_dirs();
-    ASSERT_FALSE(dest_dir == "");
   }
 
   void setup_dirs()
@@ -147,10 +141,8 @@ class PerfProfdRunner {
  public:
   PerfProfdRunner()
       : config_path_(test_dir)
-      , aux_config_path_(dest_dir)
   {
     config_path_ += "/" CONFIGFILE;
-    aux_config_path_ += "/" CONFIGFILE;
   }
 
   ~PerfProfdRunner()
@@ -163,22 +155,16 @@ class PerfProfdRunner {
     config_text_ += "\n";
   }
 
-  void addToAuxConfig(const std::string &line)
-  {
-    aux_config_text_ += line;
-    aux_config_text_ += "\n";
-  }
-
   void remove_semaphore_file()
   {
-    std::string semaphore(dest_dir);
+    std::string semaphore(test_dir);
     semaphore += "/" SEMAPHORE_FILENAME;
     unlink(semaphore.c_str());
   }
 
   void create_semaphore_file()
   {
-    std::string semaphore(dest_dir);
+    std::string semaphore(test_dir);
     semaphore += "/" SEMAPHORE_FILENAME;
     close(open(semaphore.c_str(), O_WRONLY|O_CREAT));
   }
@@ -189,10 +175,6 @@ class PerfProfdRunner {
     argv[2] = config_path_.c_str();
 
     writeConfigFile(config_path_, config_text_);
-    if (aux_config_text_.length()) {
-      writeConfigFile(aux_config_path_, aux_config_text_);
-    }
-
 
     // execute daemon main
     return perfprofd_main(3, (char **) argv);
@@ -201,8 +183,6 @@ class PerfProfdRunner {
  private:
   std::string config_path_;
   std::string config_text_;
-  std::string aux_config_path_;
-  std::string aux_config_text_;
 
   void writeConfigFile(const std::string &config_path,
                        const std::string &config_text)
@@ -300,14 +280,14 @@ TEST_F(PerfProfdTest, MissingGMS)
   //
   // AWP requires cooperation between the daemon and the GMS core
   // piece. If we're running on a device that has an old or damaged
-  // version of GMS core, then the directory we're interested in may
-  // not be there. This test insures that the daemon does the right
-  // thing in this case.
+  // version of GMS core, then the config directory we're interested in
+  // may not be there. This test insures that the daemon does the
+  // right thing in this case.
   //
   PerfProfdRunner runner;
   runner.addToConfig("only_debug_build=0");
   runner.addToConfig("trace_config_read=1");
-  runner.addToConfig("destination_directory=/does/not/exist");
+  runner.addToConfig("config_directory=/does/not/exist");
   runner.addToConfig("main_loop_iterations=1");
   runner.addToConfig("use_fixed_seed=1");
   runner.addToConfig("collection_interval=100");
@@ -320,25 +300,16 @@ TEST_F(PerfProfdTest, MissingGMS)
 
   // Verify log contents
   const std::string expected = RAW_RESULT(
-      I: starting Android Wide Profiling daemon
-      I: config file path set to /data/nativetest/perfprofd_test/perfprofd.conf
-      I: option destination_directory set to /does/not/exist
-      I: option main_loop_iterations set to 1
-      I: option use_fixed_seed set to 1
-      I: option collection_interval set to 100
-      I: random seed set to 1
       I: sleep 90 seconds
-      W: unable to open destination directory /does/not/exist: (No such file or directory)
-      I: profile collection skipped (missing destination directory)
-      I: sleep 10 seconds
-      I: finishing Android Wide Profiling daemon
-                                          );\
+      W: unable to open config directory /does/not/exist: (No such file or directory)
+      I: profile collection skipped (missing config directory)
+                                          );
 
   // check to make sure entire log matches
-  bool compareEntireLog = true;
   compareLogMessages(mock_perfprofdutils_getlogged(),
-                     expected, "MissingGMS", compareEntireLog);
+                     expected, "MissingGMS");
 }
+
 
 TEST_F(PerfProfdTest, MissingOptInSemaphoreFile)
 {
@@ -351,6 +322,8 @@ TEST_F(PerfProfdTest, MissingOptInSemaphoreFile)
   //
   PerfProfdRunner runner;
   runner.addToConfig("only_debug_build=0");
+  std::string cfparam("config_directory="); cfparam += test_dir;
+  runner.addToConfig(cfparam);
   std::string ddparam("destination_directory="); ddparam += dest_dir;
   runner.addToConfig(ddparam);
   runner.addToConfig("main_loop_iterations=1");
@@ -385,6 +358,8 @@ TEST_F(PerfProfdTest, MissingPerfExecutable)
   PerfProfdRunner runner;
   runner.addToConfig("only_debug_build=0");
   runner.addToConfig("trace_config_read=1");
+  std::string cfparam("config_directory="); cfparam += test_dir;
+  runner.addToConfig(cfparam);
   std::string ddparam("destination_directory="); ddparam += dest_dir;
   runner.addToConfig(ddparam);
   runner.addToConfig("main_loop_iterations=1");
@@ -420,6 +395,8 @@ TEST_F(PerfProfdTest, BadPerfRun)
   //
   PerfProfdRunner runner;
   runner.addToConfig("only_debug_build=0");
+  std::string cfparam("config_directory="); cfparam += test_dir;
+  runner.addToConfig(cfparam);
   std::string ddparam("destination_directory="); ddparam += dest_dir;
   runner.addToConfig(ddparam);
   runner.addToConfig("main_loop_iterations=1");
@@ -483,58 +460,6 @@ TEST_F(PerfProfdTest, ConfigFileParsing)
   // check to make sure log excerpt matches
   compareLogMessages(mock_perfprofdutils_getlogged(),
                      expected, "ConfigFileParsing");
-}
-
-TEST_F(PerfProfdTest, AuxiliaryConfigFile)
-{
-  //
-  // We want to be able to tweak profile collection parameters (sample
-  // duration, etc) using changes to gservices. To carry this out, the
-  // GMS core upload service writes out an perfprofd.conf config file when
-  // it starts up. This test verifies that we can read this file.
-  //
-
-  // Minimal settings in main config file
-  PerfProfdRunner runner;
-  runner.addToConfig("only_debug_build=0");
-  runner.addToConfig("trace_config_read=1");
-  runner.addToConfig("use_fixed_seed=1");
-  std::string ddparam("destination_directory="); ddparam += dest_dir;
-  runner.addToConfig(ddparam);
-
-  // Remaining settings in aux config file
-  runner.addToAuxConfig("main_loop_iterations=1");
-  runner.addToAuxConfig("collection_interval=100");
-  runner.addToAuxConfig("perf_path=/system/bin/true");
-  runner.addToAuxConfig("stack_profile=1");
-  runner.addToAuxConfig("sampling_period=9999");
-  runner.addToAuxConfig("sample_duration=333");
-
-  runner.remove_semaphore_file();
-
-  // Kick off daemon
-  int daemon_main_return_code = runner.invoke();
-
-  // Check return code from daemon
-  EXPECT_EQ(0, daemon_main_return_code);
-
-  // Verify log contents
-  const std::string expected = RAW_RESULT(
-      I: reading auxiliary config file /data/nativetest/perfprofd_test/tmp/perfprofd.conf
-      I: option main_loop_iterations set to 1
-      I: option collection_interval set to 100
-      I: option perf_path set to /system/bin/true
-      I: option stack_profile set to 1
-      I: option sampling_period set to 9999
-      I: option sample_duration set to 333
-      I: sleep 90 seconds
-      I: reading auxiliary config file /data/nativetest/perfprofd_test/tmp/perfprofd.conf
-      I: option main_loop_iterations set to 1
-                                          );
-
-  // check to make sure log excerpt matches
-  compareLogMessages(mock_perfprofdutils_getlogged(),
-                     expected, "AuxiliaryConfigFile");
 }
 
 TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
@@ -616,6 +541,8 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf)
   runner.addToConfig("only_debug_build=0");
   std::string ddparam("destination_directory="); ddparam += dest_dir;
   runner.addToConfig(ddparam);
+  std::string cfparam("config_directory="); cfparam += test_dir;
+  runner.addToConfig(cfparam);
   runner.addToConfig("main_loop_iterations=1");
   runner.addToConfig("use_fixed_seed=12345678");
   runner.addToConfig("collection_interval=9999");
