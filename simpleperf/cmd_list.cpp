@@ -47,7 +47,7 @@ class ListCommand : public Command {
 };
 
 bool ListCommand::Run(const std::vector<std::string>& args) {
-  if (!args.empty()) {
+  if (args.size() != 1) {
     LOG(ERROR) << "malformed command line: list subcommand needs no argument";
     LOG(ERROR) << "try using \"help list\"";
     return false;

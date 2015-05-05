@@ -19,6 +19,9 @@
 #include <unistd.h>
 #include <string>
 #include <vector>
+
+#include <base/logging.h>
+
 #include "event_attr.h"
 #include "event_fd.h"
 
@@ -31,8 +34,7 @@ static std::vector<const EventType> event_type_array = {
 };
 
 static bool IsEventTypeSupportedByKernel(const EventType& event_type) {
-  auto event_fd = EventFd::OpenEventFileForProcess(
-      EventAttr::CreateDefaultAttrToMonitorEvent(event_type), getpid());
+  auto event_fd = EventFd::OpenEventFileForProcess(CreateDefaultPerfEventAttr(event_type), getpid());
   return event_fd != nullptr;
 }
 
@@ -44,13 +46,26 @@ const std::vector<const EventType>& EventTypeFactory::GetAllEventTypes() {
   return event_type_array;
 }
 
-const EventType* EventTypeFactory::FindEventTypeByName(const std::string& name) {
+const EventType* EventTypeFactory::FindEventTypeByName(const std::string& name,
+                                                       bool report_unsupported_type) {
+  const EventType* result = nullptr;
   for (auto& event_type : event_type_array) {
     if (event_type.name == name) {
-      return &event_type;
+      result = &event_type;
+      break;
     }
   }
-  return nullptr;
+  if (result == nullptr) {
+    LOG(ERROR) << "Unknown event_type '" << name
+               << "', try `simpleperf list` to list all possible event type names";
+    return nullptr;
+  }
+  if (!result->IsSupportedByKernel()) {
+    (report_unsupported_type ? LOG(ERROR) : LOG(DEBUG)) << "Event type '" << result->name
+                                                        << "' is not supported by the kernel";
+    return nullptr;
+  }
+  return result;
 }
 
 const EventType* EventTypeFactory::FindEventTypeByConfig(uint32_t type, uint64_t config) {

@@ -21,5 +21,5 @@
 TEST(cmd_list, smoke) {
   Command* list_cmd = Command::FindCommandByName("list");
   ASSERT_TRUE(list_cmd != nullptr);
-  ASSERT_TRUE(list_cmd->Run({}));
+  ASSERT_TRUE(list_cmd->Run({"list"}));
 }
