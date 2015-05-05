@@ -31,6 +31,7 @@ struct ext4_encryption_policy {
     char version;
     char contents_encryption_mode;
     char filenames_encryption_mode;
+    char flags;
     char master_key_descriptor[EXT4_KEY_DESCRIPTOR_SIZE];
 } __attribute__((__packed__));
 
@@ -106,6 +107,7 @@ int do_policy_set(const char *directory, const char *policy, int policy_length)
     eep.version = 0;
     eep.contents_encryption_mode = EXT4_ENCRYPTION_MODE_AES_256_XTS;
     eep.filenames_encryption_mode = EXT4_ENCRYPTION_MODE_AES_256_CTS;
+    eep.flags = 0;
     memcpy(eep.master_key_descriptor, policy, EXT4_KEY_DESCRIPTOR_SIZE);
     ret = ioctl(fd, EXT4_IOC_SET_ENCRYPTION_POLICY, &eep);
     auto preserve_errno = errno;
@@ -117,7 +119,8 @@ int do_policy_set(const char *directory, const char *policy, int policy_length)
         return -EINVAL;
     }
 
-    KLOG_INFO(TAG, "Encryption policy for %s is set to %s\n", directory, policy);
+    KLOG_INFO(TAG, "Encryption policy for %s is set to %02x%02x%02x%02x\n",
+              directory, policy[0], policy[1], policy[2], policy[3]);
     return 0;
 }
 
