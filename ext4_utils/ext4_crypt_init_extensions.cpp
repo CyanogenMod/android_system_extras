@@ -129,13 +129,6 @@ int e4crypt_install_keyring()
     KLOG_INFO(TAG, "Keyring created wth id %d in process %d\n",
               device_keyring, getpid());
 
-    // ext4enc:TODO set correct permissions
-    long result = keyctl_setperm(device_keyring, 0x3f3f3f3f);
-    if (result) {
-        KLOG_ERROR(TAG, "KEYCTL_SETPERM failed with error %ld\n", result);
-        return -1;
-    }
-
     return 0;
 }
 
