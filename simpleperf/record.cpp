@@ -59,8 +59,7 @@ void MoveToBinaryFormat(const T& data, char*& p) {
 }
 
 SampleId::SampleId() {
-  sample_id_all = false;
-  sample_type = 0;
+  memset(this, 0, sizeof(SampleId));
 }
 
 // Return sample_id size in binary format.
@@ -318,4 +317,36 @@ std::unique_ptr<const Record> ReadRecordFromBuffer(const perf_event_attr& attr,
     default:
       return std::unique_ptr<const Record>(new Record(pheader));
   }
+}
+
+MmapRecord CreateMmapRecord(const perf_event_attr& attr, bool in_kernel, uint32_t pid, uint32_t tid,
+                            uint64_t addr, uint64_t len, uint64_t pgoff,
+                            const std::string& filename) {
+  MmapRecord record;
+  record.header.type = PERF_RECORD_MMAP;
+  record.header.misc = (in_kernel ? PERF_RECORD_MISC_KERNEL : PERF_RECORD_MISC_USER);
+  record.data.pid = pid;
+  record.data.tid = tid;
+  record.data.addr = addr;
+  record.data.len = len;
+  record.data.pgoff = pgoff;
+  record.filename = filename;
+  size_t sample_id_size = record.sample_id.CreateContent(attr);
+  record.header.size = sizeof(record.header) + sizeof(record.data) +
+                       ALIGN(record.filename.size() + 1, 8) + sample_id_size;
+  return record;
+}
+
+CommRecord CreateCommRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid,
+                            const std::string& comm) {
+  CommRecord record;
+  record.header.type = PERF_RECORD_COMM;
+  record.header.misc = 0;
+  record.data.pid = pid;
+  record.data.tid = tid;
+  record.comm = comm;
+  size_t sample_id_size = record.sample_id.CreateContent(attr);
+  record.header.size = sizeof(record.header) + sizeof(record.data) +
+                       ALIGN(record.comm.size() + 1, 8) + sample_id_size;
+  return record;
 }

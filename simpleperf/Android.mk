@@ -99,6 +99,7 @@ simpleperf_unit_test_src_files := \
   environment_test.cpp \
   gtest_main.cpp \
   record_file_test.cpp \
+  record_test.cpp \
   workload_test.cpp \
 
 include $(CLEAR_VARS)

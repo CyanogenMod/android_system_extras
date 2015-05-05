@@ -17,12 +17,61 @@
 #ifndef SIMPLE_PERF_ENVIRONMENT_H_
 #define SIMPLE_PERF_ENVIRONMENT_H_
 
+#include <functional>
 #include <string>
 #include <vector>
 
 std::vector<int> GetOnlineCpus();
 
+static const char* DEFAULT_KERNEL_MMAP_NAME = "[kernel.kallsyms]_text";
+
+struct KernelMmap {
+  std::string name;
+  uint64_t start_addr;
+  uint64_t len;
+  uint64_t pgoff;
+};
+
+struct ModuleMmap {
+  std::string name;
+  uint64_t start_addr;
+  uint64_t len;
+  std::string filepath;
+};
+
+bool GetKernelAndModuleMmaps(KernelMmap* kernel_mmap, std::vector<ModuleMmap>* module_mmaps);
+
+struct ThreadComm {
+  pid_t tgid, tid;
+  std::string comm;
+  bool is_process;
+};
+
+bool GetThreadComms(std::vector<ThreadComm>* thread_comms);
+
+static const char* DEFAULT_EXECNAME_FOR_THREAD_MMAP = "//anon";
+
+struct ThreadMmap {
+  uint64_t start_addr;
+  uint64_t len;
+  uint64_t pgoff;
+  std::string name;
+  bool executable;
+};
+
+bool GetThreadMmapsInProcess(pid_t pid, std::vector<ThreadMmap>* thread_mmaps);
+
 // Expose the following functions for unit tests.
 std::vector<int> GetOnlineCpusFromString(const std::string& s);
+
+struct KernelSymbol {
+  uint64_t addr;
+  char type;
+  const char* name;
+  const char* module;  // If nullptr, the symbol is not in a kernel module.
+};
+
+bool ProcessKernelSymbols(const std::string& symbol_file,
+                          std::function<bool(const KernelSymbol&)> callback);
 
 #endif  // SIMPLE_PERF_ENVIRONMENT_H_
