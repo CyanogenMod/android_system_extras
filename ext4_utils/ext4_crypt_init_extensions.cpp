@@ -129,13 +129,6 @@ int e4crypt_install_keyring()
     KLOG_INFO(TAG, "Keyring created wth id %d in process %d\n",
               device_keyring, getpid());
 
-    // ext4enc:TODO set correct permissions
-    long result = keyctl_setperm(device_keyring, 0x3f3f3f3f);
-    if (result) {
-        KLOG_ERROR(TAG, "KEYCTL_SETPERM failed with error %ld\n", result);
-        return -1;
-    }
-
     return 0;
 }
 
@@ -155,7 +148,7 @@ int e4crypt_set_directory_policy(const char* dir)
         return 0;
     }
 
-    KLOG_INFO(TAG, "Setting policy %s\n", policy.c_str());
+    KLOG_INFO(TAG, "Setting policy on %s\n", dir);
     int result = do_policy_set(dir, policy.c_str(), policy.size());
     if (result) {
         KLOG_ERROR(TAG, "Setting %s policy on %s failed!\n",
