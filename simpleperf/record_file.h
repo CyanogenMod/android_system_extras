@@ -25,10 +25,10 @@
 #include <base/macros.h>
 
 #include "perf_event.h"
+#include "record.h"
 #include "record_file_format.h"
 
 class EventFd;
-struct Record;
 
 // RecordFileWriter writes to a perf record file, like perf.data.
 class RecordFileWriter {
@@ -45,6 +45,14 @@ class RecordFileWriter {
     return WriteData(data.data(), data.size());
   }
 
+  // Use MmapRecords and SampleRecords in record file to conclude which modules/files were executing
+  // at sample times.
+  bool GetHitModules(std::vector<std::string>* hit_kernel_modules,
+                     std::vector<std::string>* hit_user_files);
+
+  bool WriteFeatureHeader(size_t feature_count);
+  bool WriteBuildIdFeature(const std::vector<BuildIdRecord>& build_id_records);
+
   // Normally, Close() should be called after writing. But if something
   // wrong happens and we need to finish in advance, the destructor
   // will take care of calling Close().
@@ -54,6 +62,9 @@ class RecordFileWriter {
   RecordFileWriter(const std::string& filename, FILE* fp);
   bool WriteAttrSection(const perf_event_attr& event_attr,
                         const std::vector<std::unique_ptr<EventFd>>& event_fds);
+  void GetHitModulesInBuffer(const char* p, const char* end,
+                             std::vector<std::string>* hit_kernel_modules,
+                             std::vector<std::string>* hit_user_files);
   bool WriteFileHeader();
   bool Write(const void* buf, size_t len);
 
@@ -67,6 +78,8 @@ class RecordFileWriter {
   uint64_t data_section_size_;
 
   std::vector<int> features_;
+  int feature_count_;
+  int current_feature_index_;
 
   DISALLOW_COPY_AND_ASSIGN(RecordFileWriter);
 };
@@ -82,6 +95,10 @@ class RecordFileReader {
   std::vector<const PerfFileFormat::FileAttr*> AttrSection();
   std::vector<uint64_t> IdsForAttr(const PerfFileFormat::FileAttr* attr);
   std::vector<std::unique_ptr<const Record>> DataSection();
+  std::vector<PerfFileFormat::SectionDesc> FeatureSectionDescriptors();
+  const char* DataAtOffset(uint64_t offset) {
+    return mmap_addr_ + offset;
+  }
   bool Close();
 
  private:
