@@ -16,12 +16,15 @@
 
 #include <gtest/gtest.h>
 
+#include <string.h>
 #include "environment.h"
 #include "event_attr.h"
 #include "event_fd.h"
 #include "event_type.h"
 #include "record.h"
 #include "record_file.h"
+
+#include "record_equal_test.h"
 
 using namespace PerfFileFormat;
 
@@ -48,9 +51,8 @@ TEST_F(RecordFileTest, smoke) {
   ASSERT_TRUE(writer != nullptr);
 
   // Write Data section.
-  MmapRecord mmap_record;
-  mmap_record.header.type = PERF_RECORD_MMAP;
-  mmap_record.header.size = sizeof(mmap_record);
+  MmapRecord mmap_record =
+      CreateMmapRecord(event_attr, true, 1, 1, 0x1000, 0x2000, 0x3000, "mmap_record_example");
   ASSERT_TRUE(writer->WriteData(mmap_record.BinaryFormat()));
   ASSERT_TRUE(writer->Close());
 
@@ -69,6 +71,7 @@ TEST_F(RecordFileTest, smoke) {
   std::vector<std::unique_ptr<const Record>> records = reader->DataSection();
   ASSERT_EQ(1u, records.size());
   ASSERT_EQ(mmap_record.header.type, records[0]->header.type);
+  CheckRecordEqual(mmap_record, *records[0]);
 
   ASSERT_TRUE(reader->Close());
 }
