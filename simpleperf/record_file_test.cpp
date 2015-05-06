@@ -33,6 +33,7 @@ class RecordFileTest : public ::testing::Test {
   virtual void SetUp() {
     filename = "temporary.record_file";
     const EventType* event_type = EventTypeFactory::FindEventTypeByName("cpu-cycles");
+    ASSERT_TRUE(event_type != nullptr);
     event_attr = CreateDefaultPerfEventAttr(*event_type);
     std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFileForProcess(event_attr, getpid());
     ASSERT_TRUE(event_fd != nullptr);
@@ -50,10 +51,19 @@ TEST_F(RecordFileTest, smoke) {
       RecordFileWriter::CreateInstance(filename, event_attr, event_fds);
   ASSERT_TRUE(writer != nullptr);
 
-  // Write Data section.
+  // Write data section.
   MmapRecord mmap_record =
       CreateMmapRecord(event_attr, true, 1, 1, 0x1000, 0x2000, 0x3000, "mmap_record_example");
   ASSERT_TRUE(writer->WriteData(mmap_record.BinaryFormat()));
+
+  // Write feature section.
+  ASSERT_TRUE(writer->WriteFeatureHeader(1));
+  BuildId build_id;
+  for (size_t i = 0; i < build_id.size(); ++i) {
+    build_id[i] = i;
+  }
+  BuildIdRecord build_id_record = CreateBuildIdRecord(false, getpid(), build_id, "init");
+  ASSERT_TRUE(writer->WriteBuildIdFeature({build_id_record}));
   ASSERT_TRUE(writer->Close());
 
   // Read from a record file.
@@ -72,6 +82,16 @@ TEST_F(RecordFileTest, smoke) {
   ASSERT_EQ(1u, records.size());
   ASSERT_EQ(mmap_record.header.type, records[0]->header.type);
   CheckRecordEqual(mmap_record, *records[0]);
+
+  // Read and check feature section.
+  ASSERT_TRUE(file_header->features[FEAT_BUILD_ID / 8] & (1 << (FEAT_BUILD_ID % 8)));
+  std::vector<SectionDesc> sections = reader->FeatureSectionDescriptors();
+  ASSERT_EQ(1u, sections.size());
+  const perf_event_header* header =
+      reinterpret_cast<const perf_event_header*>(reader->DataAtOffset(sections[0].offset));
+  ASSERT_TRUE(header != nullptr);
+  ASSERT_EQ(sections[0].size, header->size);
+  CheckRecordEqual(build_id_record, BuildIdRecord(header));
 
   ASSERT_TRUE(reader->Close());
 }

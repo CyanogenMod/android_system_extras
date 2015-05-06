@@ -14,17 +14,20 @@
  * limitations under the License.
  */
 
+#include <libgen.h>
 #include <poll.h>
 #include <signal.h>
 #include <string>
 #include <vector>
 
 #include <base/logging.h>
+#include <base/strings.h>
 
 #include "command.h"
 #include "environment.h"
 #include "event_selection_set.h"
 #include "event_type.h"
+#include "read_elf.h"
 #include "record.h"
 #include "record_file.h"
 #include "utils.h"
@@ -60,6 +63,8 @@ class RecordCommandImpl {
   bool WriteData(const char* data, size_t size);
   bool DumpKernelAndModuleMmaps();
   bool DumpThreadCommAndMmaps();
+  bool DumpAdditionalFeatures();
+  bool DumpBuildIdFeature();
 
   bool use_sample_freq_;    // Use sample_freq_ when true, otherwise using sample_period_.
   uint64_t sample_freq_;    // Sample 'sample_freq_' times per second.
@@ -157,7 +162,10 @@ bool RecordCommandImpl::Run(const std::vector<std::string>& args) {
     poll(&pollfds[0], pollfds.size(), -1);
   }
 
-  // 6. Close record file.
+  // 6. Dump additional features, and close record file.
+  if (!DumpAdditionalFeatures()) {
+    return false;
+  }
   if (!record_file_writer_->Close()) {
     return false;
   }
@@ -298,6 +306,59 @@ bool RecordCommandImpl::DumpThreadCommAndMmaps() {
         }
       }
     }
+  }
+  return true;
+}
+
+bool RecordCommandImpl::DumpAdditionalFeatures() {
+  if (!record_file_writer_->WriteFeatureHeader(1)) {
+    return false;
+  }
+  return DumpBuildIdFeature();
+}
+
+bool RecordCommandImpl::DumpBuildIdFeature() {
+  std::vector<std::string> hit_kernel_modules;
+  std::vector<std::string> hit_user_files;
+  if (!record_file_writer_->GetHitModules(&hit_kernel_modules, &hit_user_files)) {
+    return false;
+  }
+  std::vector<BuildIdRecord> build_id_records;
+  BuildId build_id;
+  // Add build_ids for kernel/modules.
+  for (auto& filename : hit_kernel_modules) {
+    if (filename == DEFAULT_KERNEL_MMAP_NAME) {
+      if (!GetKernelBuildId(&build_id)) {
+        LOG(DEBUG) << "can't read build_id for kernel";
+        continue;
+      }
+      build_id_records.push_back(
+          CreateBuildIdRecord(true, UINT_MAX, build_id, DEFAULT_KERNEL_FILENAME_FOR_BUILD_ID));
+    } else {
+      std::string module_name = basename(&filename[0]);
+      if (android::base::EndsWith(module_name, ".ko")) {
+        module_name = module_name.substr(0, module_name.size() - 3);
+      }
+      if (!GetModuleBuildId(module_name, &build_id)) {
+        LOG(DEBUG) << "can't read build_id for module " << module_name;
+        continue;
+      }
+      build_id_records.push_back(CreateBuildIdRecord(true, UINT_MAX, build_id, filename));
+    }
+  }
+  // Add build_ids for user elf files.
+  for (auto& filename : hit_user_files) {
+    if (filename == DEFAULT_EXECNAME_FOR_THREAD_MMAP) {
+      continue;
+    }
+    if (!GetBuildIdFromElfFile(filename, &build_id)) {
+      LOG(DEBUG) << "can't read build_id from file " << filename;
+      continue;
+    }
+    build_id_records.push_back(CreateBuildIdRecord(false, UINT_MAX, build_id, filename));
+  }
+  if (!record_file_writer_->WriteBuildIdFeature(build_id_records)) {
+    return false;
   }
   return true;
 }
