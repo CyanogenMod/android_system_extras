@@ -18,6 +18,19 @@
 // Semaphore file that indicates that the user is opting in
 #define SEMAPHORE_FILENAME "perf_profile_collection_enabled.txt"
 
+// File containing a list of sequence numbers corresponding to profiles
+// that have been processed/uploaded. Written by the GmsCore uploader,
+// within the GmsCore files directory.
+#define PROCESSED_FILENAME "perfprofd_processed.txt"
+
+// File containing a list of sequence numbers corresponding to profiles
+// that have been created by the perfprofd but not yet uploaded. Written
+// by perfprofd within the destination directory; consumed by GmsCore.
+#define PRODUCED_FILENAME "perfprofd_produced.txt"
+
+// Maximum number of encoded perf.data files stored in destination dir
+#define MAX_UNPROCESSED_FILE 10
+
 // Main routine for perfprofd daemon
 extern int perfprofd_main(int argc, char **argv);
 
@@ -53,4 +66,4 @@ typedef enum {
 // was successful (either OK_PROFILE_COLLECTION or an error of some sort).
 //
 PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
-                               const std::string &encoded_file_path);
+                               const char *encoded_file_path);
