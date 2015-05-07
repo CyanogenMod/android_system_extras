@@ -63,10 +63,8 @@ typedef enum {
   // All systems go for profile collection.
   DO_COLLECT_PROFILE,
 
-  // The destination directory selected in the conf file doesn't exist. Most
-  // likely this is due to a missing or out-of-date version of the uploading
-  // service in GMS core.
-  DONT_PROFILE_MISSING_DESTINATION_DIR,
+  // The selected configuration directory doesn't exist.
+  DONT_PROFILE_MISSING_CONFIG_DIR,
 
   // Destination directory does not contain the semaphore file that
   // the perf profile uploading service creates when it determines
@@ -102,7 +100,8 @@ static unsigned short random_seed[3];
 //
 // Config file path. May be overridden with -c command line option
 //
-static const char *config_file_path = NULL;
+static const char *config_file_path =
+    "/data/data/com.google.android.gms/files/perfprofd.conf";
 
 //
 // Set by SIGHUP signal handler
@@ -125,7 +124,7 @@ class ConfigReader {
   std::string getStringValue(const char *key) const;
 
   // read the specified config file, applying any settings it contains
-  void readFile(const char *configFilePath);
+  void readFile();
 
  private:
   void addUnsignedEntry(const char *key,
@@ -174,8 +173,10 @@ void ConfigReader::addDefaultEntries()
 
   // Destination directory (where to write profiles). This location
   // chosen since it is accessible to the uploader service.
-  addStringEntry("destination_directory",
-                 "/data/data/com.google.android.gms/files");
+  addStringEntry("destination_directory", "/data/misc/perfprofd");
+
+  // Config directory (where to read configs).
+  addStringEntry("config_directory", "/data/data/com.google.android.gms/files");
 
   // Full path to 'perf' executable.
   addStringEntry("perf_path", "/system/xbin/simpleperf");
@@ -320,9 +321,9 @@ static bool isblank(const std::string &line)
   return true;
 }
 
-void ConfigReader::readFile(const char *configFilePath)
+void ConfigReader::readFile()
 {
-  FILE *fp = fopen(configFilePath, "r");
+  FILE *fp = fopen(config_file_path, "r");
   if (!fp) {
     W_ALOGE("unable to open configuration file %s", config_file_path);
     return;
@@ -397,8 +398,8 @@ const char *ckprofile_result_to_string(CKPROFILE_RESULT result)
   switch (result) {
     case DO_COLLECT_PROFILE:
       return "DO_COLLECT_PROFILE";
-    case DONT_PROFILE_MISSING_DESTINATION_DIR:
-      return "missing destination directory";
+    case DONT_PROFILE_MISSING_CONFIG_DIR:
+      return "missing config directory";
     case DONT_PROFILE_MISSING_SEMAPHORE:
       return "missing semaphore file";
     case DONT_PROFILE_MISSING_PERF_EXECUTABLE:
@@ -434,30 +435,6 @@ const char *profile_result_to_string(PROFILE_RESULT result)
 }
 
 //
-// The daemon does a read of the main config file on startup, however
-// if the destination directory also contains a config file, then we
-// read parameters from that as well. This provides a mechanism for
-// changing/controlling the behavior of the daemon via the settings
-// established in the uploader service (which may be easier to update
-// than the daemon).
-//
-static void read_aux_config(ConfigReader &config)
-{
-  std::string destConfig(config.getStringValue("destination_directory"));
-  destConfig += "/perfprofd.conf";
-  FILE *fp = fopen(destConfig.c_str(), "r");
-  if (fp) {
-    fclose(fp);
-    bool trace_config_read =
-        (config.getUnsignedValue("trace_config_read") != 0);
-    if (trace_config_read) {
-      W_ALOGI("reading auxiliary config file %s", destConfig.c_str());
-    }
-    config.readFile(destConfig.c_str());
-  }
-}
-
-//
 // Check to see whether we should perform a profile collection
 //
 static CKPROFILE_RESULT check_profiling_enabled(ConfigReader &config)
@@ -471,39 +448,27 @@ static CKPROFILE_RESULT check_profiling_enabled(ConfigReader &config)
   }
 
   //
-  // Check for the existence of the destination directory
+  // Check for existence of semaphore file in config directory
   //
-  std::string destdir = config.getStringValue("destination_directory");
-  DIR* dir = opendir(destdir.c_str());
-  if (!dir) {
-    W_ALOGW("unable to open destination directory %s: (%s)",
-            destdir.c_str(), strerror(errno));
-    return DONT_PROFILE_MISSING_DESTINATION_DIR;
+  if (access(config.getStringValue("config_directory").c_str(), F_OK) == -1) {
+    W_ALOGW("unable to open config directory %s: (%s)",
+            config.getStringValue("config_directory").c_str(), strerror(errno));
+    return DONT_PROFILE_MISSING_CONFIG_DIR;
   }
 
-  // Reread aux config file -- it may have changed
-  read_aux_config(config);
+
+  // Check for existence of semaphore file
+  std::string semaphore_filepath = config.getStringValue("config_directory")
+                                   + "/" + SEMAPHORE_FILENAME;
+  if (access(semaphore_filepath.c_str(), F_OK) == -1) {
+    return DONT_PROFILE_MISSING_SEMAPHORE;
+  }
 
   // Check for existence of simpleperf/perf executable
   std::string pp = config.getStringValue("perf_path");
   if (access(pp.c_str(), R_OK|X_OK) == -1) {
     W_ALOGW("unable to access/execute %s", pp.c_str());
-    closedir(dir);
     return DONT_PROFILE_MISSING_PERF_EXECUTABLE;
-  }
-
-  // Check for existence of semaphore file
-  unsigned found = 0;
-  struct dirent* e;
-  while ((e = readdir(dir)) != 0) {
-    if (!strcmp(e->d_name, SEMAPHORE_FILENAME)) {
-      found = 1;
-      break;
-    }
-  }
-  closedir(dir);
-  if (!found) {
-    return DONT_PROFILE_MISSING_SEMAPHORE;
   }
 
   //
@@ -782,9 +747,7 @@ static void set_seed(ConfigReader &config)
 //
 static void init(ConfigReader &config)
 {
-  if (config_file_path != NULL) {
-    config.readFile(config_file_path);
-  }
+  config.readFile();
   set_seed(config);
 
   char propBuf[PROPERTY_VALUE_MAX];
@@ -814,7 +777,6 @@ int perfprofd_main(int argc, char** argv)
 
   parse_args(argc, argv);
   init(config);
-  read_aux_config(config);
 
   // Early exit if we're not supposed to run on this build flavor
   if (is_debug_build != 1 &&
@@ -837,11 +799,7 @@ int perfprofd_main(int argc, char** argv)
 
     // Reread config file if someone sent a SIGHUP
     if (please_reread_config_file) {
-      if (config_file_path) {
-        config.readFile(config_file_path);
-      } else {
-        read_aux_config(config);
-      }
+      config.readFile();
       please_reread_config_file = 0;
     }
 
