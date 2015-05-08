@@ -64,6 +64,7 @@ RTM_DELROUTE = 25
 RTM_GETROUTE = 26
 RTM_NEWNEIGH = 28
 RTM_DELNEIGH = 29
+RTM_GETNEIGH = 30
 RTM_NEWRULE = 32
 RTM_DELRULE = 33
 RTM_GETRULE = 34
@@ -133,12 +134,16 @@ IfAddrMsg = cstruct.Struct(
     "family prefixlen flags scope index")
 IFACacheinfo = cstruct.Struct(
     "IFACacheinfo", "=IIII", "prefered valid cstamp tstamp")
+NDACacheinfo = cstruct.Struct(
+    "NDACacheinfo", "=IIII", "confirmed used updated refcnt")
 
 
 ### Neighbour table entry constants. See include/uapi/linux/neighbour.h.
 # Neighbour cache entry attributes.
 NDA_DST = 1
 NDA_LLADDR = 2
+NDA_CACHEINFO = 3
+NDA_PROBES = 4
 
 # Neighbour cache entry states.
 NUD_PERMANENT = 0x80
@@ -293,7 +298,7 @@ class IPRoute(object):
                 "RTA_OIF", "RTA_PRIORITY", "RTA_TABLE", "RTA_MARK",
                 "IFLA_MTU", "IFLA_TXQLEN", "IFLA_GROUP", "IFLA_EXT_MASK",
                 "IFLA_PROMISCUITY", "IFLA_NUM_RX_QUEUES",
-                "IFLA_NUM_TX_QUEUES"]:
+                "IFLA_NUM_TX_QUEUES", "NDA_PROBES"]:
       data = struct.unpack("=I", nla_data)[0]
     elif name == "FRA_SUPPRESS_PREFIXLEN":
       data = struct.unpack("=i", nla_data)[0]
@@ -311,6 +316,8 @@ class IPRoute(object):
       data = RTACacheinfo(nla_data)
     elif name == "IFA_CACHEINFO":
       data = IFACacheinfo(nla_data)
+    elif name == "NDA_CACHEINFO":
+      data = NDACacheinfo(nla_data)
     elif name in ["NDA_LLADDR", "IFLA_ADDRESS"]:
       data = ":".join(x.encode("hex") for x in nla_data)
     else:
@@ -663,6 +670,10 @@ class IPRoute(object):
 
   def DelNeighbour(self, version, addr, lladdr, dev):
     self._Neighbour(version, False, addr, lladdr, dev, 0)
+
+  def DumpNeighbours(self, version):
+    ndmsg = NdMsg((0, 0, 0, 0, 0))
+    return self._Dump(RTM_GETNEIGH, ndmsg, NdMsg)
 
 
 if __name__ == "__main__":
