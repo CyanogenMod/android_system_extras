@@ -14,13 +14,10 @@
  * limitations under the License.
  */
 
-#define _GNU_SOURCE  /* needed for asprintf */
-
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 /* HACK: we need the RSAPublicKey struct
