@@ -212,9 +212,9 @@ out:
 	return ret;
 }
 
-#define LZ4BUFSIZE (8*1024*1024)
-static const unsigned char lz4magic[4] = { 0x02, 0x21, 0x4c, 0x18 };
-static int compress_file_lz4(const char *ifile, const char *ofile)
+#define LZ4_LEGACY_BUFSIZE (8*1024*1024)
+static const unsigned char lz4legacymagic[4] = { 0x02, 0x21, 0x4c, 0x18 };
+static int compress_file_lz4legacy(const char *ifile, const char *ofile)
 {
 	FILE *ifp;
 	FILE* ofp;
@@ -225,8 +225,8 @@ static int compress_file_lz4(const char *ifile, const char *ofile)
 	ssize_t len;
 	int ret = -1;
 
-	ibuf = (char*)malloc(LZ4BUFSIZE);
-	obuf = (char*)malloc(LZ4_compressBound(LZ4BUFSIZE));
+	ibuf = (char*)malloc(LZ4_LEGACY_BUFSIZE);
+	obuf = (char*)malloc(LZ4_compressBound(LZ4_LEGACY_BUFSIZE));
 	if (!ibuf || !obuf) {
 		fprintf(stderr, "Unable to allocate LZ4 buffers!");
 		free(ibuf);
@@ -239,12 +239,12 @@ static int compress_file_lz4(const char *ifile, const char *ofile)
 	if (!ifp || !ofp)
 		goto out;
 
-	ret = fwrite(lz4magic, 1, 4, ofp);
+	ret = fwrite(lz4legacymagic, 1, 4, ofp);
 	if (ret != 4 || ferror(ofp))
 		goto out;
 
 	do {
-		isize = fread(ibuf, 1, LZ4BUFSIZE, ifp);
+		isize = fread(ibuf, 1, LZ4_LEGACY_BUFSIZE, ifp);
 		if (ferror(ifp)) {
 			ret = -1;
 			goto out;
@@ -274,12 +274,109 @@ out:
 	return ret;
 }
 
+/*
+ * LZ4 supports block sizes: 64k, 256k, 1m, 4m
+ *
+ * The frame header is variable length and the last byte is derived from
+ * the xxh32() checksum.  In order to simplify things here, we use the
+ * following parameters in the header:
+ *   - No block independence
+ *   - No block checksum
+ *   - No content size
+ *   - No content checksum
+ * This leaves the block size as the only variable in the frame header.
+ * Precomputed values for each block size are as follows:
+ *   64k : 0x40 0x40 0xc0
+ *   256k: 0x40 0x50 0x77
+ *   1m  : 0x40 0x60 0x96
+ *   4m  : 0x40 0x70 0xdf
+ *
+ * For now, we prefer to conserve memory memory usage at runtime over
+ * compression efficiency, so we use only the 64k block size.
+ */
+#define LZ4_BUFSIZE (64*1024)
+static const unsigned char lz4magic[4] = { 0x04, 0x22, 0x4d, 0x18 };
+static const unsigned char lz4frame[3] = { 0x40, 0x40, 0xc0 };
+static int compress_file_lz4(const char *ifile, const char *ofile)
+{
+	FILE *ifp;
+	FILE* ofp;
+	char *ibuf = NULL;
+	char *obuf = NULL;
+	char *writebuf;
+	uint32_t isize, osize;
+	uint32_t blksize;
+	ssize_t len;
+	int ret = -1;
+
+	ibuf = (char*)malloc(LZ4_BUFSIZE);
+	obuf = (char*)malloc(LZ4_compressBound(LZ4_BUFSIZE));
+	if (!ibuf || !obuf) {
+		fprintf(stderr, "Unable to allocate LZ4 buffers!");
+		free(ibuf);
+		free(obuf);
+		return -1;
+	}
+
+	ifp = fopen(ifile, "r");
+	ofp = fopen(ofile, "wb");
+	if (!ifp || !ofp)
+		goto out;
+
+	ret = fwrite(lz4magic, 1, 4, ofp);
+	if (ret != 4 || ferror(ofp))
+		goto out;
+
+	ret = fwrite(lz4frame, 1, 3, ofp);
+	if (ret != 3 || ferror(ofp))
+		goto out;
+
+	do {
+		isize = fread(ibuf, 1, LZ4_BUFSIZE, ifp);
+		if (ferror(ifp)) {
+			ret = -1;
+			goto out;
+		}
+		osize = LZ4_compressHC(ibuf, obuf, isize);
+		if (osize < isize) {
+		    writebuf = obuf;
+		    blksize = cpu_to_le32(osize);
+		}
+		else {
+		    writebuf = ibuf;
+		    osize = isize;
+		    blksize = cpu_to_le32(isize | 0x80000000);
+		}
+		ret = fwrite(&blksize, 1, 4, ofp);
+		if (ret != 4 || ferror(ofp)) {
+			ret = -1;
+			goto out;
+		}
+		ret = fwrite(writebuf, 1, osize, ofp);
+		if ((uint32_t)ret != osize || ferror(ofp)) {
+			ret = -1;
+			goto out;
+		}
+	}
+	while (!feof(ifp));
+
+	ret = 0;
+
+out:
+	fclose(ofp);
+	fclose(ifp);
+	free(ibuf);
+	free(obuf);
+	return ret;
+}
+
 static struct {
 	const char *method;
 	int (*func)(const char *, const char *);
 }
 compress_table[] = {
 	{ "zlib", compress_file_zlib },
+	{ "lz4legacy", compress_file_lz4legacy },
 	{ "lz4", compress_file_lz4 },
 	{ NULL, NULL }
 };

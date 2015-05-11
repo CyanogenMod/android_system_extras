@@ -55,7 +55,7 @@ static void usage(char *path)
 	fprintf(stderr, "    [ -L <label> ] [ -f ] [ -a <android mountpoint> ]\n");
 	fprintf(stderr, "    [ -S file_contexts ] [ -C fs_config ] [ -T timestamp ]\n");
 	fprintf(stderr, "    [ -z | -s ] [ -w ] [ -c ] [ -J ] [ -v ] [ -B <block_list_file> ]\n");
-	fprintf(stderr, "    [-M <zlib|lz4> ]\n");
+	fprintf(stderr, "    [-M <zlib|lz4legacy|lz4> ]\n");
 	fprintf(stderr, "    <filename> [<directory>]\n");
 }
 
@@ -206,6 +206,7 @@ int main(int argc, char **argv)
 
 	if (xcomp_method &&
 	    strcmp(xcomp_method, "zlib") != 0 &&
+	    strcmp(xcomp_method, "lz4legacy") != 0 &&
 	    strcmp(xcomp_method, "lz4") != 0) {
 		fprintf(stderr, "Unrecognized compression method %s\n", xcomp_method);
 		usage(argv[0]);
