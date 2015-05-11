@@ -71,10 +71,6 @@ LOCAL_SHARED_LIBRARIES := \
 LOCAL_STATIC_LIBRARIES += liblz4-static
 LOCAL_C_INCLUDES += external/lz4/lib
 
-ifeq ($(BOARD_SUPPRESS_EMMC_WIPE),true)
-    LOCAL_CFLAGS += -DSUPPRESS_EMMC_WIPE
-endif
-
 include $(BUILD_SHARED_LIBRARY)
 
 
@@ -86,10 +82,6 @@ LOCAL_STATIC_LIBRARIES += \
     libselinux \
     libsparse_static
 LOCAL_C_INCLUDES += external/lz4/lib
-
-ifeq ($(BOARD_SUPPRESS_EMMC_WIPE),true)
-    LOCAL_CFLAGS += -DSUPPRESS_EMMC_WIPE
-endif
 
 include $(BUILD_STATIC_LIBRARY)
 
