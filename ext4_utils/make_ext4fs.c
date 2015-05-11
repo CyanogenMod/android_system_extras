@@ -155,144 +155,201 @@ static void free_tmp_files(void)
 	nr_tmp_filenames = 0;
 }
 
-#define ZBUFSIZE (64*1024)
-static int compress_file_zlib(const char *ifile, const char *ofile)
+static uint32_t compressbound_zlib(uint32_t len)
 {
-	FILE *ifp;
-	FILE* ofp;
+	uint32_t max;
 	z_stream strm;
-	unsigned char ibuf[ZBUFSIZE];
-	unsigned char obuf[ZBUFSIZE];
-	ssize_t len;
+
+	memset(&strm, 0, sizeof(strm));
+	deflateInit(&strm, Z_DEFAULT_COMPRESSION);
+	max = deflateBound(&strm, len);
+	deflateEnd(&strm);
+
+	return max;
+}
+
+static uint32_t compress_zlib(const unsigned char *ibuf, uint32_t isize,
+		unsigned char *obuf, uint32_t osize)
+{
+	z_stream strm;
 	int ret = -1;
-	int flush;
 
 	memset(&strm, 0, sizeof(strm));
 	ret = deflateInit(&strm, Z_DEFAULT_COMPRESSION);
-	if (ret != Z_OK)
-		return -1;
 
-	ifp = fopen(ifile, "r");
-	ofp = fopen(ofile, "wb");
-	if (!ifp || !ofp)
-		goto out;
+	strm.avail_in = isize;
+	strm.next_in = (unsigned char *)ibuf;
+	strm.avail_out = osize;
+	strm.next_out = (unsigned char *)obuf;
 
-	do {
-		strm.avail_in = fread(ibuf, 1, ZBUFSIZE, ifp);
-		strm.next_in = ibuf;
-		if (ferror(ifp)) {
-			ret = -1;
-			goto out;
-		}
-		flush = feof(ifp) ? Z_FINISH : Z_NO_FLUSH;
-		do {
-			strm.avail_out = ZBUFSIZE;
-			strm.next_out = obuf;
-			ret = deflate(&strm, flush);
-			if (ret == Z_STREAM_ERROR) {
-				ret = -1;
-				goto out;
-			}
-			ret = fwrite(obuf, 1, ZBUFSIZE - strm.avail_out, ofp);
-			if ((size_t)ret != ZBUFSIZE - strm.avail_out || ferror(ofp)) {
-				ret = -1;
-				goto out;
-			}
-		}
-		while (strm.avail_out == 0);
-	}
-	while (flush != Z_FINISH);
-
-	ret = 0;
-
-out:
+	ret = deflate(&strm, Z_FINISH);
 	deflateEnd(&strm);
-	fclose(ofp);
-	fclose(ifp);
-	return ret;
-}
-
-#define LZ4BUFSIZE (8*1024*1024)
-static const unsigned char lz4magic[4] = { 0x02, 0x21, 0x4c, 0x18 };
-static int compress_file_lz4(const char *ifile, const char *ofile)
-{
-	FILE *ifp;
-	FILE* ofp;
-	char *ibuf = NULL;
-	char *obuf = NULL;
-	uint32_t isize, osize;
-	uint32_t blksize;
-	ssize_t len;
-	int ret = -1;
-
-	ibuf = (char*)malloc(LZ4BUFSIZE);
-	obuf = (char*)malloc(LZ4_compressBound(LZ4BUFSIZE));
-	if (!ibuf || !obuf) {
-		fprintf(stderr, "Unable to allocate LZ4 buffers!");
-		free(ibuf);
-		free(obuf);
+	if (ret != Z_STREAM_END || strm.avail_in != 0) {
+		ret = -1;
 		return -1;
 	}
 
-	ifp = fopen(ifile, "r");
-	ofp = fopen(ofile, "wb");
-	if (!ifp || !ofp)
-		goto out;
-
-	ret = fwrite(lz4magic, 1, 4, ofp);
-	if (ret != 4 || ferror(ofp))
-		goto out;
-
-	do {
-		isize = fread(ibuf, 1, LZ4BUFSIZE, ifp);
-		if (ferror(ifp)) {
-			ret = -1;
-			goto out;
-		}
-		osize = LZ4_compressHC(ibuf, obuf, isize);
-		blksize = cpu_to_le32(osize);
-		ret = fwrite(&blksize, 1, 4, ofp);
-		if (ret != 4 || ferror(ofp)) {
-			ret = -1;
-			goto out;
-		}
-		ret = fwrite(obuf, 1, osize, ofp);
-		if ((uint32_t)ret != osize || ferror(ofp)) {
-			ret = -1;
-			goto out;
-		}
-	}
-	while (!feof(ifp));
-
-	ret = 0;
-
-out:
-	fclose(ofp);
-	fclose(ifp);
-	free(ibuf);
-	free(obuf);
-	return ret;
+	return strm.avail_out;
 }
 
-static struct {
-	const char *method;
-	int (*func)(const char *, const char *);
+static uint32_t compressbound_lz4(uint32_t len)
+{
+	return LZ4_compressBound(len);
 }
-compress_table[] = {
-	{ "zlib", compress_file_zlib },
-	{ "lz4", compress_file_lz4 },
-	{ NULL, NULL }
+
+static uint32_t compress_lz4(const unsigned char *ibuf, uint32_t isize,
+		unsigned char *obuf, uint32_t osize)
+{
+	return LZ4_compressHC((const char *)ibuf, (char *)obuf, isize);
+}
+
+struct compress_entry {
+	const char	*method;
+	int		method_index; /* Must match kernel */
+	unsigned char	blocksize;
+	uint32_t	(*compressbound)(uint32_t len);
+	uint32_t	(*compress)(const unsigned char *, uint32_t, unsigned char *, uint32_t);
 };
 
-static int compress_file(const char *method, const char *ifile, const char *ofile)
+static const struct compress_entry compress_table[] = {
+	{ "zlib", 1, 16, compressbound_zlib, compress_zlib },
+	{ "lz4",  2, 16, compressbound_lz4, compress_lz4 },
+	{ NULL, 0, 0, NULL, NULL }
+};
+
+static const struct compress_entry *find_compress_entry(const char *method)
 {
 	unsigned int idx;
 	for (idx = 0; compress_table[idx].method != NULL; ++idx) {
 		if (!strcmp(method, compress_table[idx].method)) {
-			return compress_table[idx].func(ifile, ofile);
+			return &compress_table[idx];
 		}
 	}
-	return -1;
+	return NULL;
+}
+
+#define XCOMP_BUFSIZE (64*1024)
+static const unsigned char xcomp_magic[4] = { 'z', 'z', 'z', 'z' };
+static int compress_file(const char *method, const char *ifile, const char *ofile)
+{
+	const struct compress_entry *ent;
+	int ifd, ofd;
+	struct stat st;
+	uint64_t orig_size;
+	unsigned char *ibuf = NULL;
+	unsigned char *obuf = NULL;
+	uint32_t blksize;
+	uint32_t nr_blocks;
+	uint32_t hdr_entlen;
+	uint32_t max_blksize;
+	uint32_t hdrlen;
+	unsigned char *hdrbuf;
+	unsigned char *writebuf;
+	unsigned char *hdr_ent;
+	uint32_t obufsize;
+	uint32_t isize, osize;
+	off_t ipos;
+	int ret = -1;
+
+	ent = find_compress_entry(method);
+	if (ent == NULL)
+		return -1;
+
+	unlink(ofile);
+	ifd = open(ifile, O_RDONLY);
+	ofd = open(ofile, O_WRONLY | O_CREAT, 0666);
+	if (ifd < 0 || ofd < 0)
+		goto out;
+
+	if (fstat(ifd, &st) != 0)
+		goto out;
+	orig_size = htole64(st.st_size);
+
+	obufsize = ent->compressbound(XCOMP_BUFSIZE);
+	ibuf = (unsigned char *)malloc(XCOMP_BUFSIZE);
+	obuf = (unsigned char *)malloc(obufsize);
+	if (!ibuf || !obuf) {
+		fprintf(stderr, "Unable to allocate compression buffers!\n");
+		goto out;
+	}
+
+	blksize = 1 << ent->blocksize;
+	nr_blocks = DIV_ROUND_UP(st.st_size, blksize);
+	hdr_entlen = (ent->blocksize > 16) ? 4 : 2;
+	max_blksize = (ent->blocksize > 16) ? 0xfffffffe : 0xfffe;
+	hdrlen = 12 + hdr_entlen * nr_blocks;
+	hdrbuf = (unsigned char *)malloc(hdrlen);
+	if (!hdrbuf) {
+		fprintf(stderr, "Unable to allocate header buffer!\n");
+		goto out;
+	}
+	memset(hdrbuf, 0, hdrlen);
+
+	memcpy(hdrbuf, xcomp_magic, 4);
+	hdrbuf[4] = ent->method_index | (0 << 4);
+	hdrbuf[5] = ent->blocksize;
+	memcpy(hdrbuf+6, &orig_size, 6);
+
+	ret = write(ofd, hdrbuf, hdrlen);
+	if (ret != (ssize_t)hdrlen) {
+		fprintf(stderr, "Unable to write header!\n");
+		goto out;
+	}
+
+	ipos = 0;
+	hdr_ent = hdrbuf + 12;
+	do {
+		uint32_t entval;
+		isize = min(blksize, st.st_size - ipos);
+		ret = read(ifd, ibuf, XCOMP_BUFSIZE);
+		if (ret != (ssize_t)isize) {
+			fprintf(stderr, "Unable to read input file!\n");
+			ret = -1;
+			goto out;
+		}
+		ipos += isize;
+		osize = ent->compress(ibuf, isize, obuf, obufsize);
+		if (osize < isize && osize < max_blksize) {
+			writebuf = obuf;
+			entval = cpu_to_le32(osize);
+		}
+		else {
+			writebuf = ibuf;
+			osize = isize;
+			entval = cpu_to_le32(0);
+		}
+		memcpy(hdr_ent, &entval, hdr_entlen);
+		hdr_ent += hdr_entlen;
+		ret = write(ofd, writebuf, osize);
+		if ((uint32_t)ret != osize) {
+			fprintf(stderr, "Unable to write output file\n!");
+			ret = -1;
+			goto out;
+		}
+	}
+	while (ipos != st.st_size);
+
+	ret = lseek(ofd, 0, SEEK_SET);
+	if (ret != 0) {
+		fprintf(stderr, "Unable to seek for header!\n");
+		ret = -1;
+		goto out;
+	}
+	ret = write(ofd, hdrbuf, hdrlen);
+	if (ret != hdrlen) {
+		fprintf(stderr, "Unable to write header!\n");
+		ret = -1;
+		goto out;
+	}
+
+	ret = 0;
+
+out:
+	close(ofd);
+	close(ifd);
+	free(ibuf);
+	free(obuf);
+	return ret;
 }
 
 /* Read a local directory and create the same tree in the generated filesystem.
@@ -497,17 +554,19 @@ static u32 build_directory_structure(const char *full_path, const char *dir_path
 		if (ret)
 			error("failed to set permissions on %s\n", dentries[i].path);
 
+		if (compress) {
+			ret = inode_set_extra_flags(entry_inode, EXT4_COMPR_FL);
+			if (ret)
+				error("failed to set EXT4_COMPR_FL on %s\n", dentries[i].path);
+		}
+
 		/*
-		 * It's important to call these functions in order.  Extended
-		 * attributes need to be stored sorted order, and we guarantee
-		 * this by making the calls in the proper order.
+		 * It's important to call inode_set_selinux() before
+		 * inode_set_capabilities(). Extended attributes need to
+		 * be stored sorted order, and we guarantee this by making
+		 * the calls in the proper order.
 		 * Please see xattr_assert_sane() in contents.c
 		 */
-		if (compress) {
-			ret = inode_set_compress(entry_inode, xcomp_method, dentries[i].size);
-			if (ret)
-				error("failed to set compression on %s\n", dentries[i].path);
-		}
 		ret = inode_set_selinux(entry_inode, dentries[i].secon);
 		if (ret)
 			error("failed to set SELinux context on %s\n", dentries[i].path);
