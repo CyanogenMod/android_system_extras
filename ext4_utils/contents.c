@@ -18,8 +18,6 @@
 #include <string.h>
 #include <stdio.h>
 
-#include <sys/xattr.h>
-
 #ifdef HAVE_ANDROID_OS
 #include <linux/capability.h>
 #else
@@ -263,6 +261,18 @@ int inode_set_permissions(u32 inode_num, u16 mode, u16 uid, u16 gid, u32 mtime)
 	return 0;
 }
 
+int inode_set_extra_flags(u32 inode_num, u32 flags)
+{
+	struct ext4_inode *inode = get_inode(inode_num);
+
+	if (!inode)
+		return -1;
+
+	inode->i_flags |= flags;
+
+	return 0;
+}
+
 /*
  * Returns the amount of free space available in the specified
  * xattr region
@@ -463,25 +473,6 @@ static int xattr_add(u32 inode_num, int name_index, const char *name,
 		result = xattr_addto_block(inode, name_index, name, value, value_len);
 	}
 	return result;
-}
-
-int inode_set_compress(u32 inode_num, const char *method, u64 realsize)
-{
-	char realsize_str[80];
-	int ret;
-
-	snprintf(realsize_str, sizeof(realsize_str),
-		 "%llu", (unsigned long long)realsize);
-	ret = xattr_add(inode_num, EXT4_XATTR_INDEX_USER,
-			"compression.method", method, strlen(method)+1);
-	if (ret)
-		return ret;
-	ret = xattr_add(inode_num, EXT4_XATTR_INDEX_USER,
-			"compression.realsize", realsize_str, strlen(realsize_str)+1);
-	if (ret)
-		return ret;
-
-	return 0;
 }
 
 int inode_set_selinux(u32 inode_num, const char *secon)
