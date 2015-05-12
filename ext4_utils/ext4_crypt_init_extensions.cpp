@@ -141,10 +141,15 @@ int e4crypt_set_directory_policy(const char* dir)
     if (!dir || strncmp(dir, "/data/", 6) || strchr(dir + 6, '/')) {
         return 0;
     }
+    // ext4enc:TODO exclude /data/user with a horrible special case.
+    if (!strcmp(dir, "/data/user")) {
+        return 0;
+    }
 
     UnencryptedProperties props("/data");
     std::string policy = props.Get<std::string>(properties::ref);
     if (policy.empty()) {
+        // ext4enc:TODO why is this OK?
         return 0;
     }
 
