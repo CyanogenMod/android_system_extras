@@ -42,6 +42,7 @@ class DumpRecordCommandImpl {
   void DumpFileHeader();
   void DumpAttrSection();
   void DumpDataSection();
+  void DumpFeatureSection();
 
   std::string record_filename_;
   std::unique_ptr<RecordFileReader> record_file_reader_;
@@ -60,6 +61,7 @@ bool DumpRecordCommandImpl::Run(const std::vector<std::string>& args) {
   DumpFileHeader();
   DumpAttrSection();
   DumpDataSection();
+  DumpFeatureSection();
 
   return true;
 }
@@ -159,6 +161,29 @@ void DumpRecordCommandImpl::DumpDataSection() {
   std::vector<std::unique_ptr<const Record>> records = record_file_reader_->DataSection();
   for (auto& record : records) {
     record->Dump();
+  }
+}
+
+void DumpRecordCommandImpl::DumpFeatureSection() {
+  std::vector<SectionDesc> sections = record_file_reader_->FeatureSectionDescriptors();
+  CHECK_EQ(sections.size(), features_.size());
+  for (size_t i = 0; i < features_.size(); ++i) {
+    int feature = features_[i];
+    SectionDesc& section = sections[i];
+    printf("feature section for %s: offset %" PRId64 ", size %" PRId64 "\n",
+           GetFeatureName(feature).c_str(), section.offset, section.size);
+    if (feature == FEAT_BUILD_ID) {
+      const char* p = record_file_reader_->DataAtOffset(section.offset);
+      const char* end = p + section.size;
+      while (p < end) {
+        const perf_event_header* header = reinterpret_cast<const perf_event_header*>(p);
+        CHECK_LE(p + header->size, end);
+        CHECK_EQ(PERF_RECORD_BUILD_ID, header->type);
+        BuildIdRecord record(header);
+        record.Dump(1);
+        p += header->size;
+      }
+    }
   }
 }
 

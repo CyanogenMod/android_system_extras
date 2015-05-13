@@ -303,6 +303,39 @@ void SampleRecord::DumpData(size_t indent) const {
   }
 }
 
+BuildIdRecord::BuildIdRecord(const perf_event_header* pheader) : Record(pheader) {
+  const char* p = reinterpret_cast<const char*>(pheader + 1);
+  const char* end = reinterpret_cast<const char*>(pheader) + pheader->size;
+  MoveFromBinaryFormat(pid, p);
+  std::copy_n(p, build_id.size(), build_id.begin());
+  p += ALIGN(build_id.size(), 8);
+  filename = p;
+  p += ALIGN(filename.size() + 1, 64);
+  CHECK_EQ(p, end);
+}
+
+void BuildIdRecord::DumpData(size_t indent) const {
+  PrintIndented(indent, "pid %u\n", pid);
+  PrintIndented(indent, "build_id 0x");
+  for (auto& c : build_id) {
+    printf("%02x", c);
+  }
+  printf("\n");
+  PrintIndented(indent, "filename %s\n", filename.c_str());
+}
+
+std::vector<char> BuildIdRecord::BinaryFormat() const {
+  std::vector<char> buf(header.size);
+  char* p = buf.data();
+  MoveToBinaryFormat(header, p);
+  MoveToBinaryFormat(pid, p);
+  memcpy(p, build_id.data(), build_id.size());
+  p += ALIGN(build_id.size(), 8);
+  strcpy(p, filename.c_str());
+  p += ALIGN(filename.size() + 1, 64);
+  return buf;
+}
+
 std::unique_ptr<const Record> ReadRecordFromBuffer(const perf_event_attr& attr,
                                                    const perf_event_header* pheader) {
   switch (pheader->type) {
@@ -348,5 +381,18 @@ CommRecord CreateCommRecord(const perf_event_attr& attr, uint32_t pid, uint32_t 
   size_t sample_id_size = record.sample_id.CreateContent(attr);
   record.header.size = sizeof(record.header) + sizeof(record.data) +
                        ALIGN(record.comm.size() + 1, 8) + sample_id_size;
+  return record;
+}
+
+BuildIdRecord CreateBuildIdRecord(bool in_kernel, pid_t pid, const BuildId& build_id,
+                                  const std::string& filename) {
+  BuildIdRecord record;
+  record.header.type = PERF_RECORD_BUILD_ID;
+  record.header.misc = (in_kernel ? PERF_RECORD_MISC_KERNEL : PERF_RECORD_MISC_USER);
+  record.pid = pid;
+  record.build_id = build_id;
+  record.filename = filename;
+  record.header.size = sizeof(record.header) + sizeof(record.pid) +
+                       ALIGN(record.build_id.size(), 8) + ALIGN(filename.size() + 1, 64);
   return record;
 }

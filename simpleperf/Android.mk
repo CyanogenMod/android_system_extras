@@ -18,10 +18,11 @@ LOCAL_PATH := $(call my-dir)
 
 simpleperf_common_cppflags := -std=c++11 -Wall -Wextra -Werror -Wunused
 
-simpleperf_common_static_libraries := \
+simpleperf_common_shared_libraries := \
   libbase \
-  libcutils \
-  liblog \
+  libLLVM \
+
+LLVM_ROOT_PATH := external/llvm
 
 libsimpleperf_src_files := \
   cmd_dumprecord.cpp \
@@ -35,6 +36,7 @@ libsimpleperf_src_files := \
   event_fd.cpp \
   event_selection_set.cpp \
   event_type.cpp \
+  read_elf.cpp \
   record.cpp \
   record_file.cpp \
   utils.cpp \
@@ -44,11 +46,13 @@ include $(CLEAR_VARS)
 LOCAL_CLANG := true
 LOCAL_CPPFLAGS := $(simpleperf_common_cppflags)
 LOCAL_SRC_FILES := $(libsimpleperf_src_files)
-LOCAL_STATIC_LIBRARIES := $(simpleperf_common_static_libraries)
+LOCAL_SHARED_LIBRARIES := $(simpleperf_common_shared_libraries)
 LOCAL_MODULE := libsimpleperf
 LOCAL_MODULE_TAGS := debug
 LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
+include $(LLVM_ROOT_PATH)/llvm.mk
+include $(LLVM_DEVICE_BUILD_MK)
 include $(BUILD_STATIC_LIBRARY)
 
 ifeq ($(HOST_OS),linux)
@@ -56,11 +60,13 @@ include $(CLEAR_VARS)
 LOCAL_CLANG := true
 LOCAL_CPPFLAGS := $(simpleperf_common_cppflags)
 LOCAL_SRC_FILES := $(libsimpleperf_src_files)
-LOCAL_STATIC_LIBRARIES := $(simpleperf_common_static_libraries)
+LOCAL_SHARED_LIBRARIES := $(simpleperf_common_shared_libraries)
 LOCAL_LDLIBS := -lrt
 LOCAL_MODULE := libsimpleperf
 LOCAL_MODULE_TAGS := optional
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
+include $(LLVM_ROOT_PATH)/llvm.mk
+include $(LLVM_HOST_BUILD_MK)
 include $(BUILD_HOST_STATIC_LIBRARY)
 endif
 
@@ -69,7 +75,7 @@ LOCAL_CLANG := true
 LOCAL_CPPFLAGS := $(simpleperf_common_cppflags)
 LOCAL_SRC_FILES := main.cpp
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
-LOCAL_STATIC_LIBRARIES := $(simpleperf_common_static_libraries)
+LOCAL_SHARED_LIBRARIES := $(simpleperf_common_shared_libraries)
 LOCAL_MODULE := simpleperf
 LOCAL_MODULE_TAGS := debug
 LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
@@ -82,7 +88,7 @@ LOCAL_CLANG := true
 LOCAL_CPPFLAGS := $(simpleperf_common_cppflags)
 LOCAL_SRC_FILES := main.cpp
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
-LOCAL_STATIC_LIBRARIES := $(simpleperf_common_static_libraries)
+LOCAL_SHARED_LIBRARIES := $(simpleperf_common_shared_libraries)
 LOCAL_LDLIBS := -lrt
 LOCAL_MODULE := simpleperf
 LOCAL_MODULE_TAGS := optional
@@ -107,7 +113,7 @@ LOCAL_CLANG := true
 LOCAL_CPPFLAGS := $(simpleperf_common_cppflags)
 LOCAL_SRC_FILES := $(simpleperf_unit_test_src_files)
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
-LOCAL_STATIC_LIBRARIES := $(simpleperf_common_static_libraries)
+LOCAL_SHARED_LIBRARIES := $(simpleperf_common_shared_libraries)
 LOCAL_MODULE := simpleperf_unit_test
 LOCAL_MODULE_TAGS := optional
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
@@ -119,7 +125,7 @@ LOCAL_CLANG := true
 LOCAL_CPPFLAGS := $(simpleperf_common_cppflags)
 LOCAL_SRC_FILES := $(simpleperf_unit_test_src_files)
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
-LOCAL_STATIC_LIBRARIES := $(simpleperf_common_static_libraries)
+LOCAL_SHARED_LIBRARIES := $(simpleperf_common_shared_libraries)
 LOCAL_MODULE := simpleperf_unit_test
 LOCAL_MODULE_TAGS := optional
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
