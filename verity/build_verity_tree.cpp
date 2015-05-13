@@ -16,6 +16,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <base/file.h>
+
 struct sparse_hash_ctx {
     unsigned char *hashes;
     const unsigned char *salt;
@@ -353,7 +355,9 @@ int main(int argc, char **argv)
     if (fd < 0) {
         FATAL("failed to open output file '%s'\n", verity_filename);
     }
-    write(fd, verity_tree, verity_blocks * block_size);
+    if (!android::base::WriteFully(fd, verity_tree, verity_blocks * block_size)) {
+        FATAL("failed to write '%s'\n", verity_filename);
+    }
     close(fd);
 
     delete[] verity_tree_levels;
