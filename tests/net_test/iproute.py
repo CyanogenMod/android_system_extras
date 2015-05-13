@@ -160,6 +160,7 @@ FRA_PRIORITY = 6
 FRA_FWMARK = 10
 FRA_SUPPRESS_PREFIXLEN = 14
 FRA_TABLE = 15
+FRA_FWMASK = 16
 FRA_OIFNAME = 17
 FRA_UID_START = 18
 FRA_UID_END = 19
@@ -185,6 +186,7 @@ IFLA_NUM_TX_QUEUES = 31
 IFLA_NUM_RX_QUEUES = 32
 IFLA_CARRIER = 33
 
+
 def CommandVerb(command):
   return ["NEW", "DEL", "GET", "SET"][command % 4]
 
@@ -196,7 +198,7 @@ def CommandSubject(command):
 def CommandName(command):
   try:
     return "RTM_%s%s" % (CommandVerb(command), CommandSubject(command))
-  except KeyError:
+  except IndexError:
     return "RTM_%d" % command
 
 
@@ -293,7 +295,7 @@ class IPRoute(object):
       # Don't know what this is. Leave it as an integer.
       name = nla_type
 
-    if name in ["FRA_PRIORITY", "FRA_FWMARK", "FRA_TABLE",
+    if name in ["FRA_PRIORITY", "FRA_FWMARK", "FRA_TABLE", "FRA_FWMASK",
                 "FRA_UID_START", "FRA_UID_END",
                 "RTA_OIF", "RTA_PRIORITY", "RTA_TABLE", "RTA_MARK",
                 "IFLA_MTU", "IFLA_TXQLEN", "IFLA_GROUP", "IFLA_EXT_MASK",
@@ -518,12 +520,10 @@ class IPRoute(object):
       self._ExpectDone()
     return out
 
-  def MaybeDebugCommand(self, command, data):
-    subject = CommandSubject(command)
-    if "ALL" not in self.NL_DEBUG and subject not in self.NL_DEBUG:
-      return
-    name = CommandName(command)
+  def CommandToString(self, command, data):
     try:
+      name = CommandName(command)
+      subject = CommandSubject(command)
       struct_type = {
           "ADDR": IfAddrMsg,
           "LINK": IfinfoMsg,
@@ -532,13 +532,23 @@ class IPRoute(object):
           "RULE": RTMsg,
       }[subject]
       parsed = self._ParseNLMsg(data, struct_type)
-      print "%s %s" % (name, str(parsed))
-    except KeyError:
+      return "%s %s" % (name, str(parsed))
+    except IndexError:
       raise ValueError("Don't know how to print command type %s" % name)
+
+  def MaybeDebugCommand(self, command, data):
+    subject = CommandSubject(command)
+    if "ALL" not in self.NL_DEBUG and subject not in self.NL_DEBUG:
+      return
+    print self.CommandToString(command, data)
 
   def MaybeDebugMessage(self, message):
     hdr = NLMsgHdr(message)
     self.MaybeDebugCommand(hdr.type, message)
+
+  def PrintMessage(self, message):
+    hdr = NLMsgHdr(message)
+    print self.CommandToString(hdr.type, message)
 
   def _Dump(self, command, msg, msgtype):
     """Sends a dump request and returns a list of decoded messages."""
@@ -672,7 +682,7 @@ class IPRoute(object):
     self._Neighbour(version, False, addr, lladdr, dev, 0)
 
   def DumpNeighbours(self, version):
-    ndmsg = NdMsg((0, 0, 0, 0, 0))
+    ndmsg = NdMsg((self._AddressFamily(version), 0, 0, 0, 0))
     return self._Dump(RTM_GETNEIGH, ndmsg, NdMsg)
 
 
