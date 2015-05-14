@@ -21,6 +21,8 @@
 #include "record.h"
 #include "record_file.h"
 
+using namespace PerfFileFormat;
+
 class RecordCommandTest : public ::testing::Test {
  protected:
   virtual void SetUp() {
@@ -73,4 +75,14 @@ TEST_F(RecordCommandTest, dump_kernel_mmap) {
     }
   }
   ASSERT_TRUE(have_kernel_mmap);
+}
+
+TEST_F(RecordCommandTest, dump_build_id_feature) {
+  ASSERT_TRUE(record_cmd->Run({"record", "sleep", "1"}));
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance("perf.data");
+  ASSERT_TRUE(reader != nullptr);
+  const FileHeader* file_header = reader->FileHeader();
+  ASSERT_TRUE(file_header != nullptr);
+  ASSERT_TRUE(file_header->features[FEAT_BUILD_ID / 8] & (1 << (FEAT_BUILD_ID % 8)));
+  ASSERT_GT(reader->FeatureSectionDescriptors().size(), 0u);
 }
