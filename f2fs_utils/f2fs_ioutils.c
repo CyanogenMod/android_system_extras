@@ -78,7 +78,6 @@ struct selabel_handle;
 
 #include <selinux/selinux.h>
 #include <selinux/label.h>
-#include <selinux/android.h>
 
 #define O_BINARY 0
 
