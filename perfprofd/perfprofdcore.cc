@@ -31,8 +31,10 @@
 #include <string>
 #include <sstream>
 #include <map>
+#include <set>
 #include <cctype>
 
+#include <base/stringprintf.h>
 #include <cutils/properties.h>
 
 #include "perfprofdcore.h"
@@ -482,7 +484,7 @@ inline char* string_as_array(std::string* str) {
 }
 
 PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
-                               const std::string &encoded_file_path)
+                               const char *encoded_file_path)
 {
   //
   // Open and read perf.data file
@@ -510,7 +512,7 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
   //
   // Open file and write encoded data to it
   //
-  FILE *fp = fopen(encoded_file_path.c_str(), "w");
+  FILE *fp = fopen(encoded_file_path, "w");
   if (!fp) {
     return ERR_OPEN_ENCODED_FILE_FAILED;
   }
@@ -520,8 +522,7 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
     return ERR_WRITE_ENCODED_FILE_FAILED;
   }
   fclose(fp);
-  chmod(encoded_file_path.c_str(),
-        S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+  chmod(encoded_file_path, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 
   return OK_PROFILE_COLLECTION;
 }
@@ -568,8 +569,8 @@ static PROFILE_RESULT invoke_perf(const std::string &perf_path,
 
     // -c N
     argv[slot++] = "-c";
-    char pbuf[64]; snprintf(pbuf, 64, "%u", sampling_period);
-    argv[slot++] = pbuf;
+    std::string p_str = android::base::StringPrintf("%u", sampling_period);
+    argv[slot++] = p_str.c_str();
 
     // -g if desired
     if (stack_profile_opt)
@@ -580,8 +581,8 @@ static PROFILE_RESULT invoke_perf(const std::string &perf_path,
 
     // sleep <duration>
     argv[slot++] = "/system/bin/sleep";
-    char dbuf[64]; snprintf(dbuf, 64, "%u", duration);
-    argv[slot++] = dbuf;
+    std::string d_str = android::base::StringPrintf("%u", duration);
+    argv[slot++] = d_str.c_str();
 
     // terminator
     argv[slot++] = nullptr;
@@ -620,11 +621,91 @@ static PROFILE_RESULT invoke_perf(const std::string &perf_path,
 }
 
 //
+// Remove all files in the destination directory during initialization
+//
+static void cleanup_destination_dir(const ConfigReader &config)
+{
+  std::string dest_dir = config.getStringValue("destination_directory");
+  DIR* dir = opendir(dest_dir.c_str());
+  if (dir != NULL) {
+    struct dirent* e;
+    while ((e = readdir(dir)) != 0) {
+      if (e->d_name[0] != '.') {
+        std::string file_path = dest_dir + "/" + e->d_name;
+        remove(file_path.c_str());
+      }
+    }
+    closedir(dir);
+  }
+}
+
+//
+// Post-processes after profile is collected and converted to protobuf.
+// * GMS core stores processed file sequence numbers in
+//   /data/data/com.google.android.gms/files/perfprofd_processed.txt
+// * Update /data/misc/perfprofd/perfprofd_produced.txt to remove the sequence
+//   numbers that have been processed and append the current seq number
+// Returns true if the current_seq should increment.
+//
+static bool post_process(const ConfigReader &config, int current_seq)
+{
+  std::string dest_dir = config.getStringValue("destination_directory");
+  std::string processed_file_path =
+      config.getStringValue("config_directory") + "/" + PROCESSED_FILENAME;
+  std::string produced_file_path = dest_dir + "/" + PRODUCED_FILENAME;
+
+
+  std::set<int> processed;
+  FILE *fp = fopen(processed_file_path.c_str(), "r");
+  if (fp != NULL) {
+    int seq;
+    while(fscanf(fp, "%d\n", &seq) > 0) {
+      if (remove(android::base::StringPrintf(
+          "%s/perf.data.encoded.%d", dest_dir.c_str(),seq).c_str()) == 0) {
+        processed.insert(seq);
+      }
+    }
+    fclose(fp);
+  }
+
+  std::set<int> produced;
+  fp = fopen(produced_file_path.c_str(), "r");
+  if (fp != NULL) {
+    int seq;
+    while(fscanf(fp, "%d\n", &seq) > 0) {
+      if (processed.find(seq) == processed.end()) {
+        produced.insert(seq);
+      }
+    }
+    fclose(fp);
+  }
+
+  if (produced.size() >= MAX_UNPROCESSED_FILE) {
+    return false;
+  }
+
+  produced.insert(current_seq);
+  fp = fopen(produced_file_path.c_str(), "w");
+  if (fp == NULL) {
+    W_ALOGW("Cannot write %s", produced_file_path.c_str());
+    return false;
+  }
+  for (std::set<int>::const_iterator iter = produced.begin();
+       iter != produced.end(); ++iter) {
+    fprintf(fp, "%d\n", *iter);
+  }
+  fclose(fp);
+  chmod(produced_file_path.c_str(),
+        S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+  return true;
+}
+
+//
 // Collect a perf profile. Steps for this operation are:
 // - kick off 'perf record'
 // - read perf.data, convert to protocol buf
 //
-static PROFILE_RESULT collect_profile(ConfigReader &config)
+static PROFILE_RESULT collect_profile(const ConfigReader &config, int seq)
 {
   //
   // Form perf.data file name, perf error output file name
@@ -687,9 +768,9 @@ static PROFILE_RESULT collect_profile(ConfigReader &config)
   // Read the resulting perf.data file, encode into protocol buffer, then write
   // the result to the file perf.data.encoded
   //
-  std::string encoded_file_path(data_file_path);
-  encoded_file_path += ".encoded";
-  return encode_to_proto(data_file_path, encoded_file_path);
+  std::string path = android::base::StringPrintf(
+      "%s.encoded.%d", data_file_path.c_str(), seq);
+  return encode_to_proto(data_file_path, path.c_str());
 }
 
 //
@@ -749,6 +830,7 @@ static void init(ConfigReader &config)
 {
   config.readFile();
   set_seed(config);
+  cleanup_destination_dir(config);
 
   char propBuf[PROPERTY_VALUE_MAX];
   propBuf[0] = '\0';
@@ -786,6 +868,7 @@ int perfprofd_main(int argc, char** argv)
   }
 
   unsigned iterations = 0;
+  int seq = 0;
   while(config.getUnsignedValue("main_loop_iterations") == 0 ||
         iterations < config.getUnsignedValue("main_loop_iterations")) {
 
@@ -811,11 +894,14 @@ int perfprofd_main(int argc, char** argv)
     } else {
       // Kick off the profiling run...
       W_ALOGI("initiating profile collection");
-      PROFILE_RESULT result = collect_profile(config);
+      PROFILE_RESULT result = collect_profile(config, seq);
       if (result != OK_PROFILE_COLLECTION) {
         W_ALOGI("profile collection failed (%s)",
                 profile_result_to_string(result));
       } else {
+        if (post_process(config, seq)) {
+          seq++;
+        }
         W_ALOGI("profile collection complete");
       }
     }
