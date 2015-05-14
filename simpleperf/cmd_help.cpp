@@ -39,10 +39,10 @@ class HelpCommand : public Command {
 };
 
 bool HelpCommand::Run(const std::vector<std::string>& args) {
-  if (args.empty()) {
+  if (args.size() == 1) {
     PrintShortHelp();
   } else {
-    Command* cmd = Command::FindCommandByName(args[0]);
+    Command* cmd = Command::FindCommandByName(args[1]);
     if (cmd == nullptr) {
       LOG(ERROR) << "malformed command line: can't find help string for unknown command " << args[0];
       LOG(ERROR) << "try using \"--help\"";

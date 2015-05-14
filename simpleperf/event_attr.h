@@ -24,46 +24,7 @@
 
 struct EventType;
 
-// EventAttr manages perf_event_attr, which provides detailed configuration information when
-// opening a perf_event_file. The configuration information tells the kernel how to count and
-// record events.
-class EventAttr {
- public:
-  static EventAttr CreateDefaultAttrToMonitorEvent(const EventType& event_type);
-
-  EventAttr(const perf_event_attr& attr) : attr_(attr) {
-  }
-
-  perf_event_attr Attr() const {
-    return attr_;
-  }
-
-  uint64_t SampleType() const {
-    return attr_.sample_type;
-  }
-
-  void EnableOnExec() {
-    attr_.enable_on_exec = 1;
-  }
-
-  void SetSampleFreq(uint64_t freq) {
-    attr_.freq = 1;
-    attr_.sample_freq = freq;
-  }
-
-  void SetSamplePeriod(uint64_t period) {
-    attr_.freq = 0;
-    attr_.sample_period = period;
-  }
-
-  void SetSampleAll() {
-    attr_.sample_id_all = 1;
-  }
-
-  void Dump(size_t indent = 0) const;
-
- private:
-  perf_event_attr attr_;
-};
+perf_event_attr CreateDefaultPerfEventAttr(const EventType& event_type);
+void DumpPerfEventAttr(const perf_event_attr& attr, size_t indent = 0);
 
 #endif  // SIMPLE_PERF_EVENT_ATTR_H_

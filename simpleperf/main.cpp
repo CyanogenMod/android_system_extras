@@ -26,11 +26,15 @@ int main(int argc, char** argv) {
   InitLogging(argv, android::base::StderrLogger);
   std::vector<std::string> args;
 
-  if (argc == 1 || (argc == 2 && strcmp(argv[1], "--help") == 0)) {
+  if (argc == 1) {
     args.push_back("help");
   } else {
     for (int i = 1; i < argc; ++i) {
-      args.push_back(argv[i]);
+      if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+        args.insert(args.begin(), "help");
+      } else {
+        args.push_back(argv[i]);
+      }
     }
   }
 
@@ -40,7 +44,6 @@ int main(int argc, char** argv) {
     return 1;
   }
   std::string command_name = args[0];
-  args.erase(args.begin());
 
   LOG(DEBUG) << "command '" << command_name << "' starts running";
   bool result = command->Run(args);
