@@ -24,6 +24,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include <base/stringprintf.h>
+
 #include "perfprofdcore.h"
 #include "perfprofdutils.h"
 #include "perfprofdmockutils.h"
@@ -53,11 +55,10 @@ static std::string dest_dir;
 // Temporary config file that we will emit for the daemon to read
 #define CONFIGFILE "perfprofd.conf"
 
-static std::string encoded_file_path()
+static std::string encoded_file_path(int seq)
 {
-  std::string path(dest_dir);
-  path += "/perf.data.encoded";
-  return path;
+  return android::base::StringPrintf("%s/perf.data.encoded.%d",
+                                     dest_dir.c_str(), seq);
 }
 
 class PerfProfdTest : public testing::Test {
@@ -147,6 +148,7 @@ class PerfProfdRunner {
 
   ~PerfProfdRunner()
   {
+    remove_processed_file();
   }
 
   void addToConfig(const std::string &line)
@@ -167,6 +169,22 @@ class PerfProfdRunner {
     std::string semaphore(test_dir);
     semaphore += "/" SEMAPHORE_FILENAME;
     close(open(semaphore.c_str(), O_WRONLY|O_CREAT));
+  }
+
+  void write_processed_file(int start_seq, int end_seq)
+  {
+    std::string processed = test_dir + "/" PROCESSED_FILENAME;
+    FILE *fp = fopen(processed.c_str(), "w");
+    for (int i = start_seq; i < end_seq; i++) {
+      fprintf(fp, "%d\n", i);
+    }
+    fclose(fp);
+  }
+
+  void remove_processed_file()
+  {
+    std::string processed = test_dir + "/" PROCESSED_FILENAME;
+    unlink(processed.c_str());
   }
 
   int invoke()
@@ -200,13 +218,13 @@ static void readEncodedProfile(const char *testpoint,
                                wireless_android_play_playlog::AndroidPerfProfile &encodedProfile)
 {
   struct stat statb;
-  int perf_data_stat_result = stat(encoded_file_path().c_str(), &statb);
+  int perf_data_stat_result = stat(encoded_file_path(0).c_str(), &statb);
   ASSERT_NE(-1, perf_data_stat_result);
 
   // read
   std::string encoded;
   encoded.resize(statb.st_size);
-  FILE *ifp = fopen(encoded_file_path().c_str(), "r");
+  FILE *ifp = fopen(encoded_file_path(0).c_str(), "r");
   ASSERT_NE(nullptr, ifp);
   size_t items_read = fread((void*) encoded.data(), statb.st_size, 1, ifp);
   ASSERT_EQ(1, items_read);
@@ -475,7 +493,7 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
 
   // Kick off encoder and check return code
   PROFILE_RESULT result =
-      encode_to_proto(input_perf_data, encoded_file_path());
+      encode_to_proto(input_perf_data, encoded_file_path(0).c_str());
   EXPECT_EQ(OK_PROFILE_COLLECTION, result);
 
   // Read and decode the resulting perf.data.encoded file
@@ -546,7 +564,7 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf)
   runner.addToConfig("main_loop_iterations=1");
   runner.addToConfig("use_fixed_seed=12345678");
   runner.addToConfig("collection_interval=9999");
-  runner.addToConfig("sample_duration=5");
+  runner.addToConfig("sample_duration=2");
 
   // Create semaphore file
   runner.create_semaphore_file();
@@ -574,6 +592,70 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf)
       I: initiating profile collection
       I: profile collection complete
       I: sleep 9325 seconds
+      I: finishing Android Wide Profiling daemon
+                                          );
+  // check to make sure log excerpt matches
+  compareLogMessages(mock_perfprofdutils_getlogged(),
+                     expected, "BasicRunWithLivePerf", true);
+}
+
+TEST_F(PerfProfdTest, MultipleRunWithLivePerf)
+{
+  //
+  // Basic test to exercise the main loop of the daemon. It includes
+  // a live 'perf' run
+  //
+  PerfProfdRunner runner;
+  runner.addToConfig("only_debug_build=0");
+  std::string ddparam("destination_directory="); ddparam += dest_dir;
+  runner.addToConfig(ddparam);
+  std::string cfparam("config_directory="); cfparam += test_dir;
+  runner.addToConfig(cfparam);
+  runner.addToConfig("main_loop_iterations=3");
+  runner.addToConfig("use_fixed_seed=12345678");
+  runner.addToConfig("collection_interval=9999");
+  runner.addToConfig("sample_duration=2");
+  runner.write_processed_file(1, 2);
+
+  // Create semaphore file
+  runner.create_semaphore_file();
+
+  // Kick off daemon
+  int daemon_main_return_code = runner.invoke();
+
+  // Check return code from daemon
+  EXPECT_EQ(0, daemon_main_return_code);
+
+  // Read and decode the resulting perf.data.encoded file
+  wireless_android_play_playlog::AndroidPerfProfile encodedProfile;
+  readEncodedProfile("BasicRunWithLivePerf", encodedProfile);
+
+  // Examine what we get back. Since it's a live profile, we can't
+  // really do much in terms of verifying the contents.
+  EXPECT_LT(0, encodedProfile.programs_size());
+
+  // Examine that encoded.1 file is removed while encoded.{0|2} exists.
+  EXPECT_EQ(0, access(encoded_file_path(0).c_str(), F_OK));
+  EXPECT_NE(0, access(encoded_file_path(1).c_str(), F_OK));
+  EXPECT_EQ(0, access(encoded_file_path(2).c_str(), F_OK));
+
+  // Verify log contents
+  const std::string expected = RAW_RESULT(
+      I: starting Android Wide Profiling daemon
+      I: config file path set to /data/nativetest/perfprofd_test/perfprofd.conf
+      I: random seed set to 12345678
+      I: sleep 674 seconds
+      I: initiating profile collection
+      I: profile collection complete
+      I: sleep 9325 seconds
+      I: sleep 4974 seconds
+      I: initiating profile collection
+      I: profile collection complete
+      I: sleep 5025 seconds
+      I: sleep 501 seconds
+      I: initiating profile collection
+      I: profile collection complete
+      I: sleep 9498 seconds
       I: finishing Android Wide Profiling daemon
                                           );
   // check to make sure log excerpt matches
