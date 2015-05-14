@@ -16,7 +16,7 @@
 
 #include <gtest/gtest.h>
 
-#include <command.h>
+#include "command.h"
 
 TEST(cmd_list, smoke) {
   Command* list_cmd = Command::FindCommandByName("list");
