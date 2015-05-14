@@ -32,7 +32,9 @@
 #ifndef USE_MINGW
 #include <selinux/selinux.h>
 #include <selinux/label.h>
+#if !defined(HOST)
 #include <selinux/android.h>
+#endif
 #else
 struct selabel_handle;
 #endif
