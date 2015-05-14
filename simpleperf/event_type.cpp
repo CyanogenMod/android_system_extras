@@ -61,8 +61,8 @@ const EventType* EventTypeFactory::FindEventTypeByName(const std::string& name,
     return nullptr;
   }
   if (!result->IsSupportedByKernel()) {
-    (report_unsupported_type ? LOG(ERROR) : LOG(DEBUG)) << "Event type '" << result->name
-                                                        << "' is not supported by the kernel";
+    (report_unsupported_type ? PLOG(ERROR) : PLOG(DEBUG)) << "Event type '" << result->name
+                                                          << "' is not supported by the kernel";
     return nullptr;
   }
   return result;

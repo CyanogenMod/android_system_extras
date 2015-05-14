@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 
+#include "build_id.h"
 #include "perf_event.h"
 
 struct KernelMmap;
@@ -129,8 +130,10 @@ struct MmapRecord : public Record {
   }
 
   MmapRecord(const perf_event_attr& attr, const perf_event_header* pheader);
-  void DumpData(size_t indent) const override;
   std::vector<char> BinaryFormat() const;
+
+ protected:
+  void DumpData(size_t indent) const override;
 };
 
 struct CommRecord : public Record {
@@ -143,8 +146,10 @@ struct CommRecord : public Record {
   }
 
   CommRecord(const perf_event_attr& attr, const perf_event_header* pheader);
-  void DumpData(size_t indent) const override;
   std::vector<char> BinaryFormat() const;
+
+ protected:
+  void DumpData(size_t indent) const override;
 };
 
 struct ExitRecord : public Record {
@@ -155,6 +160,8 @@ struct ExitRecord : public Record {
   } data;
 
   ExitRecord(const perf_event_attr& attr, const perf_event_header* pheader);
+
+ protected:
   void DumpData(size_t indent) const override;
 };
 
@@ -171,6 +178,24 @@ struct SampleRecord : public Record {
   PerfSamplePeriodType period_data;       // Valid if PERF_SAMPLE_PERIOD.
 
   SampleRecord(const perf_event_attr& attr, const perf_event_header* pheader);
+
+ protected:
+  void DumpData(size_t indent) const override;
+};
+
+// BuildIdRecord is defined in user-space, stored in BuildId feature section in record file.
+struct BuildIdRecord : public Record {
+  uint32_t pid;
+  BuildId build_id;
+  std::string filename;
+
+  BuildIdRecord() {
+  }
+
+  BuildIdRecord(const perf_event_header* pheader);
+  std::vector<char> BinaryFormat() const;
+
+ protected:
   void DumpData(size_t indent) const override;
 };
 
@@ -181,4 +206,6 @@ MmapRecord CreateMmapRecord(const perf_event_attr& attr, bool in_kernel, uint32_
                             const std::string& filename);
 CommRecord CreateCommRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid,
                             const std::string& comm);
+BuildIdRecord CreateBuildIdRecord(bool in_kernel, pid_t pid, const BuildId& build_id,
+                                  const std::string& filename);
 #endif  // SIMPLE_PERF_RECORD_H_

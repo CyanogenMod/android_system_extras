@@ -27,6 +27,7 @@
 #include <base/strings.h>
 #include <base/stringprintf.h>
 
+#include "read_elf.h"
 #include "utils.h"
 
 std::vector<int> GetOnlineCpus() {
@@ -345,4 +346,13 @@ bool GetThreadMmapsInProcess(pid_t pid, std::vector<ThreadMmap>* thread_mmaps) {
     thread_mmaps->push_back(thread);
   }
   return true;
+}
+
+bool GetKernelBuildId(BuildId* build_id) {
+  return GetBuildIdFromNoteFile("/sys/kernel/notes", build_id);
+}
+
+bool GetModuleBuildId(const std::string& module_name, BuildId* build_id) {
+  std::string notefile = "/sys/module/" + module_name + "/notes/.note.gnu.build-id";
+  return GetBuildIdFromNoteFile(notefile, build_id);
 }

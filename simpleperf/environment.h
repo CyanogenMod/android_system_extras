@@ -20,6 +20,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include "build_id.h"
 
 std::vector<int> GetOnlineCpus();
 
@@ -60,6 +61,11 @@ struct ThreadMmap {
 };
 
 bool GetThreadMmapsInProcess(pid_t pid, std::vector<ThreadMmap>* thread_mmaps);
+
+static const char* DEFAULT_KERNEL_FILENAME_FOR_BUILD_ID = "[kernel.kallsyms]";
+
+bool GetKernelBuildId(BuildId* build_id);
+bool GetModuleBuildId(const std::string& module_name, BuildId* build_id);
 
 // Expose the following functions for unit tests.
 std::vector<int> GetOnlineCpusFromString(const std::string& s);

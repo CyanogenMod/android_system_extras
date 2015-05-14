@@ -21,6 +21,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <set>
+#include <vector>
 
 #include <base/logging.h>
 
@@ -48,7 +49,14 @@ std::unique_ptr<RecordFileWriter> RecordFileWriter::CreateInstance(
 }
 
 RecordFileWriter::RecordFileWriter(const std::string& filename, FILE* fp)
-    : filename_(filename), record_fp_(fp), data_section_offset_(0), data_section_size_(0) {
+    : filename_(filename),
+      record_fp_(fp),
+      attr_section_offset_(0),
+      attr_section_size_(0),
+      data_section_offset_(0),
+      data_section_size_(0),
+      feature_count_(0),
+      current_feature_index_(0) {
 }
 
 RecordFileWriter::~RecordFileWriter() {
@@ -118,6 +126,152 @@ bool RecordFileWriter::Write(const void* buf, size_t len) {
     PLOG(ERROR) << "failed to write to record file '" << filename_ << "'";
     return false;
   }
+  return true;
+}
+
+void RecordFileWriter::GetHitModulesInBuffer(const char* p, const char* end,
+                                             std::vector<std::string>* hit_kernel_modules,
+                                             std::vector<std::string>* hit_user_files) {
+  std::vector<std::unique_ptr<const Record>> kernel_mmaps;
+  std::vector<std::unique_ptr<const Record>> user_mmaps;
+  std::set<std::string> hit_kernel_set;
+  std::set<std::string> hit_user_set;
+
+  while (p < end) {
+    auto header = reinterpret_cast<const perf_event_header*>(p);
+    CHECK_LE(p + header->size, end);
+    p += header->size;
+    std::unique_ptr<const Record> record = ReadRecordFromBuffer(event_attr_, header);
+    CHECK(record != nullptr);
+    if (record->header.type == PERF_RECORD_MMAP) {
+      if (record->header.misc & PERF_RECORD_MISC_KERNEL) {
+        kernel_mmaps.push_back(std::move(record));
+      } else {
+        user_mmaps.push_back(std::move(record));
+      }
+    } else if (record->header.type == PERF_RECORD_SAMPLE) {
+      auto& r = *static_cast<const SampleRecord*>(record.get());
+      if (!(r.sample_type & PERF_SAMPLE_IP) || !(r.sample_type & PERF_SAMPLE_TID)) {
+        continue;
+      }
+      uint32_t pid = r.tid_data.pid;
+      uint64_t ip = r.ip_data.ip;
+      if (r.header.misc & PERF_RECORD_MISC_KERNEL) {
+        // Loop from back to front, because new MmapRecords are inserted at the end of the mmaps,
+        // and we want to match the newest one.
+        for (auto it = kernel_mmaps.rbegin(); it != kernel_mmaps.rend(); ++it) {
+          auto& m_record = *reinterpret_cast<const MmapRecord*>(it->get());
+          if (ip >= m_record.data.addr && ip < m_record.data.addr + m_record.data.len) {
+            hit_kernel_set.insert(m_record.filename);
+            break;
+          }
+        }
+      } else {
+        for (auto it = user_mmaps.rbegin(); it != user_mmaps.rend(); ++it) {
+          auto& m_record = *reinterpret_cast<const MmapRecord*>(it->get());
+          if (pid == m_record.data.pid && ip >= m_record.data.addr &&
+              ip < m_record.data.addr + m_record.data.len) {
+            hit_user_set.insert(m_record.filename);
+            break;
+          }
+        }
+      }
+    }
+  }
+  hit_kernel_modules->clear();
+  hit_kernel_modules->insert(hit_kernel_modules->begin(), hit_kernel_set.begin(),
+                             hit_kernel_set.end());
+  hit_user_files->clear();
+  hit_user_files->insert(hit_user_files->begin(), hit_user_set.begin(), hit_user_set.end());
+}
+
+bool RecordFileWriter::GetHitModules(std::vector<std::string>* hit_kernel_modules,
+                                     std::vector<std::string>* hit_user_files) {
+  if (fflush(record_fp_) != 0) {
+    PLOG(ERROR) << "fflush() failed";
+    return false;
+  }
+  if (fseek(record_fp_, 0, SEEK_END) == -1) {
+    PLOG(ERROR) << "fseek() failed";
+    return false;
+  }
+  long file_size = ftell(record_fp_);
+  if (file_size == -1) {
+    PLOG(ERROR) << "ftell() failed";
+    return false;
+  }
+  size_t mmap_len = file_size;
+  void* mmap_addr = mmap(nullptr, mmap_len, PROT_READ, MAP_SHARED, fileno(record_fp_), 0);
+  if (mmap_addr == MAP_FAILED) {
+    PLOG(ERROR) << "mmap() failed";
+    return false;
+  }
+  const char* data_section_p = reinterpret_cast<const char*>(mmap_addr) + data_section_offset_;
+  const char* data_section_end = data_section_p + data_section_size_;
+  GetHitModulesInBuffer(data_section_p, data_section_end, hit_kernel_modules, hit_user_files);
+
+  if (munmap(mmap_addr, mmap_len) == -1) {
+    PLOG(ERROR) << "munmap() failed";
+    return false;
+  }
+  return true;
+}
+
+bool RecordFileWriter::WriteFeatureHeader(size_t feature_count) {
+  feature_count_ = feature_count;
+  current_feature_index_ = 0;
+  uint64_t feature_header_size = feature_count * sizeof(SectionDesc);
+
+  // Reserve enough space in the record file for the feature header.
+  std::vector<unsigned char> zero_data(feature_header_size);
+  if (fseek(record_fp_, data_section_offset_ + data_section_size_, SEEK_SET) == -1) {
+    PLOG(ERROR) << "fseek() failed";
+    return false;
+  }
+  return Write(zero_data.data(), zero_data.size());
+}
+
+bool RecordFileWriter::WriteBuildIdFeature(const std::vector<BuildIdRecord>& build_id_records) {
+  if (current_feature_index_ >= feature_count_) {
+    return false;
+  }
+  // Always write features at the end of the file.
+  if (fseek(record_fp_, 0, SEEK_END) == -1) {
+    PLOG(ERROR) << "fseek() failed";
+    return false;
+  }
+  long section_start = ftell(record_fp_);
+  if (section_start == -1) {
+    PLOG(ERROR) << "ftell() failed";
+    return false;
+  }
+  for (auto& record : build_id_records) {
+    std::vector<char> data = record.BinaryFormat();
+    if (!Write(data.data(), data.size())) {
+      return false;
+    }
+  }
+  long section_end = ftell(record_fp_);
+  if (section_end == -1) {
+    return false;
+  }
+
+  // Write feature section descriptor for build_id feature.
+  SectionDesc desc;
+  desc.offset = section_start;
+  desc.size = section_end - section_start;
+  uint64_t feature_offset = data_section_offset_ + data_section_size_;
+  if (fseek(record_fp_, feature_offset + current_feature_index_ * sizeof(SectionDesc), SEEK_SET) ==
+      -1) {
+    PLOG(ERROR) << "fseek() failed";
+    return false;
+  }
+  if (fwrite(&desc, sizeof(SectionDesc), 1, record_fp_) != 1) {
+    PLOG(ERROR) << "fwrite() failed";
+    return false;
+  }
+  ++current_feature_index_;
+  features_.push_back(FEAT_BUILD_ID);
   return true;
 }
 
@@ -258,6 +412,25 @@ std::vector<std::unique_ptr<const Record>> RecordFileReader::DataSection() {
       result.push_back(std::move(ReadRecordFromBuffer(attr, header)));
     }
     p += header->size;
+  }
+  return result;
+}
+
+std::vector<SectionDesc> RecordFileReader::FeatureSectionDescriptors() {
+  std::vector<SectionDesc> result;
+  const struct FileHeader* header = FileHeader();
+  size_t feature_count = 0;
+  for (size_t i = 0; i < sizeof(header->features); ++i) {
+    for (size_t j = 0; j < 8; ++j) {
+      if (header->features[i] & (1 << j)) {
+        ++feature_count;
+      }
+    }
+  }
+  uint64_t feature_section_offset = header->data.offset + header->data.size;
+  const SectionDesc* p = reinterpret_cast<const SectionDesc*>(mmap_addr_ + feature_section_offset);
+  for (size_t i = 0; i < feature_count; ++i) {
+    result.push_back(*p++);
   }
   return result;
 }
