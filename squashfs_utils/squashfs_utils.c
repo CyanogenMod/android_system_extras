@@ -58,6 +58,6 @@ int squashfs_parse_sb(char *blk_device, struct squashfs_info *info) {
         sb.bytes_used + (4096 - (sb.bytes_used & (4096 - 1)));
 
 cleanup:
-    TEMP_FAILURE_RETRY(close(data_device));
+    close(data_device);
     return ret;
 }
