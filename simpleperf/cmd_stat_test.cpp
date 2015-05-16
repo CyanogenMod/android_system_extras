@@ -44,3 +44,7 @@ TEST_F(StatCommandTest, system_wide_option) {
 TEST_F(StatCommandTest, verbose_option) {
   ASSERT_TRUE(stat_cmd->Run({"stat", "--verbose", "sleep", "1"}));
 }
+
+TEST_F(StatCommandTest, tracepoint_event) {
+  ASSERT_TRUE(stat_cmd->Run({"stat", "-a", "-e", "sched:sched_switch", "sleep", "1"}));
+}

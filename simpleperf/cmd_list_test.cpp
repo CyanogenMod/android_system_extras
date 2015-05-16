@@ -18,8 +18,24 @@
 
 #include "command.h"
 
-TEST(cmd_list, smoke) {
-  Command* list_cmd = Command::FindCommandByName("list");
-  ASSERT_TRUE(list_cmd != nullptr);
+class ListCommandTest : public ::testing::Test {
+ protected:
+  virtual void SetUp() {
+    list_cmd = Command::FindCommandByName("list");
+    ASSERT_TRUE(list_cmd != nullptr);
+  }
+
+  Command* list_cmd;
+};
+
+TEST_F(ListCommandTest, no_options) {
   ASSERT_TRUE(list_cmd->Run({"list"}));
+}
+
+TEST_F(ListCommandTest, one_option) {
+  ASSERT_TRUE(list_cmd->Run({"list", "sw"}));
+}
+
+TEST_F(ListCommandTest, multiple_options) {
+  ASSERT_TRUE(list_cmd->Run({"list", "hw", "tracepoint"}));
 }

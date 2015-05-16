@@ -27,16 +27,23 @@
 // the event type is supported by the kernel.
 
 struct EventType {
+  EventType(const std::string& name, uint32_t type, uint64_t config)
+      : name(name), type(type), config(config) {
+  }
+
+  EventType() : type(0), config(0) {
+  }
+
   bool IsSupportedByKernel() const;
 
-  const char* name;
+  std::string name;
   uint32_t type;
   uint64_t config;
 };
 
 class EventTypeFactory {
  public:
-  static const std::vector<const EventType>& GetAllEventTypes();
+  static const std::vector<EventType>& GetAllEventTypes();
   static const EventType* FindEventTypeByName(const std::string& name,
                                               bool report_unsupported_type = true);
   static const EventType* FindEventTypeByConfig(uint32_t type, uint64_t config);

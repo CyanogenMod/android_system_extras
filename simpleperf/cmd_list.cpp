@@ -15,6 +15,7 @@
  */
 
 #include <stdio.h>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -24,12 +25,12 @@
 #include "event_type.h"
 #include "perf_event.h"
 
-static void PrintEventTypesOfType(uint32_t type, const char* type_name,
-                                  const std::vector<const EventType>& event_types) {
-  printf("List of %s:\n", type_name);
+static void PrintEventTypesOfType(uint32_t type, const std::string& type_name,
+                                  const std::vector<EventType>& event_types) {
+  printf("List of %s:\n", type_name.c_str());
   for (auto& event_type : event_types) {
     if (event_type.type == type && event_type.IsSupportedByKernel()) {
-      printf("  %s\n", event_type.name);
+      printf("  %s\n", event_type.name.c_str());
     }
   }
   printf("\n");
@@ -38,8 +39,8 @@ static void PrintEventTypesOfType(uint32_t type, const char* type_name,
 class ListCommand : public Command {
  public:
   ListCommand()
-      : Command("list", "list all available perf events",
-                "Usage: simpleperf list\n"
+      : Command("list", "list available event types",
+                "Usage: simpleperf list [hw|sw|cache|tracepoint]\n"
                 "    List all available perf events on this machine.\n") {
   }
 
@@ -47,16 +48,35 @@ class ListCommand : public Command {
 };
 
 bool ListCommand::Run(const std::vector<std::string>& args) {
-  if (args.size() != 1) {
-    LOG(ERROR) << "malformed command line: list subcommand needs no argument";
-    LOG(ERROR) << "try using \"help list\"";
-    return false;
+  static std::map<std::string, std::pair<int, std::string>> type_map = {
+      {"hw", {PERF_TYPE_HARDWARE, "hardware events"}},
+      {"sw", {PERF_TYPE_SOFTWARE, "software events"}},
+      {"cache", {PERF_TYPE_HW_CACHE, "hw-cache events"}},
+      {"tracepoint", {PERF_TYPE_TRACEPOINT, "tracepoint events"}},
+  };
+
+  std::vector<std::string> names;
+  if (args.size() == 1) {
+    for (auto& item : type_map) {
+      names.push_back(item.first);
+    }
+  } else {
+    for (size_t i = 1; i < args.size(); ++i) {
+      if (type_map.find(args[i]) != type_map.end()) {
+        names.push_back(args[i]);
+      } else {
+        LOG(ERROR) << "unknown event type category: " << args[i] << ", try using \"help list\"";
+        return false;
+      }
+    }
   }
+
   auto& event_types = EventTypeFactory::GetAllEventTypes();
 
-  PrintEventTypesOfType(PERF_TYPE_HARDWARE, "hardware events", event_types);
-  PrintEventTypesOfType(PERF_TYPE_SOFTWARE, "software events", event_types);
-  PrintEventTypesOfType(PERF_TYPE_HW_CACHE, "hw-cache events", event_types);
+  for (auto& name : names) {
+    auto it = type_map.find(name);
+    PrintEventTypesOfType(it->second.first, it->second.second, event_types);
+  }
   return true;
 }
 

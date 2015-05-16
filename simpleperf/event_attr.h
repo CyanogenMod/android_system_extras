@@ -17,8 +17,7 @@
 #ifndef SIMPLE_PERF_EVENT_ATTR_H_
 #define SIMPLE_PERF_EVENT_ATTR_H_
 
-#include <stdint.h>
-#include <string>
+#include <stddef.h>
 
 #include "perf_event.h"
 

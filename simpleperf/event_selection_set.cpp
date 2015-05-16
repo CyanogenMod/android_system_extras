@@ -191,7 +191,7 @@ std::string EventSelectionSet::FindEventFileNameById(uint64_t id) {
 EventSelectionSet::EventSelection* EventSelectionSet::FindSelectionByType(
     const EventType& event_type) {
   for (auto& selection : selections_) {
-    if (strcmp(selection.event_type->name, event_type.name) == 0) {
+    if (selection.event_type->name == event_type.name) {
       return &selection;
     }
   }
