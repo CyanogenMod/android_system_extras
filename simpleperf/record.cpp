@@ -27,16 +27,11 @@
 
 static std::string RecordTypeToString(int record_type) {
   static std::unordered_map<int, std::string> record_type_names = {
-      {PERF_RECORD_MMAP, "mmap"},
-      {PERF_RECORD_LOST, "lost"},
-      {PERF_RECORD_COMM, "comm"},
-      {PERF_RECORD_EXIT, "exit"},
-      {PERF_RECORD_THROTTLE, "throttle"},
-      {PERF_RECORD_UNTHROTTLE, "unthrottle"},
-      {PERF_RECORD_FORK, "fork"},
-      {PERF_RECORD_READ, "read"},
-      {PERF_RECORD_SAMPLE, "sample"},
-      {PERF_RECORD_BUILD_ID, "build_id"},
+      {PERF_RECORD_MMAP, "mmap"},         {PERF_RECORD_LOST, "lost"},
+      {PERF_RECORD_COMM, "comm"},         {PERF_RECORD_EXIT, "exit"},
+      {PERF_RECORD_THROTTLE, "throttle"}, {PERF_RECORD_UNTHROTTLE, "unthrottle"},
+      {PERF_RECORD_FORK, "fork"},         {PERF_RECORD_READ, "read"},
+      {PERF_RECORD_SAMPLE, "sample"},     {PERF_RECORD_BUILD_ID, "build_id"},
   };
 
   auto it = record_type_names.find(record_type);

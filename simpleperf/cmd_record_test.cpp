@@ -86,3 +86,7 @@ TEST_F(RecordCommandTest, dump_build_id_feature) {
   ASSERT_TRUE(file_header->features[FEAT_BUILD_ID / 8] & (1 << (FEAT_BUILD_ID % 8)));
   ASSERT_GT(reader->FeatureSectionDescriptors().size(), 0u);
 }
+
+TEST_F(RecordCommandTest, tracepoint_event) {
+  ASSERT_TRUE(record_cmd->Run({"record", "-a", "-e", "sched:sched_switch", "sleep", "1"}));
+}
