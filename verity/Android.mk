@@ -105,3 +105,5 @@ LOCAL_STATIC_LIBRARIES := libsparse_host libz
 LOCAL_SHARED_LIBRARIES := libcrypto-host libbase
 LOCAL_CFLAGS += -Wall -Werror
 include $(BUILD_HOST_EXECUTABLE)
+
+include $(call first-makefiles-under,$(LOCAL_PATH))
