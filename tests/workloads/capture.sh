@@ -42,7 +42,7 @@ esac
 
 echo Capturing input for $DEVICE...
 stdbuf -o0 adb shell getevent -t |
-	stdbuf -o0 grep "event.: 0003" | 
+	stdbuf -o0 grep "event.: 0003" |
 	stdbuf -o0 grep "0003 003[0156a9]" |
 	stdbuf -o0 tr ':[]' ' ' | while read line
 do
@@ -52,7 +52,7 @@ do
 	case $code in
 	(0035) x=$(convert $value $xmax $xscale);;
 	(0036) y=$(convert $value $ymax $yscale);;
-	(0030) tag="majorTouch";; 
+	(0030) tag="majorTouch";;
 	(0031) tag="minorTouch";;
 	(003a) tag="pressure";;
 	(0039) tag="trackingId";;

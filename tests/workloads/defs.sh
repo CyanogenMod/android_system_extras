@@ -12,6 +12,7 @@ generateActivities=0
 gmailActivity='com.google.android.gm/com.google.android.gm.ConversationListActivityGmail'
 hangoutsActivity='com.google.android.talk/com.google.android.talk.SigningInActivity'
 chromeActivity='com.android.chrome/com.google.android.apps.chrome.ChromeTabbedActivity'
+chromeLActivity='com.android.chrome/com.google.android.apps.chrome.document.DocumentActivity'
 youtubeActivity='com.google.android.youtube/com.google.android.apps.youtube.app.WatchWhileActivity'
 cameraActivity='com.google.android.GoogleCamera/com.android.camera.CameraActivity'
 playActivity='com.android.vending/com.google.android.finsky.activities.MainActivity'
@@ -207,6 +208,10 @@ function getEndTime {
 	log2msec $(findtimestamp $f)
 }
 
+function resetJankyFrames {
+	${ADB}dumpsys gfxinfo $1 reset 2>&1 >/dev/null
+}
+
 function getJankyFrames {
 	if [ -z "$ADB" ]; then
 		# Note: no awk or sed on devices so have to do this
@@ -229,7 +234,7 @@ function getJankyFrames {
 		cat ./janky.$$
 		rm -f ./janky.$$
 	else
-		${ADB}dumpsys gfxinfo | sed -e 's///' | awk '
+		${ADB}dumpsys gfxinfo $1 | sed -e 's///' | awk '
 			BEGIN { total=0; janky=0; }
 			/Total frames/ { total+=$4; }
 			/Janky frames/ {  janky+=$3; }
@@ -318,7 +323,7 @@ function startActivityFromPackage {
 		return 0
 	fi
 	vout $AM_START_NOWAIT -p "$(getPackageName $1)" -c android.intent.category.LAUNCHER -a android.intent.action.MAIN
-	$AM_START_NOWAIT -p "$(getPackageName $1)" -c android.intent.category.LAUNCHER -a android.intent.action.MAIN 2>&1 
+	$AM_START_NOWAIT -p "$(getPackageName $1)" -c android.intent.category.LAUNCHER -a android.intent.action.MAIN 2>&1
 	echo 0
 }
 
@@ -327,15 +332,25 @@ function startActivity {
 		doKeyevent HOME
 		echo 0
 		return 0
+	elif [ "$1" = chromeL ]; then
+		vout $AM_START -p "$(getPackageName $1)" http://www.theverge.com
+		set -- $($AM_START -p "$(getPackageName $1)" http://www.theverge.com | grep ThisTime)
+	else
+		vout $AM_START "$(getActivityName $1)"
+		set -- $($AM_START "$(getActivityName $1)" | grep ThisTime)
 	fi
-	vout $AM_START "$(getActivityName $1)"
-	set -- $($AM_START "$(getActivityName $1)" | grep ThisTime)
 	echo $2 | tr "[\r]" "[\n]"
 }
 
 function forceStartActivity {
-	vout $AM_FORCE_START "$(getActivityName $1)"
-	set -- $($AM_FORCE_START "$(getActivityName $1)" | grep ThisTime)
+	if [ "$1" = chromeL ]; then
+		# force start doesn't work for chrome (hangs on startup)
+		startActivity $*
+		return 0
+	else
+		vout $AM_FORCE_START "$(getActivityName $1)"
+		set -- $($AM_FORCE_START "$(getActivityName $1)" | grep ThisTime)
+	fi
 	echo $2 | tr "[\r]" "[\n]"
 }
 
