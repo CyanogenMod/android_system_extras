@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Kernel configration options.
+# Kernel configuration options.
 OPTIONS=" IPV6 IPV6_ROUTER_PREF IPV6_MULTIPLE_TABLES IPV6_ROUTE_INFO"
 OPTIONS="$OPTIONS TUN SYN_COOKIES IP_ADVANCED_ROUTER IP_MULTIPLE_TABLES"
 OPTIONS="$OPTIONS NETFILTER NETFILTER_ADVANCED NETFILTER_XTABLES"
@@ -10,6 +10,9 @@ OPTIONS="$OPTIONS IP6_NF_IPTABLES IP6_NF_MANGLE INET6_IPCOMP"
 OPTIONS="$OPTIONS IPV6_PRIVACY IPV6_OPTIMISTIC_DAD"
 # For 3.1 kernels, where devtmpfs is not on by default.
 OPTIONS="$OPTIONS DEVTMPFS DEVTMPFS_MOUNT"
+
+# These two break the flo kernel due to differences in -Werror on recent GCC.
+DISABLE_OPTIONS=" CONFIG_REISERFS_FS CONFIG_ANDROID_PMEM"
 
 # How many tap interfaces to create.
 NUMTAPINTERFACES=2
@@ -71,6 +74,10 @@ done
 
 # Enable the kernel config options listed in $OPTIONS.
 cmdline=${OPTIONS// / -e }
+./scripts/config $cmdline
+
+# Disable the kernel config options listed in $DISABLE_OPTIONS.
+cmdline=${DISABLE_OPTIONS// / -d }
 ./scripts/config $cmdline
 
 # olddefconfig doesn't work on old kernels.
