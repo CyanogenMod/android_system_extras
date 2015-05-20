@@ -72,6 +72,8 @@ function computeStats {
 	t=$2
 	restart=$3
 	reclaim=$4
+	frames=$5
+	janks=$6
 	curMax=$(eval "echo \$${label}max")
 	curMax=${curMax:=0}
 	curMin=$(eval "echo \$${label}min")
@@ -82,6 +84,10 @@ function computeStats {
 	curRestart=${curRestart:=0}
 	curReclaim=$(eval "echo \$${label}reclaim")
 	curReclaim=${curReclaim:=0}
+	curFrames=$(eval "echo \$${label}frames")
+	curFrames=${curFrames:=0}
+	curJanks=$(eval "echo \$${label}janks")
+	curJanks=${curJanks:=0}
 	if [ $curMax -lt $t ]; then
 		eval "${label}max=$t"
 	fi
@@ -95,11 +101,16 @@ function computeStats {
 	eval "${label}restart=$curRestart"
 	((curReclaim=curReclaim+${reclaim:=0}))
 	eval "${label}reclaim=$curReclaim"
+	((curFrames=curFrames+${frames:=0}))
+	eval "${label}frames=$curFrames"
+	((curJanks=curJanks+${janks:=0}))
+	eval "${label}janks=$curJanks"
 }
 function getStats {
 	label=$1
 	echo $(eval "echo \$${label}max") $(eval "echo \$${label}min") $(eval "echo \$${label}sum") \
-		$(eval "echo \$${label}restart") $(eval "echo \$${label}reclaim")
+		$(eval "echo \$${label}restart") $(eval "echo \$${label}reclaim") \
+		$(eval "echo \$${label}frames") $(eval "echo \$${label}janks")
 }
 
 cur=1
@@ -115,7 +126,7 @@ do
 	fi
 	if [ $iterations -gt 1 -o $cur -eq 1 ]; then
 		if [ $totaltimetest -eq 0 ]; then
-			printf "%-6s    %7s(ms)  %6s(ms) %s %s %s\n" App  Time AmTime Restart DirReclaim
+			printf "%-6s    %7s(ms)  %6s(ms) %s %s %s %s\n" App  Time AmTime Restart DirReclaim JankyFrames
 		fi
 	fi
 
@@ -145,7 +156,14 @@ do
 		tmpTraceOut="$tmpTraceOutBase-$app.out"
 		>$tmpTraceOut
 		startInstramentation
+		resetJankyFrames $(getPackageName $app)
 		t=$(startActivity $app)
+		# let app finish drawing before checking janks
+		sleep 3
+		set -- $(getJankyFrames $(getPackageName $app))
+		frames=$1
+		janks=$2
+		((jankPct=100*janks/frames))
 		stopAndDumpInstramentation $tmpTraceOut
 		actName=$(getActivityName $app)
 		stime=$(getStartTime $actName $tmpTraceOut)
@@ -160,8 +178,8 @@ do
 		checkForDirectReclaim $actName $tmpTraceOut
 		directReclaim=$?
 
-		printf "%-12s %5d     %5d     %5d    %5d\n" "$app" "$tdiff" "$t" "$relaunch" "$directReclaim"
-		computeStats "$app" "$tdiff" "$relaunch" "$directReclaim"
+		printf "%-12s %5d     %5d     %5d    %5d    %5d(%d%%)\n" "$app" "$tdiff" "$t" "$relaunch" "$directReclaim" "$janks" "$jankPct"
+		computeStats "$app" "$tdiff" "$relaunch" "$directReclaim" "$frames" "$janks"
 
 		if [ $savetmpfiles -eq 0 ]; then
 			rm -f $tmpTraceOut
@@ -180,12 +198,15 @@ if [ $iterations -gt 1 -a $totaltimetest -eq 0 ]; then
 	echo =========================================
 	printf "Stats after $iterations iterations:\n"
 	echo =========================================
-	printf "%-6s    %7s(ms) %6s(ms) %6s(ms)    %s    %s %s\n" App Max Ave Min Restart DirReclaim
+	printf "%-6s    %7s(ms) %6s(ms) %6s(ms)    %s    %s %s %s\n" App Max Ave Min Restart DirReclaim JankyFrames
 	for app in $appList
 	do
 		set -- $(getStats $app)
 		sum=$3
 		((ave=sum/iterations))
-		printf "%-12s %5d      %5d      %5d      %5d      %5d\n" $app $1 $ave $2 $4 $5
+		frames=$6
+		janks=$7
+		((jankPct=100*janks/frames))
+		printf "%-12s %5d      %5d      %5d      %5d      %5d     %5d(%d%%)\n" $app $1 $ave $2 $4 $5 $janks $jankPct
 	done
 fi
