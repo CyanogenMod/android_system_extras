@@ -28,9 +28,6 @@
 // by perfprofd within the destination directory; consumed by GmsCore.
 #define PRODUCED_FILENAME "perfprofd_produced.txt"
 
-// Maximum number of encoded perf.data files stored in destination dir
-#define MAX_UNPROCESSED_FILE 10
-
 // Main routine for perfprofd daemon
 extern int perfprofd_main(int argc, char **argv);
 
