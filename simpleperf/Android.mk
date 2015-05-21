@@ -31,6 +31,7 @@ libsimpleperf_src_files := \
   cmd_help.cpp \
   cmd_list.cpp \
   cmd_record.cpp \
+  cmd_report.cpp \
   cmd_stat.cpp \
   command.cpp \
   environment.cpp \
@@ -41,6 +42,7 @@ libsimpleperf_src_files := \
   read_elf.cpp \
   record.cpp \
   record_file.cpp \
+  sample_tree.cpp \
   utils.cpp \
   workload.cpp \
 
@@ -102,6 +104,7 @@ simpleperf_unit_test_src_files := \
   cmd_dumprecord_test.cpp \
   cmd_list_test.cpp \
   cmd_record_test.cpp \
+  cmd_report_test.cpp \
   cmd_stat_test.cpp \
   command_test.cpp \
   cpu_offline_test.cpp \
@@ -109,6 +112,7 @@ simpleperf_unit_test_src_files := \
   gtest_main.cpp \
   record_file_test.cpp \
   record_test.cpp \
+  sample_tree_test.cpp \
   workload_test.cpp \
 
 include $(CLEAR_VARS)
