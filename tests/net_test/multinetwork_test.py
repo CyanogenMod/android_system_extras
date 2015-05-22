@@ -47,9 +47,6 @@ IPV6_MARK_REFLECT_SYSCTL = "/proc/sys/net/ipv6/fwmark_reflect"
 SYNCOOKIES_SYSCTL = "/proc/sys/net/ipv4/tcp_syncookies"
 TCP_MARK_ACCEPT_SYSCTL = "/proc/sys/net/ipv4/tcp_fwmark_accept"
 
-HAVE_MARK_REFLECT = os.path.isfile(IPV4_MARK_REFLECT_SYSCTL)
-HAVE_TCP_MARK_ACCEPT = os.path.isfile(TCP_MARK_ACCEPT_SYSCTL)
-
 # The IP[V6]UNICAST_IF socket option was added between 3.1 and 3.4.
 HAVE_UNICAST_IF = net_test.LINUX_VERSION >= (3, 4, 0)
 
@@ -581,27 +578,21 @@ class MarkTest(InboundMarkingTest):
   def SYNToClosedPort(self, *args):
     return Packets.SYN(999, *args)
 
-  @unittest.skipUnless(HAVE_MARK_REFLECT, "no mark reflection")
   def testIPv4ICMPErrorsReflectMark(self):
     self.CheckReflection(4, Packets.UDP, Packets.ICMPPortUnreachable)
 
-  @unittest.skipUnless(HAVE_MARK_REFLECT, "no mark reflection")
   def testIPv6ICMPErrorsReflectMark(self):
     self.CheckReflection(6, Packets.UDP, Packets.ICMPPortUnreachable)
 
-  @unittest.skipUnless(HAVE_MARK_REFLECT, "no mark reflection")
   def testIPv4PingRepliesReflectMarkAndTos(self):
     self.CheckReflection(4, Packets.ICMPEcho, Packets.ICMPReply)
 
-  @unittest.skipUnless(HAVE_MARK_REFLECT, "no mark reflection")
   def testIPv6PingRepliesReflectMarkAndTos(self):
     self.CheckReflection(6, Packets.ICMPEcho, Packets.ICMPReply)
 
-  @unittest.skipUnless(HAVE_MARK_REFLECT, "no mark reflection")
   def testIPv4RSTsReflectMark(self):
     self.CheckReflection(4, self.SYNToClosedPort, Packets.RST)
 
-  @unittest.skipUnless(HAVE_MARK_REFLECT, "no mark reflection")
   def testIPv6RSTsReflectMark(self):
     self.CheckReflection(6, self.SYNToClosedPort, Packets.RST)
 
@@ -723,9 +714,8 @@ class TCPAcceptTest(InboundMarkingTest):
 
           listenport = listensocket.getsockname()[1]
 
-          if HAVE_TCP_MARK_ACCEPT:
-            accept_sysctl = 1 if mode == self.MODE_INCOMING_MARK else 0
-            self._SetTCPMarkAcceptSysctl(accept_sysctl)
+          accept_sysctl = 1 if mode == self.MODE_INCOMING_MARK else 0
+          self._SetTCPMarkAcceptSysctl(accept_sysctl)
 
           bound_dev = iif if mode == self.MODE_BINDTODEVICE else None
           self.BindToDevice(listensocket, bound_dev)
@@ -756,11 +746,9 @@ class TCPAcceptTest(InboundMarkingTest):
     self.CheckTCP(4, [None, self.MODE_BINDTODEVICE, self.MODE_EXPLICIT_MARK])
     self.CheckTCP(6, [None, self.MODE_BINDTODEVICE, self.MODE_EXPLICIT_MARK])
 
-  @unittest.skipUnless(HAVE_TCP_MARK_ACCEPT, "fwmark writeback not supported")
   def testIPv4MarkAccept(self):
     self.CheckTCP(4, [self.MODE_INCOMING_MARK])
 
-  @unittest.skipUnless(HAVE_TCP_MARK_ACCEPT, "fwmark writeback not supported")
   def testIPv6MarkAccept(self):
     self.CheckTCP(6, [self.MODE_INCOMING_MARK])
 
@@ -975,7 +963,6 @@ class PMTUTest(InboundMarkingTest):
   # table the original packet used, and thus it won't be able to clone the
   # correct route.
 
-  @unittest.skipUnless(HAVE_MARK_REFLECT, "no mark reflection")
   def testIPv4UnmarkedSocketPMTU(self):
     self.SetMarkReflectSysctls(1)
     try:
@@ -983,7 +970,6 @@ class PMTUTest(InboundMarkingTest):
     finally:
       self.SetMarkReflectSysctls(0)
 
-  @unittest.skipUnless(HAVE_MARK_REFLECT, "no mark reflection")
   def testIPv6UnmarkedSocketPMTU(self):
     self.SetMarkReflectSysctls(1)
     try:
