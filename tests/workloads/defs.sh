@@ -11,8 +11,7 @@ generateActivities=0
 # default activities. Can dynamically generate with -g.
 gmailActivity='com.google.android.gm/com.google.android.gm.ConversationListActivityGmail'
 hangoutsActivity='com.google.android.talk/com.google.android.talk.SigningInActivity'
-chromeActivity='com.android.chrome/com.google.android.apps.chrome.ChromeTabbedActivity'
-chromeLActivity='com.android.chrome/com.google.android.apps.chrome.document.DocumentActivity'
+chromeActivity='com.android.chrome/com.google.android.apps.chrome.document.DocumentActivity'
 youtubeActivity='com.google.android.youtube/com.google.android.apps.youtube.app.WatchWhileActivity'
 cameraActivity='com.google.android.GoogleCamera/com.android.camera.CameraActivity'
 playActivity='com.android.vending/com.google.android.finsky.activities.MainActivity'
@@ -332,7 +331,7 @@ function startActivity {
 		doKeyevent HOME
 		echo 0
 		return 0
-	elif [ "$1" = chromeL ]; then
+	elif [ "$1" = chrome ]; then
 		vout $AM_START -p "$(getPackageName $1)" http://www.theverge.com
 		set -- $($AM_START -p "$(getPackageName $1)" http://www.theverge.com | grep ThisTime)
 	else
@@ -343,10 +342,9 @@ function startActivity {
 }
 
 function forceStartActivity {
-	if [ "$1" = chromeL ]; then
-		# force start doesn't work for chrome (hangs on startup)
-		startActivity $*
-		return 0
+	if [ "$1" = chrome ]; then
+		vout $AM_START -p "$(getPackageName $1)" http://www.theverge.com
+		set -- $($AM_FORCE_START -p "$(getPackageName $1)" http://www.theverge.com | grep ThisTime)
 	else
 		vout $AM_FORCE_START "$(getActivityName $1)"
 		set -- $($AM_FORCE_START "$(getActivityName $1)" | grep ThisTime)
