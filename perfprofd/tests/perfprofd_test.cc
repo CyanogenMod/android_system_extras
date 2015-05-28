@@ -304,7 +304,7 @@ TEST_F(PerfProfdTest, MissingGMS)
   //
   PerfProfdRunner runner;
   runner.addToConfig("only_debug_build=0");
-  runner.addToConfig("trace_config_read=1");
+  runner.addToConfig("trace_config_read=0");
   runner.addToConfig("config_directory=/does/not/exist");
   runner.addToConfig("main_loop_iterations=1");
   runner.addToConfig("use_fixed_seed=1");
@@ -563,6 +563,7 @@ TEST_F(PerfProfdTest, BasicRunWithLivePerf)
   runner.addToConfig(cfparam);
   runner.addToConfig("main_loop_iterations=1");
   runner.addToConfig("use_fixed_seed=12345678");
+  runner.addToConfig("max_unprocessed_profiles=100");
   runner.addToConfig("collection_interval=9999");
   runner.addToConfig("sample_duration=2");
 
