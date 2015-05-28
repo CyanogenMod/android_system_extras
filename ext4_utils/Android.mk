@@ -22,6 +22,8 @@ libext4_utils_src_files := \
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(libext4_utils_src_files)
 LOCAL_MODULE := libext4_utils_host
+# Various instances of dereferencing a type-punned pointer in extent.c
+LOCAL_CFLAGS += -fno-strict-aliasing
 LOCAL_STATIC_LIBRARIES := \
     libsparse_host \
     libz
@@ -63,6 +65,8 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(libext4_utils_src_files)
 LOCAL_MODULE := libext4_utils
 LOCAL_C_INCLUDES += system/core/logwrapper/include
+# Various instances of dereferencing a type-punned pointer in extent.c
+LOCAL_CFLAGS += -fno-strict-aliasing
 LOCAL_SHARED_LIBRARIES := \
     libcutils \
     libext2_uuid \
@@ -77,6 +81,8 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(libext4_utils_src_files) \
     ext4_crypt_init_extensions.cpp
 LOCAL_MODULE := libext4_utils_static
+# Various instances of dereferencing a type-punned pointer in extent.c
+LOCAL_CFLAGS += -fno-strict-aliasing
 LOCAL_STATIC_LIBRARIES := \
     libsparse_static
 include $(BUILD_STATIC_LIBRARY)
