@@ -23,5 +23,6 @@ LOCAL_SRC_FILES := socketTag.cpp
 LOCAL_SHARED_LIBRARIES += libcutils libutils liblog
 LOCAL_STATIC_LIBRARIES += libtestUtil
 LOCAL_C_INCLUDES += system/extras/tests/include
+LOCAL_CFLAGS += -fno-strict-aliasing
 
 include $(BUILD_NATIVE_TEST)
