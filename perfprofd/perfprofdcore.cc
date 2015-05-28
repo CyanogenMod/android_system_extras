@@ -106,11 +106,6 @@ static const char *config_file_path =
     "/data/data/com.google.android.gms/files/perfprofd.conf";
 
 //
-// Set by SIGHUP signal handler
-//
-volatile unsigned please_reread_config_file = 0;
-
-//
 // This table describes the config file syntax in terms of key/value pairs.
 // Values come in two flavors: strings, or unsigned integers. In the latter
 // case the reader sets allowable minimum/maximum for the setting.
@@ -126,7 +121,7 @@ class ConfigReader {
   std::string getStringValue(const char *key) const;
 
   // read the specified config file, applying any settings it contains
-  void readFile();
+  void readFile(bool initial);
 
  private:
   void addUnsignedEntry(const char *key,
@@ -163,7 +158,7 @@ void ConfigReader::addDefaultEntries()
   // set to 100, then over time we want to see a perf profile
   // collected every 100 seconds). The actual time within the interval
   // for the collection is chosen randomly.
-  addUnsignedEntry("collection_interval", 901, 100, UINT32_MAX);
+  addUnsignedEntry("collection_interval", 14400, 100, UINT32_MAX);
 
   // Use the specified fixed seed for random number generation (unit
   // testing)
@@ -204,6 +199,11 @@ void ConfigReader::addDefaultEntries()
   // 'hardwire_cpus_max_duration'.
   addUnsignedEntry("hardwire_cpus", 1, 0, 1);
   addUnsignedEntry("hardwire_cpus_max_duration", 5, 1, UINT32_MAX);
+
+  // Maximum number of unprocessed profiles we can accumulate in the
+  // destination directory. Once we reach this limit, we continue
+  // to collect, but we just overwrite the most recent profile.
+  addUnsignedEntry("max_unprocessed_profiles", 10, 1, UINT32_MAX);
 
   // If set to 1, pass the -g option when invoking 'perf' (requests
   // stack traces as opposed to flat profile).
@@ -323,11 +323,13 @@ static bool isblank(const std::string &line)
   return true;
 }
 
-void ConfigReader::readFile()
+void ConfigReader::readFile(bool initial)
 {
   FILE *fp = fopen(config_file_path, "r");
   if (!fp) {
-    W_ALOGE("unable to open configuration file %s", config_file_path);
+    if (initial) {
+      W_ALOGE("unable to open configuration file %s", config_file_path);
+    }
     return;
   }
 
@@ -636,6 +638,9 @@ static void cleanup_destination_dir(const ConfigReader &config)
       }
     }
     closedir(dir);
+  } else {
+    W_ALOGW("unable to open destination dir %s for cleanup",
+            dest_dir.c_str());
   }
 }
 
@@ -680,7 +685,8 @@ static bool post_process(const ConfigReader &config, int current_seq)
     fclose(fp);
   }
 
-  if (produced.size() >= MAX_UNPROCESSED_FILE) {
+  unsigned maxLive = config.getUnsignedValue("max_unprocessed_profiles");
+  if (produced.size() >= maxLive) {
     return false;
   }
 
@@ -774,12 +780,11 @@ static PROFILE_RESULT collect_profile(const ConfigReader &config, int seq)
 }
 
 //
-// SIGHUP handler. Sets a flag to indicate that we should reread the
-// config file
+// SIGHUP handler. Sending SIGHUP to the daemon can be used to break it
+// out of a sleep() call so as to trigger a new collection (debugging)
 //
 static void sig_hup(int /* signum */)
 {
-  please_reread_config_file = 1;
 }
 
 //
@@ -828,7 +833,7 @@ static void set_seed(ConfigReader &config)
 //
 static void init(ConfigReader &config)
 {
-  config.readFile();
+  config.readFile(true);
   set_seed(config);
   cleanup_destination_dir(config);
 
@@ -880,11 +885,9 @@ int perfprofd_main(int argc, char** argv)
                            config.getUnsignedValue("collection_interval"));
     perfprofd_sleep(sleep_before_collect);
 
-    // Reread config file if someone sent a SIGHUP
-    if (please_reread_config_file) {
-      config.readFile();
-      please_reread_config_file = 0;
-    }
+    // Reread config file -- the uploader may have rewritten it as a result
+    // of a gservices change
+    config.readFile(false);
 
     // Check for profiling enabled...
     CKPROFILE_RESULT ckresult = check_profiling_enabled(config);
