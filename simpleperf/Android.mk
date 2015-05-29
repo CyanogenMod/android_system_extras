@@ -102,6 +102,7 @@ simpleperf_unit_test_src_files := \
   cmd_record_test.cpp \
   cmd_stat_test.cpp \
   command_test.cpp \
+  cpu_offline_test.cpp \
   environment_test.cpp \
   gtest_main.cpp \
   record_file_test.cpp \
