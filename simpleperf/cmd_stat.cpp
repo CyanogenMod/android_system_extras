@@ -28,7 +28,6 @@
 #include "event_selection_set.h"
 #include "event_type.h"
 #include "perf_event.h"
-#include "utils.h"
 #include "workload.h"
 
 static std::vector<std::string> default_measured_event_types{
@@ -37,9 +36,19 @@ static std::vector<std::string> default_measured_event_types{
     "task-clock",   "context-switches",        "page-faults",
 };
 
-class StatCommandImpl {
+class StatCommand : public Command {
  public:
-  StatCommandImpl() : verbose_mode_(false), system_wide_collection_(false) {
+  StatCommand()
+      : Command("stat", "gather performance counter information",
+                "Usage: simpleperf stat [options] [command [command-args]]\n"
+                "    Gather performance counter information of running [command]. If [command]\n"
+                "    is not specified, sleep 1 is used instead.\n\n"
+                "    -a           Collect system-wide information.\n"
+                "    -e event1,event2,... Select the event list to count. Use `simpleperf list`\n"
+                "                         to find all possible event names.\n"
+                "    --verbose    Show result in verbose mode.\n"),
+        verbose_mode_(false),
+        system_wide_collection_(false) {
   }
 
   bool Run(const std::vector<std::string>& args);
@@ -56,7 +65,7 @@ class StatCommandImpl {
   bool system_wide_collection_;
 };
 
-bool StatCommandImpl::Run(const std::vector<std::string>& args) {
+bool StatCommand::Run(const std::vector<std::string>& args) {
   // 1. Parse options.
   std::vector<std::string> workload_args;
   if (!ParseOptions(args, &workload_args)) {
@@ -118,10 +127,10 @@ bool StatCommandImpl::Run(const std::vector<std::string>& args) {
   return true;
 }
 
-bool StatCommandImpl::ParseOptions(const std::vector<std::string>& args,
-                                   std::vector<std::string>* non_option_args) {
+bool StatCommand::ParseOptions(const std::vector<std::string>& args,
+                               std::vector<std::string>* non_option_args) {
   size_t i;
-  for (i = 1; i < args.size() && args[i].size() > 0 && args[i][0] == '-'; ++i) {
+  for (i = 0; i < args.size() && args[i].size() > 0 && args[i][0] == '-'; ++i) {
     if (args[i] == "-a") {
       system_wide_collection_ = true;
     } else if (args[i] == "-e") {
@@ -137,8 +146,7 @@ bool StatCommandImpl::ParseOptions(const std::vector<std::string>& args,
     } else if (args[i] == "--verbose") {
       verbose_mode_ = true;
     } else {
-      LOG(ERROR) << "Unknown option for stat command: " << args[i];
-      LOG(ERROR) << "Try `simpleperf help stat`";
+      ReportUnknownOption(args, i);
       return false;
     }
   }
@@ -152,8 +160,8 @@ bool StatCommandImpl::ParseOptions(const std::vector<std::string>& args,
   return true;
 }
 
-bool StatCommandImpl::AddMeasuredEventType(const std::string& event_type_name,
-                                           bool report_unsupported_type) {
+bool StatCommand::AddMeasuredEventType(const std::string& event_type_name,
+                                       bool report_unsupported_type) {
   const EventType* event_type =
       EventTypeFactory::FindEventTypeByName(event_type_name, report_unsupported_type);
   if (event_type == nullptr) {
@@ -163,7 +171,7 @@ bool StatCommandImpl::AddMeasuredEventType(const std::string& event_type_name,
   return true;
 }
 
-bool StatCommandImpl::AddDefaultMeasuredEventTypes() {
+bool StatCommand::AddDefaultMeasuredEventTypes() {
   for (auto& name : default_measured_event_types) {
     // It is not an error when some event types in the default list are not supported by the kernel.
     AddMeasuredEventType(name, false);
@@ -175,7 +183,7 @@ bool StatCommandImpl::AddDefaultMeasuredEventTypes() {
   return true;
 }
 
-bool StatCommandImpl::ShowCounters(
+bool StatCommand::ShowCounters(
     const std::map<const EventType*, std::vector<PerfCounter>>& counters_map,
     std::chrono::steady_clock::duration counting_duration) {
   printf("Performance counter statistics:\n\n");
@@ -218,26 +226,6 @@ bool StatCommandImpl::ShowCounters(
   return true;
 }
 
-class StatCommand : public Command {
- public:
-  StatCommand()
-      : Command("stat", "gather performance counter information",
-                "Usage: simpleperf stat [options] [command [command-args]]\n"
-                "    Gather performance counter information of running [command]. If [command]\n"
-                "    is not specified, sleep 1 is used instead.\n\n"
-                "    -a           Collect system-wide information.\n"
-                "    -e event1,event2,... Select the event list to count. Use `simpleperf list`\n"
-                "                         to find all possible event names.\n"
-                "    --verbose    Show result in verbose mode.\n") {
-  }
-
-  bool Run(const std::vector<std::string>& args) override {
-    // Keep the implementation in StatCommandImpl, so the resources used are cleaned up when the
-    // command finishes. This is useful when we need to call some commands multiple times, like
-    // in unit tests.
-    StatCommandImpl impl;
-    return impl.Run(args);
-  }
-};
-
-StatCommand stat_command;
+__attribute__((constructor)) static void RegisterStatCommand() {
+  RegisterCommand("stat", [] { return std::unique_ptr<Command>(new StatCommand); });
+}
