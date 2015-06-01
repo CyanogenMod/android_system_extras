@@ -17,6 +17,7 @@
 #ifndef _SQUASHFS_UTILS_H_
 #define _SQUASHFS_UTILS_H_
 
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -30,7 +31,9 @@ struct squashfs_info {
     uint64_t bytes_used_4K_padded;
 };
 
-int squashfs_parse_sb(char *blk_device, struct squashfs_info *info);
+size_t squashfs_get_sb_size();
+int squashfs_parse_sb_buffer(const void *data, struct squashfs_info *info);
+int squashfs_parse_sb(const char *blk_device, struct squashfs_info *info);
 
 #ifdef __cplusplus
 }

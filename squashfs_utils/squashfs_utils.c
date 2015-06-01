@@ -25,9 +25,39 @@
 
 #include "squashfs_fs.h"
 
+#ifdef SQUASHFS_NO_KLOG
+#include <stdio.h>
+#define ERROR(x...)   fprintf(stderr, x)
+#else
 #define ERROR(x...)   KLOG_ERROR("squashfs_utils", x)
+#endif
 
-int squashfs_parse_sb(char *blk_device, struct squashfs_info *info) {
+size_t squashfs_get_sb_size()
+{
+    return sizeof(struct squashfs_super_block);
+}
+
+int squashfs_parse_sb_buffer(const void *buf, struct squashfs_info *info)
+{
+    const struct squashfs_super_block *sb =
+        (const struct squashfs_super_block *)buf;
+
+    if (sb->s_magic != SQUASHFS_MAGIC) {
+        return -1;
+    }
+
+    info->block_size = sb->block_size;
+    info->inodes = sb->inodes;
+    info->bytes_used = sb->bytes_used;
+    // by default mksquashfs pads the filesystem to 4K blocks
+    info->bytes_used_4K_padded =
+        sb->bytes_used + (4096 - (sb->bytes_used & (4096 - 1)));
+
+    return 0;
+}
+
+int squashfs_parse_sb(const char *blk_device, struct squashfs_info *info)
+{
     int ret = 0;
     struct squashfs_super_block sb;
     int data_device;
@@ -44,18 +74,12 @@ int squashfs_parse_sb(char *blk_device, struct squashfs_info *info) {
         ret = -1;
         goto cleanup;
     }
-    if (sb.s_magic != SQUASHFS_MAGIC) {
+
+    if (squashfs_parse_sb_buffer(&sb, info) == -1) {
         ERROR("Not a valid squashfs filesystem\n");
         ret = -1;
         goto cleanup;
     }
-
-    info->block_size = sb.block_size;
-    info->inodes = sb.inodes;
-    info->bytes_used = sb.bytes_used;
-    // by default mksquashfs pads the filesystem to 4K blocks
-    info->bytes_used_4K_padded =
-        sb.bytes_used + (4096 - (sb.bytes_used & (4096 - 1)));
 
 cleanup:
     close(data_device);
