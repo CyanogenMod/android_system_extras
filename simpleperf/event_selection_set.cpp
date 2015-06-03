@@ -57,6 +57,25 @@ void EventSelectionSet::SetSamplePeriod(uint64_t sample_period) {
   }
 }
 
+bool EventSelectionSet::SetBranchSampling(uint64_t branch_sample_type) {
+  if (branch_sample_type != 0 &&
+      (branch_sample_type & (PERF_SAMPLE_BRANCH_ANY | PERF_SAMPLE_BRANCH_ANY_CALL |
+                             PERF_SAMPLE_BRANCH_ANY_RETURN | PERF_SAMPLE_BRANCH_IND_CALL)) == 0) {
+    LOG(ERROR) << "Invalid branch_sample_type: 0x" << std::hex << branch_sample_type;
+    return false;
+  }
+  for (auto& selection : selections_) {
+    perf_event_attr& attr = selection.event_attr;
+    if (branch_sample_type != 0) {
+      attr.sample_type |= PERF_SAMPLE_BRANCH_STACK;
+    } else {
+      attr.sample_type &= ~PERF_SAMPLE_BRANCH_STACK;
+    }
+    attr.branch_sample_type = branch_sample_type;
+  }
+  return true;
+}
+
 bool EventSelectionSet::OpenEventFilesForAllCpus() {
   std::vector<int> cpus = GetOnlineCpus();
   if (cpus.empty()) {
@@ -72,8 +91,8 @@ bool EventSelectionSet::OpenEventFilesForAllCpus() {
     // As the online cpus can be enabled or disabled at runtime, we may not open event file for
     // all cpus successfully. But we should open at least one cpu successfully.
     if (selection.event_fds.empty()) {
-      LOG(ERROR) << "failed to open perf event file for event_type " << selection.event_type->name
-                 << " on all cpus";
+      PLOG(ERROR) << "failed to open perf event file for event_type " << selection.event_type->name
+                  << " on all cpus";
       return false;
     }
   }
