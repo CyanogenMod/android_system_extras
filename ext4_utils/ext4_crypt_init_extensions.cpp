@@ -26,7 +26,7 @@ static std::string vold_command(std::string const& command)
     int sock = -1;
 
     while (true) {
-        sock = socket_local_client("vold",
+        sock = socket_local_client("cryptd",
                                    ANDROID_SOCKET_NAMESPACE_RESERVED,
                                    SOCK_STREAM);
         if (sock >= 0) {
