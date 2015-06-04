@@ -18,6 +18,7 @@
 #include <poll.h>
 #include <signal.h>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <base/logging.h>
@@ -35,12 +36,22 @@
 
 static std::string default_measured_event_type = "cpu-cycles";
 
+static std::unordered_map<std::string, uint64_t> branch_sampling_type_map = {
+    {"u", PERF_SAMPLE_BRANCH_USER},
+    {"k", PERF_SAMPLE_BRANCH_KERNEL},
+    {"any", PERF_SAMPLE_BRANCH_ANY},
+    {"any_call", PERF_SAMPLE_BRANCH_ANY_CALL},
+    {"any_ret", PERF_SAMPLE_BRANCH_ANY_RETURN},
+    {"ind_call", PERF_SAMPLE_BRANCH_IND_CALL},
+};
+
 class RecordCommandImpl {
  public:
   RecordCommandImpl()
       : use_sample_freq_(true),
         sample_freq_(1000),
         system_wide_collection_(false),
+        branch_sampling_(0),
         measured_event_type_(nullptr),
         perf_mmap_pages_(256),
         record_filename_("perf.data") {
@@ -59,7 +70,7 @@ class RecordCommandImpl {
  private:
   bool ParseOptions(const std::vector<std::string>& args, std::vector<std::string>* non_option_args);
   bool SetMeasuredEventType(const std::string& event_type_name);
-  void SetEventSelection();
+  bool SetEventSelection();
   bool WriteData(const char* data, size_t size);
   bool DumpKernelAndModuleMmaps();
   bool DumpThreadCommAndMmaps();
@@ -71,6 +82,7 @@ class RecordCommandImpl {
   uint64_t sample_period_;  // Sample once when 'sample_period_' events occur.
 
   bool system_wide_collection_;
+  uint64_t branch_sampling_;
   const EventType* measured_event_type_;
   EventSelectionSet event_selection_set_;
 
@@ -94,7 +106,9 @@ bool RecordCommandImpl::Run(const std::vector<std::string>& args) {
       return false;
     }
   }
-  SetEventSelection();
+  if (!SetEventSelection()) {
+    return false;
+  }
 
   // 2. Create workload.
   if (workload_args.empty()) {
@@ -178,6 +192,8 @@ bool RecordCommandImpl::ParseOptions(const std::vector<std::string>& args,
   for (i = 1; i < args.size() && args[i].size() > 0 && args[i][0] == '-'; ++i) {
     if (args[i] == "-a") {
       system_wide_collection_ = true;
+    } else if (args[i] == "-b") {
+      branch_sampling_ = branch_sampling_type_map["any"];
     } else if (args[i] == "-c") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -207,6 +223,19 @@ bool RecordCommandImpl::ParseOptions(const std::vector<std::string>& args,
         return false;
       }
       use_sample_freq_ = true;
+    } else if (args[i] == "-j") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      std::vector<std::string> branch_sampling_types = android::base::Split(args[i], ",");
+      for (auto& type : branch_sampling_types) {
+        auto it = branch_sampling_type_map.find(type);
+        if (it == branch_sampling_type_map.end()) {
+          LOG(ERROR) << "unrecognized branch sampling filter: " << type;
+          return false;
+        }
+        branch_sampling_ |= it->second;
+      }
     } else if (args[i] == "-o") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -237,7 +266,7 @@ bool RecordCommandImpl::SetMeasuredEventType(const std::string& event_type_name)
   return true;
 }
 
-void RecordCommandImpl::SetEventSelection() {
+bool RecordCommandImpl::SetEventSelection() {
   event_selection_set_.AddEventType(*measured_event_type_);
   if (use_sample_freq_) {
     event_selection_set_.SetSampleFreq(sample_freq_);
@@ -245,6 +274,10 @@ void RecordCommandImpl::SetEventSelection() {
     event_selection_set_.SetSamplePeriod(sample_period_);
   }
   event_selection_set_.SampleIdAll();
+  if (!event_selection_set_.SetBranchSampling(branch_sampling_)) {
+    return false;
+  }
+  return true;
 }
 
 bool RecordCommandImpl::WriteData(const char* data, size_t size) {
@@ -371,11 +404,24 @@ class RecordCommand : public Command {
                 "    Gather sampling information when running [command]. If [command]\n"
                 "    is not specified, sleep 1 is used instead.\n"
                 "    -a           System-wide collection.\n"
+                "    -b           Enable take branch stack sampling. Same as '-j any'\n"
                 "    -c count     Set event sample period.\n"
                 "    -e event     Select the event to sample (Use `simpleperf list`)\n"
                 "                 to find all possible event names.\n"
                 "    -f freq      Set event sample frequency.\n"
                 "    -F freq      Same as '-f freq'.\n"
+                "    -j branch_filter1,branch_filter2,...\n"
+                "                 Enable taken branch stack sampling. Each sample\n"
+                "                 captures a series of consecutive taken branches.\n"
+                "                 The following filters are defined:\n"
+                "                   any: any type of branch\n"
+                "                   any_call: any function call or system call\n"
+                "                   any_ret: any function return or system call return\n"
+                "                   ind_call: any indirect branch\n"
+                "                   u: only when the branch target is at the user level\n"
+                "                   k: only when the branch target is in the kernel\n"
+                "                 This option requires at least one branch type among any,\n"
+                "                 any_call, any_ret, ind_call.\n"
                 "    -o record_file_name    Set record file name, default is perf.data.\n") {
   }
 
