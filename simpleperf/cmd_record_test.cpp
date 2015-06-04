@@ -90,3 +90,11 @@ TEST_F(RecordCommandTest, dump_build_id_feature) {
 TEST_F(RecordCommandTest, tracepoint_event) {
   ASSERT_TRUE(record_cmd->Run({"record", "-a", "-e", "sched:sched_switch", "sleep", "1"}));
 }
+
+TEST_F(RecordCommandTest, branch_sampling) {
+  ASSERT_TRUE(record_cmd->Run({"record", "-a", "-b", "sleep", "1"}));
+  ASSERT_TRUE(record_cmd->Run({"record", "-j", "any,any_call,any_ret,ind_call", "sleep", "1"}));
+  ASSERT_TRUE(record_cmd->Run({"record", "-j", "any,k", "sleep", "1"}));
+  ASSERT_TRUE(record_cmd->Run({"record", "-j", "any,u", "sleep", "1"}));
+  ASSERT_FALSE(record_cmd->Run({"record", "-j", "u", "sleep", "1"}));
+}

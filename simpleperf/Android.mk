@@ -17,6 +17,8 @@
 LOCAL_PATH := $(call my-dir)
 
 simpleperf_common_cppflags := -std=c++11 -Wall -Wextra -Werror -Wunused
+simpleperf_use_bionic_perf_event_h_flag := -DUSE_BIONIC_PERF_EVENT_H -I bionic
+simpleperf_host_common_cppflags := $(simpleperf_common_cppflags) $(simpleperf_use_bionic_perf_event_h_flag)
 
 simpleperf_common_shared_libraries := \
   libbase \
@@ -58,7 +60,7 @@ include $(BUILD_STATIC_LIBRARY)
 ifeq ($(HOST_OS),linux)
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
-LOCAL_CPPFLAGS := $(simpleperf_common_cppflags)
+LOCAL_CPPFLAGS := $(simpleperf_host_common_cppflags)
 LOCAL_SRC_FILES := $(libsimpleperf_src_files)
 LOCAL_SHARED_LIBRARIES := $(simpleperf_common_shared_libraries)
 LOCAL_LDLIBS := -lrt
@@ -85,7 +87,7 @@ include $(BUILD_EXECUTABLE)
 ifeq ($(HOST_OS),linux)
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
-LOCAL_CPPFLAGS := $(simpleperf_common_cppflags)
+LOCAL_CPPFLAGS := $(simpleperf_host_common_cppflags)
 LOCAL_SRC_FILES := main.cpp
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
 LOCAL_SHARED_LIBRARIES := $(simpleperf_common_shared_libraries)
@@ -123,7 +125,7 @@ include $(BUILD_NATIVE_TEST)
 ifeq ($(HOST_OS),linux)
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
-LOCAL_CPPFLAGS := $(simpleperf_common_cppflags)
+LOCAL_CPPFLAGS := $(simpleperf_host_common_cppflags)
 LOCAL_SRC_FILES := $(simpleperf_unit_test_src_files)
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
 LOCAL_SHARED_LIBRARIES := $(simpleperf_common_shared_libraries)

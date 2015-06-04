@@ -68,6 +68,15 @@ struct PerfSamplePeriodType {
   uint64_t period;
 };
 
+struct PerfSampleBranchStackType {
+  struct BranchStackItemType {
+    uint64_t from;
+    uint64_t to;
+    uint64_t flags;
+  };
+  std::vector<BranchStackItemType> stack;
+};
+
 // SampleId is optional at the end of a record in binary format. Its content is determined by
 // sample_id_all and sample_type in perf_event_attr. To avoid the complexity of referring to
 // perf_event_attr each time, we copy sample_id_all and sample_type inside the SampleId structure.
@@ -176,6 +185,8 @@ struct SampleRecord : public Record {
   PerfSampleStreamIdType stream_id_data;  // Valid if PERF_SAMPLE_STREAM_ID.
   PerfSampleCpuType cpu_data;             // Valid if PERF_SAMPLE_CPU.
   PerfSamplePeriodType period_data;       // Valid if PERF_SAMPLE_PERIOD.
+
+  PerfSampleBranchStackType branch_stack_data;  // Valid if PERF_SAMPLE_BRANCH_STACK.
 
   SampleRecord(const perf_event_attr& attr, const perf_event_header* pheader);
 

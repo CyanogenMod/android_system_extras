@@ -48,6 +48,13 @@ void MoveFromBinaryFormat(T& data, const char*& p) {
 }
 
 template <class T>
+void MoveFromBinaryFormat(T* data_p, size_t n, const char*& p) {
+  size_t size = n * sizeof(T);
+  memcpy(data_p, p, size);
+  p += size;
+}
+
+template <class T>
 void MoveToBinaryFormat(const T& data, char*& p) {
   *reinterpret_cast<T*>(p) = data;
   p += sizeof(T);
@@ -263,6 +270,12 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, const perf_event_header*
   if (sample_type & PERF_SAMPLE_PERIOD) {
     MoveFromBinaryFormat(period_data, p);
   }
+  if (sample_type & PERF_SAMPLE_BRANCH_STACK) {
+    uint64_t nr;
+    MoveFromBinaryFormat(nr, p);
+    branch_stack_data.stack.resize(nr);
+    MoveFromBinaryFormat(branch_stack_data.stack.data(), nr, p);
+  }
   // TODO: Add parsing of other PERF_SAMPLE_*.
   CHECK_LE(p, end);
   if (p < end) {
@@ -295,6 +308,13 @@ void SampleRecord::DumpData(size_t indent) const {
   }
   if (sample_type & PERF_SAMPLE_PERIOD) {
     PrintIndented(indent, "period %" PRId64 "\n", period_data.period);
+  }
+  if (sample_type & PERF_SAMPLE_BRANCH_STACK) {
+    PrintIndented(indent, "branch_stack nr=%" PRIu64 "\n", branch_stack_data.stack.size());
+    for (auto& item : branch_stack_data.stack) {
+      PrintIndented(indent + 1, "from 0x%" PRIx64 ", to 0x%" PRIx64 ", flags 0x%" PRIx64 "\n",
+                    item.from, item.to, item.flags);
+    }
   }
 }
 
