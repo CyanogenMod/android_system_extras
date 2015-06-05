@@ -110,7 +110,7 @@ bool Workload::Start() {
   char exec_child_failed;
   ssize_t nread = TEMP_FAILURE_RETRY(read(exec_child_fd_, &exec_child_failed, 1));
   if (nread != 0) {
-    LOG(ERROR) << "exec child failed";
+    ((nread == -1) ? PLOG(ERROR) : LOG(ERROR)) << "exec child failed, nread = " << nread;
     return false;
   }
   work_state_ = Started;

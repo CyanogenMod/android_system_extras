@@ -20,7 +20,7 @@
 
 class MockCommand : public Command {
  public:
-  MockCommand(const std::string& name) : Command(name, name + "_short_help", name + "_long_help") {
+  MockCommand() : Command("mock", "mock_short_help", "mock_long_help") {
   }
 
   bool Run(const std::vector<std::string>&) override {
@@ -28,20 +28,18 @@ class MockCommand : public Command {
   }
 };
 
-TEST(command, FindCommandByName) {
-  ASSERT_EQ(Command::FindCommandByName("mock1"), nullptr);
-  {
-    MockCommand mock1("mock1");
-    ASSERT_EQ(Command::FindCommandByName("mock1"), &mock1);
-  }
-  ASSERT_EQ(Command::FindCommandByName("mock1"), nullptr);
+TEST(command, CreateCommandInstance) {
+  ASSERT_TRUE(CreateCommandInstance("mock1") == nullptr);
+  RegisterCommand("mock1", [] { return std::unique_ptr<Command>(new MockCommand); });
+  ASSERT_TRUE(CreateCommandInstance("mock1") != nullptr);
+  UnRegisterCommand("mock1");
+  ASSERT_TRUE(CreateCommandInstance("mock1") == nullptr);
 }
 
 TEST(command, GetAllCommands) {
-  size_t command_count = Command::GetAllCommands().size();
-  {
-    MockCommand mock1("mock1");
-    ASSERT_EQ(command_count + 1, Command::GetAllCommands().size());
-  }
-  ASSERT_EQ(command_count, Command::GetAllCommands().size());
+  size_t command_count = GetAllCommandNames().size();
+  RegisterCommand("mock1", [] { return std::unique_ptr<Command>(new MockCommand); });
+  ASSERT_EQ(command_count + 1, GetAllCommandNames().size());
+  UnRegisterCommand("mock1");
+  ASSERT_EQ(command_count, GetAllCommandNames().size());
 }

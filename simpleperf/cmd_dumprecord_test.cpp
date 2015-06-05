@@ -21,22 +21,22 @@
 class DumpRecordCommandTest : public ::testing::Test {
  protected:
   virtual void SetUp() {
-    record_cmd = Command::FindCommandByName("record");
+    record_cmd = CreateCommandInstance("record");
     ASSERT_TRUE(record_cmd != nullptr);
-    dumprecord_cmd = Command::FindCommandByName("dump");
+    dumprecord_cmd = CreateCommandInstance("dump");
     ASSERT_TRUE(dumprecord_cmd != nullptr);
   }
 
-  Command* record_cmd;
-  Command* dumprecord_cmd;
+  std::unique_ptr<Command> record_cmd;
+  std::unique_ptr<Command> dumprecord_cmd;
 };
 
 TEST_F(DumpRecordCommandTest, no_options) {
-  ASSERT_TRUE(record_cmd->Run({"record", "-a", "sleep", "1"}));
-  ASSERT_TRUE(dumprecord_cmd->Run({"dump"}));
+  ASSERT_TRUE(record_cmd->Run({"-a", "sleep", "1"}));
+  ASSERT_TRUE(dumprecord_cmd->Run({}));
 }
 
 TEST_F(DumpRecordCommandTest, record_file_option) {
-  ASSERT_TRUE(record_cmd->Run({"record", "-a", "-o", "perf2.data", "sleep", "1"}));
-  ASSERT_TRUE(dumprecord_cmd->Run({"dump", "perf2.data"}));
+  ASSERT_TRUE(record_cmd->Run({"-a", "-o", "perf2.data", "sleep", "1"}));
+  ASSERT_TRUE(dumprecord_cmd->Run({"perf2.data"}));
 }

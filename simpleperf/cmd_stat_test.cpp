@@ -21,30 +21,30 @@
 class StatCommandTest : public ::testing::Test {
  protected:
   virtual void SetUp() {
-    stat_cmd = Command::FindCommandByName("stat");
+    stat_cmd = CreateCommandInstance("stat");
     ASSERT_TRUE(stat_cmd != nullptr);
   }
 
  protected:
-  Command* stat_cmd;
+  std::unique_ptr<Command> stat_cmd;
 };
 
 TEST_F(StatCommandTest, no_options) {
-  ASSERT_TRUE(stat_cmd->Run({"stat", "sleep", "1"}));
+  ASSERT_TRUE(stat_cmd->Run({"sleep", "1"}));
 }
 
 TEST_F(StatCommandTest, event_option) {
-  ASSERT_TRUE(stat_cmd->Run({"stat", "-e", "cpu-clock,task-clock", "sleep", "1"}));
+  ASSERT_TRUE(stat_cmd->Run({"-e", "cpu-clock,task-clock", "sleep", "1"}));
 }
 
 TEST_F(StatCommandTest, system_wide_option) {
-  ASSERT_TRUE(stat_cmd->Run({"stat", "-a", "sleep", "1"}));
+  ASSERT_TRUE(stat_cmd->Run({"-a", "sleep", "1"}));
 }
 
 TEST_F(StatCommandTest, verbose_option) {
-  ASSERT_TRUE(stat_cmd->Run({"stat", "--verbose", "sleep", "1"}));
+  ASSERT_TRUE(stat_cmd->Run({"--verbose", "sleep", "1"}));
 }
 
 TEST_F(StatCommandTest, tracepoint_event) {
-  ASSERT_TRUE(stat_cmd->Run({"stat", "-a", "-e", "sched:sched_switch", "sleep", "1"}));
+  ASSERT_TRUE(stat_cmd->Run({"-a", "-e", "sched:sched_switch", "sleep", "1"}));
 }
