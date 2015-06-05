@@ -56,16 +56,16 @@ bool ListCommand::Run(const std::vector<std::string>& args) {
   };
 
   std::vector<std::string> names;
-  if (args.size() == 1) {
+  if (args.empty()) {
     for (auto& item : type_map) {
       names.push_back(item.first);
     }
   } else {
-    for (size_t i = 1; i < args.size(); ++i) {
-      if (type_map.find(args[i]) != type_map.end()) {
-        names.push_back(args[i]);
+    for (auto& arg : args) {
+      if (type_map.find(arg) != type_map.end()) {
+        names.push_back(arg);
       } else {
-        LOG(ERROR) << "unknown event type category: " << args[i] << ", try using \"help list\"";
+        LOG(ERROR) << "unknown event type category: " << arg << ", try using \"help list\"";
         return false;
       }
     }
@@ -80,4 +80,6 @@ bool ListCommand::Run(const std::vector<std::string>& args) {
   return true;
 }
 
-ListCommand list_command;
+__attribute__((constructor)) static void RegisterListCommand() {
+  RegisterCommand("list", [] { return std::unique_ptr<Command>(new ListCommand); });
+}

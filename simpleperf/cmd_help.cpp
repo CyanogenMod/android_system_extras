@@ -39,10 +39,10 @@ class HelpCommand : public Command {
 };
 
 bool HelpCommand::Run(const std::vector<std::string>& args) {
-  if (args.size() == 1) {
+  if (args.empty()) {
     PrintShortHelp();
   } else {
-    Command* cmd = Command::FindCommandByName(args[1]);
+    std::unique_ptr<Command> cmd = CreateCommandInstance(args[0]);
     if (cmd == nullptr) {
       LOG(ERROR) << "malformed command line: can't find help string for unknown command " << args[0];
       LOG(ERROR) << "try using \"--help\"";
@@ -56,8 +56,9 @@ bool HelpCommand::Run(const std::vector<std::string>& args) {
 
 void HelpCommand::PrintShortHelp() {
   printf("Usage: simpleperf [--help] subcommand [args_for_subcommand]\n\n");
-  for (auto& command : Command::GetAllCommands()) {
-    printf("%-20s%s\n", command->Name().c_str(), command->ShortHelpString().c_str());
+  for (auto& cmd_name : GetAllCommandNames()) {
+    std::unique_ptr<Command> cmd = CreateCommandInstance(cmd_name);
+    printf("%-20s%s\n", cmd_name.c_str(), cmd->ShortHelpString().c_str());
   }
 }
 
@@ -65,4 +66,6 @@ void HelpCommand::PrintLongHelpForOneCommand(const Command& command) {
   printf("%s\n", command.LongHelpString().c_str());
 }
 
-HelpCommand help_command;
+__attribute__((constructor)) static void RegisterHelpCommand() {
+  RegisterCommand("help", [] { return std::unique_ptr<Command>(new HelpCommand); });
+}

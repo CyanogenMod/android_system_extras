@@ -30,9 +30,13 @@
 
 using namespace PerfFileFormat;
 
-class DumpRecordCommandImpl {
+class DumpRecordCommand : public Command {
  public:
-  DumpRecordCommandImpl() : record_filename_("perf.data") {
+  DumpRecordCommand()
+      : Command("dump", "dump perf record file",
+                "Usage: simpleperf dumprecord [options] [perf_record_file]\n"
+                "    Dump different parts of a perf record file. Default file is perf.data.\n"),
+        record_filename_("perf.data") {
   }
 
   bool Run(const std::vector<std::string>& args);
@@ -50,7 +54,7 @@ class DumpRecordCommandImpl {
   std::vector<int> features_;
 };
 
-bool DumpRecordCommandImpl::Run(const std::vector<std::string>& args) {
+bool DumpRecordCommand::Run(const std::vector<std::string>& args) {
   if (!ParseOptions(args)) {
     return false;
   }
@@ -66,16 +70,19 @@ bool DumpRecordCommandImpl::Run(const std::vector<std::string>& args) {
   return true;
 }
 
-bool DumpRecordCommandImpl::ParseOptions(const std::vector<std::string>& args) {
-  if (args.size() == 2) {
-    record_filename_ = args[1];
+bool DumpRecordCommand::ParseOptions(const std::vector<std::string>& args) {
+  if (args.size() == 1) {
+    record_filename_ = args[0];
+  } else if (args.size() > 1) {
+    ReportUnknownOption(args, 1);
+    return false;
   }
   return true;
 }
 
 static const std::string GetFeatureName(int feature);
 
-void DumpRecordCommandImpl::DumpFileHeader() {
+void DumpRecordCommand::DumpFileHeader() {
   const FileHeader* header = record_file_reader_->FileHeader();
   printf("magic: ");
   for (size_t i = 0; i < 8; ++i) {
@@ -138,7 +145,7 @@ static const std::string GetFeatureName(int feature) {
   return android::base::StringPrintf("unknown_feature(%d)", feature);
 }
 
-void DumpRecordCommandImpl::DumpAttrSection() {
+void DumpRecordCommand::DumpAttrSection() {
   std::vector<const FileAttr*> attrs = record_file_reader_->AttrSection();
   for (size_t i = 0; i < attrs.size(); ++i) {
     auto& attr = attrs[i];
@@ -157,14 +164,14 @@ void DumpRecordCommandImpl::DumpAttrSection() {
   }
 }
 
-void DumpRecordCommandImpl::DumpDataSection() {
+void DumpRecordCommand::DumpDataSection() {
   std::vector<std::unique_ptr<const Record>> records = record_file_reader_->DataSection();
   for (auto& record : records) {
     record->Dump();
   }
 }
 
-void DumpRecordCommandImpl::DumpFeatureSection() {
+void DumpRecordCommand::DumpFeatureSection() {
   std::vector<SectionDesc> sections = record_file_reader_->FeatureSectionDescriptors();
   CHECK_EQ(sections.size(), features_.size());
   for (size_t i = 0; i < features_.size(); ++i) {
@@ -187,18 +194,6 @@ void DumpRecordCommandImpl::DumpFeatureSection() {
   }
 }
 
-class DumpRecordCommand : public Command {
- public:
-  DumpRecordCommand()
-      : Command("dump", "dump perf record file",
-                "Usage: simpleperf dumprecord [options] [perf_record_file]\n"
-                "    Dump different parts of a perf record file. Default file is perf.data.\n") {
-  }
-
-  bool Run(const std::vector<std::string>& args) override {
-    DumpRecordCommandImpl impl;
-    return impl.Run(args);
-  }
-};
-
-DumpRecordCommand dumprecord_cmd;
+__attribute__((constructor)) static void RegisterDumpRecordCommand() {
+  RegisterCommand("dump", [] { return std::unique_ptr<Command>(new DumpRecordCommand); });
+}

@@ -17,43 +17,54 @@
 #include "command.h"
 
 #include <algorithm>
+#include <map>
 #include <string>
 #include <vector>
 
-static std::vector<Command*>& Commands() {
+#include <base/logging.h>
+
+bool Command::NextArgumentOrError(const std::vector<std::string>& args, size_t* pi) {
+  if (*pi + 1 == args.size()) {
+    LOG(ERROR) << "No argument following " << args[*pi] << " option. Try `simpleperf help " << name_
+               << "`";
+    return false;
+  }
+  ++*pi;
+  return true;
+}
+
+void Command::ReportUnknownOption(const std::vector<std::string>& args, size_t i) {
+  LOG(ERROR) << "Unknown option for " << name_ << " command: '" << args[i]
+             << "'. Try `simpleperf help " << name_ << "`";
+}
+
+typedef std::function<std::unique_ptr<Command>(void)> callback_t;
+
+static std::map<std::string, callback_t>& CommandMap() {
   // commands is used in the constructor of Command. Defining it as a static
   // variable in a function makes sure it is initialized before use.
-  static std::vector<Command*> commands;
-  return commands;
+  static std::map<std::string, callback_t> command_map;
+  return command_map;
 }
 
-Command* Command::FindCommandByName(const std::string& cmd_name) {
-  for (auto& command : Commands()) {
-    if (command->Name() == cmd_name) {
-      return command;
-    }
+void RegisterCommand(const std::string& cmd_name,
+                     std::function<std::unique_ptr<Command>(void)> callback) {
+  CommandMap().insert(std::make_pair(cmd_name, callback));
+}
+
+void UnRegisterCommand(const std::string& cmd_name) {
+  CommandMap().erase(cmd_name);
+}
+
+std::unique_ptr<Command> CreateCommandInstance(const std::string& cmd_name) {
+  auto it = CommandMap().find(cmd_name);
+  return (it == CommandMap().end()) ? nullptr : (it->second)();
+}
+
+const std::vector<std::string> GetAllCommandNames() {
+  std::vector<std::string> names;
+  for (auto pair : CommandMap()) {
+    names.push_back(pair.first);
   }
-  return nullptr;
-}
-
-static bool CompareCommandByName(Command* cmd1, Command* cmd2) {
-  return cmd1->Name() < cmd2->Name();
-}
-
-const std::vector<Command*>& Command::GetAllCommands() {
-  std::sort(Commands().begin(), Commands().end(), CompareCommandByName);
-  return Commands();
-}
-
-void Command::RegisterCommand(Command* cmd) {
-  Commands().push_back(cmd);
-}
-
-void Command::UnRegisterCommand(Command* cmd) {
-  for (auto it = Commands().begin(); it != Commands().end(); ++it) {
-    if (*it == cmd) {
-      Commands().erase(it);
-      break;
-    }
-  }
+  return names;
 }

@@ -38,12 +38,13 @@ int main(int argc, char** argv) {
     }
   }
 
-  Command* command = Command::FindCommandByName(args[0]);
+  std::unique_ptr<Command> command = CreateCommandInstance(args[0]);
   if (command == nullptr) {
     LOG(ERROR) << "malformed command line: unknown command " << args[0];
     return 1;
   }
   std::string command_name = args[0];
+  args.erase(args.begin());
 
   LOG(DEBUG) << "command '" << command_name << "' starts running";
   bool result = command->Run(args);

@@ -17,6 +17,8 @@
 #ifndef SIMPLE_PERF_COMMAND_H_
 #define SIMPLE_PERF_COMMAND_H_
 
+#include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -27,11 +29,9 @@ class Command {
   Command(const std::string& name, const std::string& short_help_string,
           const std::string& long_help_string)
       : name_(name), short_help_string_(short_help_string), long_help_string_(long_help_string) {
-    RegisterCommand(this);
   }
 
   virtual ~Command() {
-    UnRegisterCommand(this);
   }
 
   const std::string& Name() const {
@@ -48,18 +48,22 @@ class Command {
 
   virtual bool Run(const std::vector<std::string>& args) = 0;
 
-  static Command* FindCommandByName(const std::string& cmd_name);
-  static const std::vector<Command*>& GetAllCommands();
+ protected:
+  bool NextArgumentOrError(const std::vector<std::string>& args, size_t* pi);
+  void ReportUnknownOption(const std::vector<std::string>& args, size_t i);
 
  private:
   const std::string name_;
   const std::string short_help_string_;
   const std::string long_help_string_;
 
-  static void RegisterCommand(Command* cmd);
-  static void UnRegisterCommand(Command* cmd);
-
   DISALLOW_COPY_AND_ASSIGN(Command);
 };
+
+void RegisterCommand(const std::string& cmd_name,
+                     std::function<std::unique_ptr<Command>(void)> callback);
+void UnRegisterCommand(const std::string& cmd_name);
+std::unique_ptr<Command> CreateCommandInstance(const std::string& cmd_name);
+const std::vector<std::string> GetAllCommandNames();
 
 #endif  // SIMPLE_PERF_COMMAND_H_
