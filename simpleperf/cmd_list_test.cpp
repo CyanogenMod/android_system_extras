@@ -21,21 +21,21 @@
 class ListCommandTest : public ::testing::Test {
  protected:
   virtual void SetUp() {
-    list_cmd = Command::FindCommandByName("list");
+    list_cmd = CreateCommandInstance("list");
     ASSERT_TRUE(list_cmd != nullptr);
   }
 
-  Command* list_cmd;
+  std::unique_ptr<Command> list_cmd;
 };
 
 TEST_F(ListCommandTest, no_options) {
-  ASSERT_TRUE(list_cmd->Run({"list"}));
+  ASSERT_TRUE(list_cmd->Run({}));
 }
 
 TEST_F(ListCommandTest, one_option) {
-  ASSERT_TRUE(list_cmd->Run({"list", "sw"}));
+  ASSERT_TRUE(list_cmd->Run({"sw"}));
 }
 
 TEST_F(ListCommandTest, multiple_options) {
-  ASSERT_TRUE(list_cmd->Run({"list", "hw", "tracepoint"}));
+  ASSERT_TRUE(list_cmd->Run({"hw", "tracepoint"}));
 }

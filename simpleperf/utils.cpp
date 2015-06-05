@@ -36,16 +36,6 @@ bool IsPowerOfTwo(uint64_t value) {
   return (value != 0 && ((value & (value - 1)) == 0));
 }
 
-bool NextArgumentOrError(const std::vector<std::string>& args, size_t* pi) {
-  if (*pi + 1 == args.size()) {
-    LOG(ERROR) << "No argument following " << args[*pi] << " option. Try `simpleperf help "
-               << args[0] << "`";
-    return false;
-  }
-  ++*pi;
-  return true;
-}
-
 void GetEntriesInDir(const std::string& dirpath, std::vector<std::string>* files,
                      std::vector<std::string>* subdirs) {
   if (files != nullptr) {
