@@ -5,12 +5,24 @@
 
 # do a throw-away adb in case the server is out-of-date
 adb devices -l 2>&1 >/dev/null
-devInfo=$(adb devices -l | grep -v ^List | head -1)
 
-set -- $devInfo
-echo devInfo=$devInfo
+while [ $# -gt 0 ]
+do
+	case "$1" in
+	(-d) DEVICE=$2; shift;;
+	(*)
+		echo Unknown option $1
+		exit 1;;
+	esac
+	shift
+done
 
-DEVICE=$(echo $4 | sed 's/product://')
+if [ "$DEVICE" = "" ]; then
+	devInfo=$(adb devices -l | grep -v ^List | head -1)
+	set -- $devInfo
+	echo devInfo=$devInfo
+	DEVICE=$(echo $4 | sed 's/product://')
+fi
 
 function convert {
 	in=$1
@@ -26,7 +38,7 @@ function convert {
 
 
 case $DEVICE in
-(shamu|hammerhead)
+(shamu|hammerhead|bullhead)
 	# no scaling necessary
 	xmax=0
 	ymax=0;;
