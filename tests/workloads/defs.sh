@@ -12,6 +12,7 @@ generateActivities=0
 gmailActivity='com.google.android.gm/com.google.android.gm.ConversationListActivityGmail'
 hangoutsActivity='com.google.android.talk/com.google.android.talk.SigningInActivity'
 chromeActivity='com.android.chrome/com.google.android.apps.chrome.document.DocumentActivity'
+chromeActivityVolantis='com.android.chrome/com.google.android.apps.chrome.ChromeTabbedActivity'
 youtubeActivity='com.google.android.youtube/com.google.android.apps.youtube.app.WatchWhileActivity'
 cameraActivity='com.google.android.GoogleCamera/com.android.camera.CameraActivity'
 playActivity='com.android.vending/com.google.android.finsky.activities.MainActivity'
@@ -95,6 +96,9 @@ else
 	ADB="adb -s $deviceName shell "
 	DEVICE=$(echo $4 | sed 's/product://')
 	isOnDevice=0
+	if [ "$DEVICE" = volantis ]; then
+		chromeActivity=$chromeActivityVolantis
+	fi
 fi
 
 # default values if not set by options or calling script
@@ -208,37 +212,41 @@ function getEndTime {
 }
 
 function resetJankyFrames {
-	${ADB}dumpsys gfxinfo $1 reset 2>&1 >/dev/null
+	_gfxapp=$1
+	_gfxapp=${app:="com.android.systemui"}
+	${ADB}dumpsys gfxinfo $_gfxapp reset 2>&1 >/dev/null
 }
 
 function getJankyFrames {
-	if [ -z "$ADB" ]; then
-		# Note: no awk or sed on devices so have to do this
-		# purely with bash
-		total=0
-		janky=0
-		/system/bin/dumpsys gfxinfo | grep " frames" | while read line
-		do
-			if echo $line | grep -q "Total frames"; then
-				set -- $line
-				((total=total+$4))
-			elif echo $line | grep -q "Janky frames"; then
-				set -- $line
-				((janky=janky+$3))
-			fi
-			# Note: no tail, awk, or sed on 5.x so get final
-			# sum via most recently written file
-			echo $total $janky > ./janky.$$
-		done
-		cat ./janky.$$
-		rm -f ./janky.$$
-	else
-		${ADB}dumpsys gfxinfo $1 | sed -e 's///' | awk '
-			BEGIN { total=0; janky=0; }
-			/Total frames/ { total+=$4; }
-			/Janky frames/ {  janky+=$3; }
-			END { printf "%d %d\n", total, janky; }'
-	fi
+	_gfxapp=$1
+	_gfxapp=${_gfxapp:="com.android.systemui"}
+
+	# Note: no awk or sed on devices so have to do this
+	# purely with bash
+	total=0
+	janky=0
+	latency=0
+	${ADB}dumpsys gfxinfo $_gfxapp | tr "\r" " " | egrep "9[059]th| frames" | while read line
+	do
+		if echo $line | grep -q "Total frames"; then
+			set -- $line
+			total=$4
+		elif echo $line | grep -q "Janky frames"; then
+			set -- $line
+			janky=$3
+		elif echo $line | grep -q "90th"; then
+			set -- $(echo $line | tr m " ")
+			l90=$3
+		elif echo $line | grep -q "95th"; then
+			set -- $(echo $line | tr m " ")
+			l95=$3
+		elif echo $line | grep -q "99th"; then
+			set -- $(echo $line | tr m " ")
+			l99=$3
+			echo $total $janky $l90 $l95 $l99
+			break
+		fi
+	done
 }
 
 function checkForDirectReclaim {
@@ -332,8 +340,14 @@ function startActivity {
 		echo 0
 		return 0
 	elif [ "$1" = chrome ]; then
-		vout $AM_START -p "$(getPackageName $1)" http://www.theverge.com
-		set -- $($AM_START -p "$(getPackageName $1)" http://www.theverge.com | grep ThisTime)
+		if [ "$DEVICE" = volantis ]; then
+			vout $AM_START_NOWAIT -p "$(getPackageName $1)" http://www.theverge.com
+			$AM_START_NOWAIT -p "$(getPackageName $1)" http://www.theverge.com > /dev/null
+			set -- 0 0
+		else
+			vout $AM_START -p "$(getPackageName $1)" http://www.theverge.com
+			set -- $($AM_START -p "$(getPackageName $1)" http://www.theverge.com | grep ThisTime)
+		fi
 	else
 		vout $AM_START "$(getActivityName $1)"
 		set -- $($AM_START "$(getActivityName $1)" | grep ThisTime)
