@@ -74,6 +74,9 @@ function computeStats {
 	reclaim=$4
 	frames=$5
 	janks=$6
+	l90=$7
+	l95=$8
+	l99=$9
 	curMax=$(eval "echo \$${label}max")
 	curMax=${curMax:=0}
 	curMin=$(eval "echo \$${label}min")
@@ -88,6 +91,12 @@ function computeStats {
 	curFrames=${curFrames:=0}
 	curJanks=$(eval "echo \$${label}janks")
 	curJanks=${curJanks:=0}
+	cur90=$(eval "echo \$${label}90")
+	cur90=${cur90:=0}
+	cur95=$(eval "echo \$${label}95")
+	cur95=${cur95:=0}
+	cur99=$(eval "echo \$${label}99")
+	cur99=${cur99:=0}
 	if [ $curMax -lt $t ]; then
 		eval "${label}max=$t"
 	fi
@@ -105,12 +114,19 @@ function computeStats {
 	eval "${label}frames=$curFrames"
 	((curJanks=curJanks+${janks:=0}))
 	eval "${label}janks=$curJanks"
+	((cur90=cur90+${l90:=0}))
+	eval "${label}90=$cur90"
+	((cur95=cur95+${l95:=0}))
+	eval "${label}95=$cur95"
+	((cur99=cur99+${l99:=0}))
+	eval "${label}99=$cur99"
 }
 function getStats {
 	label=$1
 	echo $(eval "echo \$${label}max") $(eval "echo \$${label}min") $(eval "echo \$${label}sum") \
 		$(eval "echo \$${label}restart") $(eval "echo \$${label}reclaim") \
-		$(eval "echo \$${label}frames") $(eval "echo \$${label}janks")
+		$(eval "echo \$${label}frames") $(eval "echo \$${label}janks") \
+		$(eval "echo \$${label}90") $(eval "echo \$${label}95") $(eval "echo \$${label}99")
 }
 
 cur=1
@@ -126,7 +142,7 @@ do
 	fi
 	if [ $iterations -gt 1 -o $cur -eq 1 ]; then
 		if [ $totaltimetest -eq 0 ]; then
-			printf "%-6s    %7s(ms)  %6s(ms) %s %s %s %s\n" App  Time AmTime Restart DirReclaim JankyFrames
+			printf "%-6s    %7s(ms)  %6s(ms) %s %s %s     %s\n" App  Time AmTime Restart DirReclaim Jank Latency
 		fi
 	fi
 
@@ -136,53 +152,77 @@ do
 		vout Starting $app...
 		((appnum=appnum+1))
 		loopTimestamp=$(date +"%s %N")
-		if [ $totaltimetest -gt 0 ]; then
-			# no instramentation, just cycle through the apps
-			if [ $appnum -eq 0 ]; then
-				printf "%-8s %5s(ms) %3s(ms)\n" App Start Iter
-			fi
-			if [ $forcecoldstart -eq 0 ]; then
-				t=$(startActivity $app)
-			else
-				t=$(forceStartActivity $app)
-			fi
-			loopEndTimestamp=$(date +"%s %N")
-			diffTime=$(computeTimeDiff $loopTimestamp $loopEndTimestamp)
-			# Note: "%d" doesn't work right if run on device
-			printf "%-10s %5.0f   %5.0f\n" $app $t $diffTime
-			((totaltime=totaltime+t))
-			continue
-		fi
-		tmpTraceOut="$tmpTraceOutBase-$app.out"
-		>$tmpTraceOut
-		startInstramentation
+		resetJankyFrames
 		resetJankyFrames $(getPackageName $app)
-		t=$(startActivity $app)
+		if [ $totaltimetest -eq 0 ]; then
+			tmpTraceOut="$tmpTraceOutBase-$app.out"
+			>$tmpTraceOut
+			startInstramentation
+		else
+			if [ $appnum -eq 0 ]; then
+				printf "%-8s %5s(ms) %3s(ms) %s      %s\n" App Start Iter Jank Latency
+			fi
+		fi
+		if [ $forcecoldstart -eq 0 ]; then
+			t=$(startActivity $app)
+		else
+			t=$(forceStartActivity $app)
+		fi
+
+		loopEndTimestamp=$(date +"%s %N")
+		diffTime=$(computeTimeDiff $loopTimestamp $loopEndTimestamp)
 		# let app finish drawing before checking janks
 		sleep 3
 		set -- $(getJankyFrames $(getPackageName $app))
 		frames=$1
 		janks=$2
-		((jankPct=100*janks/frames))
-		stopAndDumpInstramentation $tmpTraceOut
-		actName=$(getActivityName $app)
-		stime=$(getStartTime $actName $tmpTraceOut)
-		relaunch=$?
-		etime=$(getEndTime $actName $tmpTraceOut)
-		((tdiff=$etime-$stime))
-		if [ $etime -eq 0 -o $stime -eq 0 ]; then
-			handleError $app : could not compute start time stime=$stime  etime=$etime
-			# use AmTime so statistics make sense
-			tdiff=$t
+		l90=$3
+		l95=$4
+		l99=$5
+		set -- $(getJankyFrames)
+		systemFrames=$1
+		systemJanks=$2
+		s90=$3
+		s95=$4
+		s99=$5
+		((frames=frames+systemFrames))
+		((janks=janks+systemJanks))
+		((l90=l90+s90))
+		((l95=l95+s95))
+		((l99=l99+s99))
+		if [ $frames -eq 0 ]; then
+			janks=0
+			jankPct=0
+		else
+			((jankPct=100*janks/frames))
 		fi
-		checkForDirectReclaim $actName $tmpTraceOut
-		directReclaim=$?
+		if [ $totaltimetest -gt 0 ]; then
+			# Note: using %f since %d doesn't work correctly
+			# when running on lollipop
+			printf "%-10s %5.0f   %5.0f    %4.0f(%2.0f%%) %2.0f/%2.0f/%2.0f\n" $app $t $diffTime $janks $jankPct $l90 $l95 $l99
+			((totaltime=totaltime+t))
+			continue
+		else
+			stopAndDumpInstramentation $tmpTraceOut
+			actName=$(getActivityName $app)
+			stime=$(getStartTime $actName $tmpTraceOut)
+			relaunch=$?
+			etime=$(getEndTime $actName $tmpTraceOut)
+			((tdiff=$etime-$stime))
+			if [ $etime -eq 0 -o $stime -eq 0 ]; then
+				handleError $app : could not compute start time stime=$stime  etime=$etime
+				# use AmTime so statistics make sense
+				tdiff=$t
+			fi
+			checkForDirectReclaim $actName $tmpTraceOut
+			directReclaim=$?
 
-		printf "%-12s %5d     %5d     %5d    %5d    %5d(%d%%)\n" "$app" "$tdiff" "$t" "$relaunch" "$directReclaim" "$janks" "$jankPct"
-		computeStats "$app" "$tdiff" "$relaunch" "$directReclaim" "$frames" "$janks"
+			printf "%-12s %5d     %5d     %5d    %5d    %5d(%d%%) %d/%d/%d\n" "$app" "$tdiff" "$t" "$relaunch" "$directReclaim" "$janks" "$jankPct" $l90 $l95 $l99
+			computeStats "$app" "$tdiff" "$relaunch" "$directReclaim" "$frames" "$janks" $l90 $l95 $l99
 
-		if [ $savetmpfiles -eq 0 ]; then
-			rm -f $tmpTraceOut
+			if [ $savetmpfiles -eq 0 ]; then
+				rm -f $tmpTraceOut
+			fi
 		fi
 	done
 	((cur=cur+1))
@@ -198,7 +238,7 @@ if [ $iterations -gt 1 -a $totaltimetest -eq 0 ]; then
 	echo =========================================
 	printf "Stats after $iterations iterations:\n"
 	echo =========================================
-	printf "%-6s    %7s(ms) %6s(ms) %6s(ms)    %s    %s %s %s\n" App Max Ave Min Restart DirReclaim JankyFrames
+	printf "%-6s    %7s(ms) %6s(ms) %6s(ms)    %s    %s %s     %s\n" App Max Ave Min Restart DirReclaim Jank Latency
 	for app in $appList
 	do
 		set -- $(getStats $app)
@@ -206,7 +246,13 @@ if [ $iterations -gt 1 -a $totaltimetest -eq 0 ]; then
 		((ave=sum/iterations))
 		frames=$6
 		janks=$7
+		l90=$8
+		l95=$9
+		l99=${10}
+		((ave90=l90/iterations))
+		((ave95=l95/iterations))
+		((ave99=l99/iterations))
 		((jankPct=100*janks/frames))
-		printf "%-12s %5d      %5d      %5d      %5d      %5d     %5d(%d%%)\n" $app $1 $ave $2 $4 $5 $janks $jankPct
+		printf "%-12s %5d      %5d      %5d      %5d      %5d     %5d(%d%%) %d/%d/%d\n" $app $1 $ave $2 $4 $5 $janks $jankPct $ave90 $ave95 $ave99
 	done
 fi
