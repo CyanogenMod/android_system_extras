@@ -100,7 +100,7 @@ void DumpPerfEventAttr(const perf_event_attr& attr, size_t indent) {
     event_name = event_type->name;
   }
 
-  PrintIndented(indent, "event_attr: for event %s\n", event_name.c_str());
+  PrintIndented(indent, "event_attr: for event type %s\n", event_name.c_str());
 
   PrintIndented(indent + 1, "type %u, size %u, config %llu\n", attr.type, attr.size, attr.config);
 
