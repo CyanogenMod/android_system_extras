@@ -185,8 +185,8 @@ void DumpRecordCommand::DumpFeatureSection() {
       while (p < end) {
         const perf_event_header* header = reinterpret_cast<const perf_event_header*>(p);
         CHECK_LE(p + header->size, end);
-        CHECK_EQ(PERF_RECORD_BUILD_ID, header->type);
         BuildIdRecord record(header);
+        record.header.type = PERF_RECORD_BUILD_ID;  // Set type explicitly as perf doesn't set it.
         record.Dump(1);
         p += header->size;
       }
