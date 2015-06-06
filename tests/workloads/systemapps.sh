@@ -26,6 +26,7 @@ iterations=1
 tracecategories="gfx view am input memreclaim"
 totaltimetest=0
 forcecoldstart=0
+waitTime=3.0
 
 appList="gmail hangouts chrome youtube play home"
 
@@ -36,6 +37,7 @@ function processLocalOption {
 	(-F) forcecoldstart=1;;
 	(-L) appList=$2; shift; ret=1;;
 	(-T) totaltimetest=1;;
+	(-W) waitTime=$2; shift; ret=1;;
 	(*)
 		echo "$0: unrecognized option: $1"
 		echo; echo "Usage: $0 [options]"
@@ -44,6 +46,7 @@ function processLocalOption {
 		echo "-L applist : list of applications"
 		echo "   default: $appList"
 		echo "-T : total time to start all apps"
+		echo "-W : time to wait between apps"
 		echo "-g : generate activity strings"
 		echo "-i iterations"
 		echo "-n : keep trace files"
@@ -169,10 +172,8 @@ do
 			t=$(forceStartActivity $app)
 		fi
 
-		loopEndTimestamp=$(date +"%s %N")
-		diffTime=$(computeTimeDiff $loopTimestamp $loopEndTimestamp)
 		# let app finish drawing before checking janks
-		sleep 3
+		sleep $waitTime
 		set -- $(getJankyFrames $(getPackageName $app))
 		frames=$1
 		janks=$2
@@ -190,6 +191,10 @@ do
 		((l90=l90+s90))
 		((l95=l95+s95))
 		((l99=l99+s99))
+
+		loopEndTimestamp=$(date +"%s %N")
+		diffTime=$(computeTimeDiff $loopTimestamp $loopEndTimestamp)
+
 		if [ $frames -eq 0 ]; then
 			janks=0
 			jankPct=0
