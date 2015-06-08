@@ -47,5 +47,5 @@ TEST_F(ReportCommandTest, sort_option_pid) {
 }
 
 TEST_F(ReportCommandTest, sort_option_all) {
-  ASSERT_TRUE(ReportCmd()->Run({"--sort", "comm,pid,dso"}));
+  ASSERT_TRUE(ReportCmd()->Run({"--sort", "comm,pid,dso,symbol"}));
 }

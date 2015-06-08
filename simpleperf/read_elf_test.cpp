@@ -14,25 +14,25 @@
  * limitations under the License.
  */
 
-#ifndef SIMPLE_PERF_READ_ELF_H_
-#define SIMPLE_PERF_READ_ELF_H_
+#include "read_elf.h"
 
-#include <functional>
-#include <string>
-#include "build_id.h"
+#include <gtest/gtest.h>
 
-bool GetBuildIdFromNoteFile(const std::string& filename, BuildId* build_id);
-bool GetBuildIdFromElfFile(const std::string& filename, BuildId* build_id);
+static void ParseSymbol(const ElfFileSymbol& symbol, bool* result) {
+  if (symbol.is_func) {
+    *result = true;
+  }
+}
 
-struct ElfFileSymbol {
-  uint64_t start_in_file;
-  uint64_t len;
-  bool is_func;
-  bool is_in_text_section;
-  std::string name;
-};
+TEST(read_elf, parse_symbols_from_elf_file) {
+  char elf_file[PATH_MAX];
+  ssize_t elf_file_len = readlink("/proc/self/exe", elf_file, sizeof(elf_file));
+  ASSERT_GT(elf_file_len, 0L);
+  ASSERT_LT(static_cast<size_t>(elf_file_len), sizeof(elf_file));
+  elf_file[elf_file_len] = '\0';
 
-bool ParseSymbolsFromElfFile(const std::string& filename,
-                             std::function<void(const ElfFileSymbol&)> callback);
-
-#endif  // SIMPLE_PERF_READ_ELF_H_
+  bool result = false;
+  ASSERT_TRUE(
+      ParseSymbolsFromElfFile(elf_file, std::bind(ParseSymbol, std::placeholders::_1, &result)));
+  ASSERT_TRUE(result);
+}

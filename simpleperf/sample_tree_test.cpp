@@ -29,12 +29,12 @@ struct ExpectedSampleInMap {
 static void SampleMatchExpectation(const SampleEntry& sample, const ExpectedSampleInMap& expected,
                                    bool* has_error) {
   *has_error = true;
-  ASSERT_TRUE(sample.process_entry != nullptr);
-  ASSERT_EQ(expected.pid, sample.process_entry->pid);
+  ASSERT_TRUE(sample.process != nullptr);
+  ASSERT_EQ(expected.pid, sample.process->pid);
   ASSERT_EQ(expected.tid, sample.tid);
-  ASSERT_TRUE(sample.map_entry != nullptr);
-  ASSERT_EQ(expected.map_pid, sample.map_entry->pid);
-  ASSERT_EQ(expected.map_start_addr, sample.map_entry->start_addr);
+  ASSERT_TRUE(sample.map != nullptr);
+  ASSERT_EQ(expected.map_pid, sample.map->pid);
+  ASSERT_EQ(expected.map_start_addr, sample.map->start_addr);
   ASSERT_EQ(expected.sample_count, sample.sample_count);
   *has_error = false;
 }
@@ -49,17 +49,17 @@ static void CheckSampleCallback(const SampleEntry& sample,
 }
 
 static int CompareSampleFunction(const SampleEntry& sample1, const SampleEntry& sample2) {
-  if (sample1.process_entry->pid != sample2.process_entry->pid) {
-    return sample1.process_entry->pid - sample2.process_entry->pid;
+  if (sample1.process->pid != sample2.process->pid) {
+    return sample1.process->pid - sample2.process->pid;
   }
   if (sample1.tid != sample2.tid) {
     return sample1.tid - sample2.tid;
   }
-  if (sample1.map_entry->pid != sample2.map_entry->pid) {
-    return sample1.map_entry->pid - sample2.map_entry->pid;
+  if (sample1.map->pid != sample2.map->pid) {
+    return sample1.map->pid - sample2.map->pid;
   }
-  if (sample1.map_entry->start_addr != sample2.map_entry->start_addr) {
-    return sample1.map_entry->start_addr - sample2.map_entry->start_addr;
+  if (sample1.map->start_addr != sample2.map->start_addr) {
+    return sample1.map->start_addr - sample2.map->start_addr;
   }
   return 0;
 }

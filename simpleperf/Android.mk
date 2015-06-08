@@ -34,6 +34,7 @@ libsimpleperf_src_files := \
   cmd_report.cpp \
   cmd_stat.cpp \
   command.cpp \
+  dso.cpp \
   environment.cpp \
   event_attr.cpp \
   event_fd.cpp \
@@ -110,6 +111,7 @@ simpleperf_unit_test_src_files := \
   cpu_offline_test.cpp \
   environment_test.cpp \
   gtest_main.cpp \
+  read_elf_test.cpp \
   record_file_test.cpp \
   record_test.cpp \
   sample_tree_test.cpp \
