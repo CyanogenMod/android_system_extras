@@ -18,18 +18,18 @@
 
 #include <base/logging.h>
 
-bool SampleTree::MapComparator::operator()(const MapEntry& map1, const MapEntry& map2) {
-  if (map1.pid != map2.pid) {
-    return map1.pid < map2.pid;
+bool SampleTree::MapComparator::operator()(const MapEntry* map1, const MapEntry* map2) {
+  if (map1->pid != map2->pid) {
+    return map1->pid < map2->pid;
   }
-  if (map1.start_addr != map2.start_addr) {
-    return map1.start_addr < map2.start_addr;
+  if (map1->start_addr != map2->start_addr) {
+    return map1->start_addr < map2->start_addr;
   }
-  if (map1.len != map2.len) {
-    return map1.len < map2.len;
+  if (map1->len != map2->len) {
+    return map1->len < map2->len;
   }
-  if (map1.time != map2.time) {
-    return map1.time < map2.time;
+  if (map1->time != map2->time) {
+    return map1->time < map2->time;
   }
   return false;
 }
@@ -43,7 +43,7 @@ void SampleTree::AddProcess(int pid, const std::string& comm) {
 
 void SampleTree::AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff, uint64_t time,
                               const std::string& filename) {
-  MapEntry map = {
+  MapEntry* map = new MapEntry{
       .pid = -1,
       .start_addr = start_addr,
       .len = len,
@@ -51,12 +51,13 @@ void SampleTree::AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff,
       .time = time,
       .filename = filename,
   };
+  map_storage_.push_back(map);
   kernel_map_tree_.insert(map);
 }
 
 void SampleTree::AddUserMap(int pid, uint64_t start_addr, uint64_t len, uint64_t pgoff,
                             uint64_t time, const std::string& filename) {
-  MapEntry map = {
+  MapEntry* map = new MapEntry{
       .pid = pid,
       .start_addr = start_addr,
       .len = len,
@@ -64,7 +65,26 @@ void SampleTree::AddUserMap(int pid, uint64_t start_addr, uint64_t len, uint64_t
       .time = time,
       .filename = filename,
   };
+  map_storage_.push_back(map);
+  RemoveOverlappedUserMap(map);
   user_map_tree_.insert(map);
+}
+
+void SampleTree::RemoveOverlappedUserMap(const MapEntry* map) {
+  MapEntry find_map = {
+      .pid = map->pid, .start_addr = 0, .len = 0, .time = 0,
+  };
+  auto it = user_map_tree_.lower_bound(&find_map);
+  while (it != user_map_tree_.end() && (*it)->pid == map->pid) {
+    if ((*it)->start_addr >= map->start_addr + map->len) {
+      break;
+    }
+    if ((*it)->start_addr + (*it)->len <= map->start_addr) {
+      ++it;
+    } else {
+      it = user_map_tree_.erase(it);
+    }
+  }
 }
 
 const ProcessEntry* SampleTree::FindProcessEntryOrNew(int pid) {
@@ -79,8 +99,8 @@ const ProcessEntry* SampleTree::FindProcessEntryOrNew(int pid) {
   return &it->second;
 }
 
-static bool IsIpInMap(int pid, uint64_t ip, const MapEntry& map) {
-  return (pid == map.pid && map.start_addr <= ip && map.start_addr + map.len > ip);
+static bool IsIpInMap(int pid, uint64_t ip, const MapEntry* map) {
+  return (pid == map->pid && map->start_addr <= ip && map->start_addr + map->len > ip);
 }
 
 const MapEntry* SampleTree::FindMapEntryOrNew(int pid, uint64_t ip) {
@@ -91,18 +111,22 @@ const MapEntry* SampleTree::FindMapEntryOrNew(int pid, uint64_t ip) {
       .len = static_cast<uint64_t>(-1),
       .time = static_cast<uint64_t>(-1),
   };
-  auto it = user_map_tree_.upper_bound(find_map);
+  auto it = user_map_tree_.upper_bound(&find_map);
   if (it != user_map_tree_.begin() && IsIpInMap(pid, ip, *--it)) {
-    return &*it;
+    return *it;
   }
   find_map.pid = -1;
-  it = kernel_map_tree_.upper_bound(find_map);
+  it = kernel_map_tree_.upper_bound(&find_map);
   if (it != kernel_map_tree_.begin() && IsIpInMap(-1, ip, *--it)) {
-    return &*it;
+    return *it;
   }
-  auto unknown_it = unknown_maps_.find(pid);
-  if (unknown_it == unknown_maps_.end()) {
-    MapEntry unknown_map = {
+  return FindUnknownMapEntryOrNew(pid);
+}
+
+const MapEntry* SampleTree::FindUnknownMapEntryOrNew(int pid) {
+  auto it = unknown_maps_.find(pid);
+  if (it == unknown_maps_.end()) {
+    MapEntry* map = new MapEntry{
         .pid = pid,
         .start_addr = 0,
         .len = static_cast<uint64_t>(-1),
@@ -110,10 +134,11 @@ const MapEntry* SampleTree::FindMapEntryOrNew(int pid, uint64_t ip) {
         .time = 0,
         .filename = "unknown",
     };
-    auto pair = unknown_maps_.insert(std::make_pair(pid, unknown_map));
-    unknown_it = pair.first;
+    map_storage_.push_back(map);
+    auto pair = unknown_maps_.insert(std::make_pair(pid, map));
+    it = pair.first;
   }
-  return &unknown_it->second;
+  return it->second;
 }
 
 void SampleTree::AddSample(int pid, int tid, uint64_t ip, uint64_t time, uint64_t period) {
