@@ -21,6 +21,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 struct ProcessEntry {
   int pid;
@@ -59,6 +60,12 @@ class SampleTree {
         total_period_(0) {
   }
 
+  ~SampleTree() {
+    for (auto& map : map_storage_) {
+      delete map;
+    }
+  }
+
   void AddProcess(int pid, const std::string& comm);
   void AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff, uint64_t time,
                     const std::string& filename);
@@ -76,11 +83,13 @@ class SampleTree {
   }
 
  private:
+  void RemoveOverlappedUserMap(const MapEntry* map);
   const ProcessEntry* FindProcessEntryOrNew(int pid);
   const MapEntry* FindMapEntryOrNew(int pid, uint64_t ip);
+  const MapEntry* FindUnknownMapEntryOrNew(int pid);
 
   struct MapComparator {
-    bool operator()(const MapEntry& map1, const MapEntry& map2);
+    bool operator()(const MapEntry* map1, const MapEntry* map2);
   };
 
   struct SampleComparator {
@@ -109,9 +118,10 @@ class SampleTree {
 
   std::unordered_map<int, ProcessEntry> process_tree_;
 
-  std::set<MapEntry, MapComparator> kernel_map_tree_;
-  std::set<MapEntry, MapComparator> user_map_tree_;
-  std::unordered_map<int, MapEntry> unknown_maps_;
+  std::set<MapEntry*, MapComparator> kernel_map_tree_;
+  std::set<MapEntry*, MapComparator> user_map_tree_;
+  std::unordered_map<int, MapEntry*> unknown_maps_;
+  std::vector<MapEntry*> map_storage_;
 
   SampleComparator sample_comparator_;
   std::set<SampleEntry, SampleComparator> sample_tree_;

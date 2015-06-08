@@ -64,6 +64,14 @@ static int CompareSampleFunction(const SampleEntry& sample1, const SampleEntry& 
   return 0;
 }
 
+void VisitSampleTree(SampleTree* sample_tree,
+                     const std::vector<ExpectedSampleInMap>& expected_samples) {
+  size_t pos = 0;
+  sample_tree->VisitAllSamples(
+      std::bind(&CheckSampleCallback, std::placeholders::_1, expected_samples, &pos));
+  ASSERT_EQ(expected_samples.size(), pos);
+}
+
 class SampleTreeTest : public testing::Test {
  protected:
   virtual void SetUp() {
@@ -74,11 +82,8 @@ class SampleTreeTest : public testing::Test {
     sample_tree->AddKernelMap(11, 20, 0, 0, "");
   }
 
-  void VisitSampleTree(std::vector<ExpectedSampleInMap>& expected_samples) {
-    size_t pos = 0;
-    sample_tree->VisitAllSamples(
-        std::bind(&CheckSampleCallback, std::placeholders::_1, expected_samples, &pos));
-    ASSERT_EQ(expected_samples.size(), pos);
+  void VisitSampleTree(const std::vector<ExpectedSampleInMap>& expected_samples) {
+    ::VisitSampleTree(sample_tree.get(), expected_samples);
   }
 
   std::unique_ptr<SampleTree> sample_tree;
@@ -139,4 +144,21 @@ TEST_F(SampleTreeTest, map_kernel) {
       {1, 1, -1, 11, 1}, {1, 1, 1, 11, 1},
   };
   VisitSampleTree(expected_samples);
+}
+
+TEST(sample_tree, overlapped_map) {
+  auto sample_tree = std::unique_ptr<SampleTree>(new SampleTree(CompareSampleFunction));
+  sample_tree->AddUserMap(1, 1, 10, 0, 0, "");  // Add map 1.
+  sample_tree->AddSample(1, 1, 5, 0, 0);        // Hit map 1.
+  sample_tree->AddUserMap(1, 5, 20, 0, 0, "");  // Add map 2.
+  sample_tree->AddSample(1, 1, 6, 0, 0);        // Hit map 2.
+  sample_tree->AddSample(1, 1, 4, 0, 0);        // Hit unknown map.
+  sample_tree->AddUserMap(1, 2, 7, 0, 0, "");   // Add map 3.
+  sample_tree->AddSample(1, 1, 7, 0, 0);        // Hit map 3.
+  sample_tree->AddSample(1, 1, 10, 0, 0);       // Hit unknown map.
+
+  std::vector<ExpectedSampleInMap> expected_samples = {
+      {1, 1, 1, 0, 2}, {1, 1, 1, 1, 1}, {1, 1, 1, 2, 1}, {1, 1, 1, 5, 1},
+  };
+  VisitSampleTree(sample_tree.get(), expected_samples);
 }
