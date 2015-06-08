@@ -34,10 +34,11 @@
 #include "sample_tree.h"
 
 typedef int (*compare_sample_entry_t)(const SampleEntry& sample1, const SampleEntry& sample2);
-typedef void (*print_sample_entry_header_t)();
-typedef void (*print_sample_entry_t)(const SampleEntry& sample);
+typedef std::string (*print_sample_entry_header_t)();
+typedef std::string (*print_sample_entry_t)(const SampleEntry& sample);
 
 struct ReportItem {
+  size_t width;
   compare_sample_entry_t compare_function;
   print_sample_entry_header_t print_header_function;
   print_sample_entry_t print_function;
@@ -47,12 +48,12 @@ static int ComparePid(const SampleEntry& sample1, const SampleEntry& sample2) {
   return sample1.process_entry->pid - sample2.process_entry->pid;
 }
 
-static void PrintHeaderPid() {
-  printf("%8s", "Pid");
+static std::string PrintHeaderPid() {
+  return "Pid";
 }
 
-static void PrintPid(const SampleEntry& sample) {
-  printf("%8d", sample.process_entry->pid);
+static std::string PrintPid(const SampleEntry& sample) {
+  return android::base::StringPrintf("%d", sample.process_entry->pid);
 }
 
 static ReportItem report_pid_item = {
@@ -65,12 +66,12 @@ static int CompareComm(const SampleEntry& sample1, const SampleEntry& sample2) {
   return strcmp(sample1.process_entry->comm.c_str(), sample2.process_entry->comm.c_str());
 }
 
-static void PrintHeaderComm() {
-  printf("%20s", "Command");
+static std::string PrintHeaderComm() {
+  return "Command";
 }
 
-static void PrintComm(const SampleEntry& sample) {
-  printf("%20s", sample.process_entry->comm.c_str());
+static std::string PrintComm(const SampleEntry& sample) {
+  return sample.process_entry->comm;
 }
 
 static ReportItem report_comm_item = {
@@ -83,18 +84,18 @@ static int CompareDso(const SampleEntry& sample1, const SampleEntry& sample2) {
   return strcmp(sample1.map_entry->filename.c_str(), sample2.map_entry->filename.c_str());
 }
 
-static void PrintHeaderDso() {
-  printf("%20s", "Shared Object");
+static std::string PrintHeaderDso() {
+  return "Shared Object";
 }
 
-static void PrintDso(const SampleEntry& sample) {
+static std::string PrintDso(const SampleEntry& sample) {
   std::string filename = sample.map_entry->filename;
   if (filename == DEFAULT_KERNEL_MMAP_NAME) {
     filename = "[kernel.kallsyms]";
   } else if (filename == DEFAULT_EXECNAME_FOR_THREAD_MMAP) {
     filename = "[unknown]";
   }
-  printf("%20s", filename.c_str());
+  return filename;
 }
 
 static ReportItem report_dso_item = {
@@ -128,6 +129,8 @@ class ReportCommand : public Command {
   int CompareSampleEntry(const SampleEntry& sample1, const SampleEntry& sample2);
   void PrintReport();
   void PrintReportContext();
+  void CollectReportWidth();
+  void CollectReportEntryWidth(const SampleEntry& sample);
   void PrintReportHeader();
   void PrintReportEntry(const SampleEntry& sample);
 
@@ -247,6 +250,7 @@ int ReportCommand::CompareSampleEntry(const SampleEntry& sample1, const SampleEn
 
 void ReportCommand::PrintReport() {
   PrintReportContext();
+  CollectReportWidth();
   PrintReportHeader();
   sample_tree_->VisitAllSamples(
       std::bind(&ReportCommand::PrintReportEntry, this, std::placeholders::_1));
@@ -268,11 +272,28 @@ void ReportCommand::PrintReportContext() {
   printf("Event count: %" PRIu64 "\n\n", sample_tree_->TotalPeriod());
 }
 
+void ReportCommand::CollectReportWidth() {
+  for (auto& item : report_items_) {
+    std::string s = item->print_header_function();
+    item->width = s.size();
+  }
+  sample_tree_->VisitAllSamples(
+      std::bind(&ReportCommand::CollectReportEntryWidth, this, std::placeholders::_1));
+}
+
+void ReportCommand::CollectReportEntryWidth(const SampleEntry& sample) {
+  for (auto& item : report_items_) {
+    std::string s = item->print_function(sample);
+    item->width = std::max(item->width, s.size());
+  }
+}
+
 void ReportCommand::PrintReportHeader() {
   printf("%8s", "Overhead");
-  for (ReportItem* item : report_items_) {
-    printf(" ");
-    item->print_header_function();
+  for (auto& item : report_items_) {
+    printf("  ");
+    std::string s = item->print_header_function();
+    printf("%*s", static_cast<int>(item->width), s.c_str());
   }
   printf("\n");
 }
@@ -283,9 +304,10 @@ void ReportCommand::PrintReportEntry(const SampleEntry& sample) {
     percentage = 100.0 * sample.period / sample_tree_->TotalPeriod();
   }
   printf("%7.2lf%%", percentage);
-  for (ReportItem* item : report_items_) {
-    printf(" ");
-    item->print_function(sample);
+  for (auto& item : report_items_) {
+    printf("  ");
+    std::string s = item->print_function(sample);
+    printf("%*s", static_cast<int>(item->width), s.c_str());
   }
   printf("\n");
 }
