@@ -210,9 +210,10 @@ do
 		else
 			stopAndDumpInstramentation $tmpTraceOut
 			actName=$(getActivityName $app)
+			pkgName=$(getPackageName $app)
 			stime=$(getStartTime $actName $tmpTraceOut)
 			relaunch=$?
-			etime=$(getEndTime $actName $tmpTraceOut)
+			etime=$(getEndTime $pkgName $tmpTraceOut)
 			((tdiff=$etime-$stime))
 			if [ $etime -eq 0 -o $stime -eq 0 ]; then
 				handleError $app : could not compute start time stime=$stime  etime=$etime

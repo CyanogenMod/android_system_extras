@@ -11,8 +11,7 @@ generateActivities=0
 # default activities. Can dynamically generate with -g.
 gmailActivity='com.google.android.gm/com.google.android.gm.ConversationListActivityGmail'
 hangoutsActivity='com.google.android.talk/com.google.android.talk.SigningInActivity'
-chromeActivity='com.android.chrome/com.google.android.apps.chrome.document.DocumentActivity'
-chromeActivityVolantis='com.android.chrome/com.google.android.apps.chrome.ChromeTabbedActivity'
+chromeActivity='com.android.chrome/_not_used'
 youtubeActivity='com.google.android.youtube/com.google.android.apps.youtube.app.WatchWhileActivity'
 cameraActivity='com.google.android.GoogleCamera/com.android.camera.CameraActivity'
 playActivity='com.android.vending/com.google.android.finsky.activities.MainActivity'
@@ -96,9 +95,6 @@ else
 	ADB="adb -s $deviceName shell "
 	DEVICE=$(echo $4 | sed 's/product://')
 	isOnDevice=0
-	if [ "$DEVICE" = volantis ]; then
-		chromeActivity=$chromeActivityVolantis
-	fi
 fi
 
 # default values if not set by options or calling script
