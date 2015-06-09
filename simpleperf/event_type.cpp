@@ -37,7 +37,8 @@ static const std::vector<EventType> static_event_type_array = {
 };
 
 static bool IsEventTypeSupportedByKernel(const EventType& event_type) {
-  auto event_fd = EventFd::OpenEventFileForProcess(CreateDefaultPerfEventAttr(event_type), getpid());
+  auto event_fd =
+      EventFd::OpenEventFileForProcess(CreateDefaultPerfEventAttr(event_type), getpid(), false);
   return event_fd != nullptr;
 }
 

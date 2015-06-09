@@ -38,15 +38,18 @@ static int perf_event_open(perf_event_attr* attr, pid_t pid, int cpu, int group_
   return syscall(__NR_perf_event_open, attr, pid, cpu, group_fd, flags);
 }
 
-std::unique_ptr<EventFd> EventFd::OpenEventFileForProcess(const perf_event_attr& attr, pid_t pid) {
-  return OpenEventFile(attr, pid, -1);
+std::unique_ptr<EventFd> EventFd::OpenEventFileForProcess(const perf_event_attr& attr, pid_t pid,
+                                                          bool report_error) {
+  return OpenEventFile(attr, pid, -1, report_error);
 }
 
-std::unique_ptr<EventFd> EventFd::OpenEventFileForCpu(const perf_event_attr& attr, int cpu) {
-  return OpenEventFile(attr, -1, cpu);
+std::unique_ptr<EventFd> EventFd::OpenEventFileForCpu(const perf_event_attr& attr, int cpu,
+                                                      bool report_error) {
+  return OpenEventFile(attr, -1, cpu, report_error);
 }
 
-std::unique_ptr<EventFd> EventFd::OpenEventFile(const perf_event_attr& attr, pid_t pid, int cpu) {
+std::unique_ptr<EventFd> EventFd::OpenEventFile(const perf_event_attr& attr, pid_t pid, int cpu,
+                                                bool report_error) {
   perf_event_attr perf_attr = attr;
   std::string event_name = "unknown event";
   const EventType* event_type =
@@ -56,15 +59,14 @@ std::unique_ptr<EventFd> EventFd::OpenEventFile(const perf_event_attr& attr, pid
   }
   int perf_event_fd = perf_event_open(&perf_attr, pid, cpu, -1, 0);
   if (perf_event_fd == -1) {
-    // It depends whether the perf_event_file configuration is supported by the kernel and the
-    // machine. So fail to open the file is not an error.
-    PLOG(DEBUG) << "open perf_event_file (event " << event_name << ", pid " << pid << ", cpu "
-                << cpu << ") failed";
+    (report_error ? PLOG(ERROR) : PLOG(DEBUG)) << "open perf_event_file (event " << event_name
+                                               << ", pid " << pid << ", cpu " << cpu << ") failed";
     return nullptr;
   }
   if (fcntl(perf_event_fd, F_SETFD, FD_CLOEXEC) == -1) {
-    PLOG(ERROR) << "fcntl(FD_CLOEXEC) for perf_event_file (event " << event_name << ", pid " << pid
-                << ", cpu " << cpu << ") failed";
+    (report_error ? PLOG(ERROR) : PLOG(DEBUG)) << "fcntl(FD_CLOEXEC) for perf_event_file (event "
+                                               << event_name << ", pid " << pid << ", cpu " << cpu
+                                               << ") failed";
     return nullptr;
   }
   return std::unique_ptr<EventFd>(new EventFd(perf_event_fd, event_name, pid, cpu));

@@ -85,10 +85,17 @@ TEST(record_cmd, tracepoint_event) {
   ASSERT_TRUE(RecordCmd()->Run({"-a", "-e", "sched:sched_switch", "sleep", "1"}));
 }
 
+extern bool IsBranchSamplingSupported();
+
 TEST(record_cmd, branch_sampling) {
-  ASSERT_TRUE(RecordCmd()->Run({"-a", "-b", "sleep", "1"}));
-  ASSERT_TRUE(RecordCmd()->Run({"-j", "any,any_call,any_ret,ind_call", "sleep", "1"}));
-  ASSERT_TRUE(RecordCmd()->Run({"-j", "any,k", "sleep", "1"}));
-  ASSERT_TRUE(RecordCmd()->Run({"-j", "any,u", "sleep", "1"}));
-  ASSERT_FALSE(RecordCmd()->Run({"-j", "u", "sleep", "1"}));
+  if (IsBranchSamplingSupported()) {
+    ASSERT_TRUE(RecordCmd()->Run({"-a", "-b", "sleep", "1"}));
+    ASSERT_TRUE(RecordCmd()->Run({"-j", "any,any_call,any_ret,ind_call", "sleep", "1"}));
+    ASSERT_TRUE(RecordCmd()->Run({"-j", "any,k", "sleep", "1"}));
+    ASSERT_TRUE(RecordCmd()->Run({"-j", "any,u", "sleep", "1"}));
+    ASSERT_FALSE(RecordCmd()->Run({"-j", "u", "sleep", "1"}));
+  } else {
+    GTEST_LOG_(INFO)
+        << "This test does nothing as branch stack sampling is not supported on this device.";
+  }
 }
