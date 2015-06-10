@@ -17,11 +17,14 @@
 #ifndef SIMPLE_PERF_SAMPLE_TREE_H_
 #define SIMPLE_PERF_SAMPLE_TREE_H_
 
+#include <limits.h>
 #include <functional>
 #include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include "dso.h"
 
 struct ProcessEntry {
   int pid;
@@ -34,7 +37,7 @@ struct MapEntry {
   uint64_t len;
   uint64_t pgoff;
   uint64_t time;  // Map creation time.
-  std::string filename;
+  DsoEntry* dso;
 };
 
 struct SampleEntry {
@@ -43,8 +46,9 @@ struct SampleEntry {
   uint64_t time;
   uint64_t period;
   uint64_t sample_count;
-  const ProcessEntry* process_entry;
-  const MapEntry* map_entry;
+  const ProcessEntry* process;
+  const MapEntry* map;
+  const SymbolEntry* symbol;
 };
 
 typedef std::function<int(const SampleEntry&, const SampleEntry&)> compare_sample_func_t;
@@ -58,12 +62,10 @@ class SampleTree {
         sorted_sample_tree_(sorted_sample_comparator_),
         total_samples_(0),
         total_period_(0) {
-  }
-
-  ~SampleTree() {
-    for (auto& map : map_storage_) {
-      delete map;
-    }
+    unknown_dso_.path = "unknown";
+    unknown_symbol_ = {
+        .name = "unknown", .addr = 0, .len = ULLONG_MAX,
+    };
   }
 
   void AddProcess(int pid, const std::string& comm);
@@ -87,6 +89,9 @@ class SampleTree {
   const ProcessEntry* FindProcessEntryOrNew(int pid);
   const MapEntry* FindMapEntryOrNew(int pid, uint64_t ip);
   const MapEntry* FindUnknownMapEntryOrNew(int pid);
+  DsoEntry* FindKernelDsoOrNew(const std::string& filename);
+  DsoEntry* FindUserDsoOrNew(const std::string& filename);
+  const SymbolEntry* FindSymbolEntry(uint64_t ip, const MapEntry* map_entry);
 
   struct MapComparator {
     bool operator()(const MapEntry* map1, const MapEntry* map2);
@@ -116,12 +121,18 @@ class SampleTree {
     compare_sample_func_t compare_function;
   };
 
-  std::unordered_map<int, ProcessEntry> process_tree_;
+  std::unordered_map<int, std::unique_ptr<ProcessEntry>> process_tree_;
 
   std::set<MapEntry*, MapComparator> kernel_map_tree_;
   std::set<MapEntry*, MapComparator> user_map_tree_;
   std::unordered_map<int, MapEntry*> unknown_maps_;
-  std::vector<MapEntry*> map_storage_;
+  std::vector<std::unique_ptr<MapEntry>> map_storage_;
+
+  std::unique_ptr<DsoEntry> kernel_dso_;
+  std::unordered_map<std::string, std::unique_ptr<DsoEntry>> module_dso_tree_;
+  std::unordered_map<std::string, std::unique_ptr<DsoEntry>> user_dso_tree_;
+  DsoEntry unknown_dso_;
+  SymbolEntry unknown_symbol_;
 
   SampleComparator sample_comparator_;
   std::set<SampleEntry, SampleComparator> sample_tree_;

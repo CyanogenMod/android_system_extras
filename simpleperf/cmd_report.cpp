@@ -45,7 +45,7 @@ struct ReportItem {
 };
 
 static int ComparePid(const SampleEntry& sample1, const SampleEntry& sample2) {
-  return sample1.process_entry->pid - sample2.process_entry->pid;
+  return sample1.process->pid - sample2.process->pid;
 }
 
 static std::string PrintHeaderPid() {
@@ -53,7 +53,7 @@ static std::string PrintHeaderPid() {
 }
 
 static std::string PrintPid(const SampleEntry& sample) {
-  return android::base::StringPrintf("%d", sample.process_entry->pid);
+  return android::base::StringPrintf("%d", sample.process->pid);
 }
 
 static ReportItem report_pid_item = {
@@ -63,7 +63,7 @@ static ReportItem report_pid_item = {
 };
 
 static int CompareComm(const SampleEntry& sample1, const SampleEntry& sample2) {
-  return strcmp(sample1.process_entry->comm.c_str(), sample2.process_entry->comm.c_str());
+  return strcmp(sample1.process->comm.c_str(), sample2.process->comm.c_str());
 }
 
 static std::string PrintHeaderComm() {
@@ -71,7 +71,7 @@ static std::string PrintHeaderComm() {
 }
 
 static std::string PrintComm(const SampleEntry& sample) {
-  return sample.process_entry->comm;
+  return sample.process->comm;
 }
 
 static ReportItem report_comm_item = {
@@ -81,7 +81,7 @@ static ReportItem report_comm_item = {
 };
 
 static int CompareDso(const SampleEntry& sample1, const SampleEntry& sample2) {
-  return strcmp(sample1.map_entry->filename.c_str(), sample2.map_entry->filename.c_str());
+  return strcmp(sample1.map->dso->path.c_str(), sample2.map->dso->path.c_str());
 }
 
 static std::string PrintHeaderDso() {
@@ -89,10 +89,8 @@ static std::string PrintHeaderDso() {
 }
 
 static std::string PrintDso(const SampleEntry& sample) {
-  std::string filename = sample.map_entry->filename;
-  if (filename == DEFAULT_KERNEL_MMAP_NAME) {
-    filename = "[kernel.kallsyms]";
-  } else if (filename == DEFAULT_EXECNAME_FOR_THREAD_MMAP) {
+  std::string filename = sample.map->dso->path;
+  if (filename == DEFAULT_EXECNAME_FOR_THREAD_MMAP) {
     filename = "[unknown]";
   }
   return filename;
@@ -104,8 +102,29 @@ static ReportItem report_dso_item = {
     .print_function = PrintDso,
 };
 
+static int CompareSymbol(const SampleEntry& sample1, const SampleEntry& sample2) {
+  return strcmp(sample1.symbol->name.c_str(), sample2.symbol->name.c_str());
+}
+
+static std::string PrintHeaderSymbol() {
+  return "Symbol";
+}
+
+static std::string PrintSymbol(const SampleEntry& sample) {
+  return sample.symbol->name;
+}
+
+static ReportItem report_symbol_item = {
+    .compare_function = CompareSymbol,
+    .print_header_function = PrintHeaderSymbol,
+    .print_function = PrintSymbol,
+};
+
 static std::unordered_map<std::string, ReportItem*> report_item_map = {
-    {"comm", &report_comm_item}, {"pid", &report_pid_item}, {"dso", &report_dso_item},
+    {"comm", &report_comm_item},
+    {"pid", &report_pid_item},
+    {"dso", &report_dso_item},
+    {"symbol", &report_symbol_item},
 };
 
 class ReportCommand : public Command {
@@ -115,7 +134,7 @@ class ReportCommand : public Command {
                 "Usage: simpleperf report [options]\n"
                 "    -i <file>     specify path of record file, default is perf.data\n"
                 "    --sort key1,key2,... Select the keys to sort and print the report.\n"
-                "                         Possible keys include pid, comm, dso.\n"
+                "                         Possible keys include pid, comm, dso, symbol.\n"
                 "                         Default keys are \"comm,pid,dso\"\n"),
         record_filename_("perf.data") {
   }
