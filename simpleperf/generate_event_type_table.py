@@ -81,7 +81,7 @@ def gen_hw_cache_events():
                       ["branch", "PERF_COUNT_HW_CACHE_BPU"],
                       ["node", "PERF_COUNT_HW_CACHE_NODE"],
                       ]
-    hw_cache_ops = [["loades", "load", "PERF_COUNT_HW_CACHE_OP_READ"],
+    hw_cache_ops = [["loads", "load", "PERF_COUNT_HW_CACHE_OP_READ"],
                     ["stores", "store", "PERF_COUNT_HW_CACHE_OP_WRITE"],
                     ["prefetches", "prefetch",
                      "PERF_COUNT_HW_CACHE_OP_PREFETCH"],
