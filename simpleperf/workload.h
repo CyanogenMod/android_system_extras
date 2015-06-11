@@ -36,14 +36,7 @@ class Workload {
  public:
   static std::unique_ptr<Workload> CreateWorkload(const std::vector<std::string>& args);
 
-  ~Workload() {
-    if (start_signal_fd_ != -1) {
-      close(start_signal_fd_);
-    }
-    if (exec_child_fd_ != -1) {
-      close(exec_child_fd_);
-    }
-  }
+  ~Workload();
 
   bool Start();
   bool IsFinished();

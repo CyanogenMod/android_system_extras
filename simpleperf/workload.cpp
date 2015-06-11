@@ -31,6 +31,18 @@ std::unique_ptr<Workload> Workload::CreateWorkload(const std::vector<std::string
   return nullptr;
 }
 
+Workload::~Workload() {
+  if (work_pid_ != -1 && work_state_ != NotYetCreateNewProcess && work_state_ != Finished) {
+    kill(work_pid_, SIGKILL);
+  }
+  if (start_signal_fd_ != -1) {
+    close(start_signal_fd_);
+  }
+  if (exec_child_fd_ != -1) {
+    close(exec_child_fd_);
+  }
+}
+
 static void ChildProcessFn(std::vector<std::string>& args, int start_signal_fd, int exec_child_fd);
 
 bool Workload::CreateNewProcess() {
