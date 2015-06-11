@@ -248,8 +248,9 @@ void ReportCommand::ReadSampleTreeFromRecordFile() {
       }
     } else if (record->header.type == PERF_RECORD_SAMPLE) {
       const SampleRecord& r = *static_cast<const SampleRecord*>(record.get());
+      bool in_kernel = (r.header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL;
       sample_tree_->AddSample(r.tid_data.pid, r.tid_data.tid, r.ip_data.ip, r.time_data.time,
-                              r.period_data.period);
+                              r.period_data.period, in_kernel);
     } else if (record->header.type == PERF_RECORD_COMM) {
       const CommRecord& r = *static_cast<const CommRecord*>(record.get());
       sample_tree_->AddProcess(r.data.pid, r.comm);

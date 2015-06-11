@@ -125,22 +125,24 @@ static bool IsIpInMap(int pid, uint64_t ip, const MapEntry* map) {
   return (pid == map->pid && map->start_addr <= ip && map->start_addr + map->len > ip);
 }
 
-const MapEntry* SampleTree::FindMapEntryOrNew(int pid, uint64_t ip) {
+const MapEntry* SampleTree::FindMapEntryOrNew(int pid, uint64_t ip, bool in_kernel) {
   // Construct a map_entry which is strictly after the searched map_entry, based on MapComparator.
   MapEntry find_map = {
-      .pid = pid,
+      .pid = (in_kernel) ? -1 : pid,
       .start_addr = ip,
       .len = static_cast<uint64_t>(-1),
       .time = static_cast<uint64_t>(-1),
   };
-  auto it = user_map_tree_.upper_bound(&find_map);
-  if (it != user_map_tree_.begin() && IsIpInMap(pid, ip, *--it)) {
-    return *it;
-  }
-  find_map.pid = -1;
-  it = kernel_map_tree_.upper_bound(&find_map);
-  if (it != kernel_map_tree_.begin() && IsIpInMap(-1, ip, *--it)) {
-    return *it;
+  if (!in_kernel) {
+    auto it = user_map_tree_.upper_bound(&find_map);
+    if (it != user_map_tree_.begin() && IsIpInMap(pid, ip, *--it)) {
+      return *it;
+    }
+  } else {
+    auto it = kernel_map_tree_.upper_bound(&find_map);
+    if (it != kernel_map_tree_.begin() && IsIpInMap(-1, ip, *--it)) {
+      return *it;
+    }
   }
   return FindUnknownMapEntryOrNew(pid);
 }
@@ -164,9 +166,10 @@ const MapEntry* SampleTree::FindUnknownMapEntryOrNew(int pid) {
   return it->second;
 }
 
-void SampleTree::AddSample(int pid, int tid, uint64_t ip, uint64_t time, uint64_t period) {
+void SampleTree::AddSample(int pid, int tid, uint64_t ip, uint64_t time, uint64_t period,
+                           bool in_kernel) {
   const ProcessEntry* process_entry = FindProcessEntryOrNew(pid);
-  const MapEntry* map_entry = FindMapEntryOrNew(pid, ip);
+  const MapEntry* map_entry = FindMapEntryOrNew(pid, ip, in_kernel);
   const SymbolEntry* symbol_entry = FindSymbolEntry(ip, map_entry);
 
   SampleEntry find_sample = {

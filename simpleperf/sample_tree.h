@@ -73,7 +73,7 @@ class SampleTree {
                     const std::string& filename);
   void AddUserMap(int pid, uint64_t start_addr, uint64_t len, uint64_t pgoff, uint64_t time,
                   const std::string& filename);
-  void AddSample(int pid, int tid, uint64_t ip, uint64_t time, uint64_t period);
+  void AddSample(int pid, int tid, uint64_t ip, uint64_t time, uint64_t period, bool in_kernel);
   void VisitAllSamples(std::function<void(const SampleEntry&)> callback);
 
   uint64_t TotalSamples() const {
@@ -87,7 +87,7 @@ class SampleTree {
  private:
   void RemoveOverlappedUserMap(const MapEntry* map);
   const ProcessEntry* FindProcessEntryOrNew(int pid);
-  const MapEntry* FindMapEntryOrNew(int pid, uint64_t ip);
+  const MapEntry* FindMapEntryOrNew(int pid, uint64_t ip, bool in_kernel);
   const MapEntry* FindUnknownMapEntryOrNew(int pid);
   DsoEntry* FindKernelDsoOrNew(const std::string& filename);
   DsoEntry* FindUserDsoOrNew(const std::string& filename);

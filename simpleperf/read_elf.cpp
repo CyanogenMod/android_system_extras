@@ -165,7 +165,7 @@ bool ParseSymbolsFromElfFile(const std::string& filename,
                              std::function<void(const ElfFileSymbol&)> callback) {
   auto owning_binary = llvm::object::createBinary(llvm::StringRef(filename));
   if (owning_binary.getError()) {
-    PLOG(DEBUG) << "can't open file " << filename;
+    PLOG(DEBUG) << "can't open file '" << filename << "'";
     return false;
   }
   bool result = false;
