@@ -117,6 +117,7 @@ bool GetBuildIdFromElfFile(const std::string& filename, BuildId* build_id) {
 template <class ELFT>
 bool ParseSymbolsFromELFFile(const llvm::object::ELFFile<ELFT>* elf,
                              std::function<void(const ElfFileSymbol&)> callback) {
+  bool is_arm = (elf->getHeader()->e_machine == EM_ARM);
   auto begin = elf->begin_symbols();
   auto end = elf->end_symbols();
   if (begin == end) {
@@ -137,13 +138,6 @@ bool ParseSymbolsFromELFFile(const llvm::object::ELFFile<ELFT>* elf,
     if (section_name.getError() || section_name.get().empty()) {
       continue;
     }
-
-    symbol.start_in_file = elf_symbol.st_value - shdr->sh_addr + shdr->sh_offset;
-    symbol.len = elf_symbol.st_size;
-    int type = elf_symbol.getType();
-    if (type & STT_FUNC) {
-      symbol.is_func = true;
-    }
     if (section_name.get() == ".text") {
       symbol.is_in_text_section = true;
     }
@@ -156,6 +150,26 @@ bool ParseSymbolsFromELFFile(const llvm::object::ELFFile<ELFT>* elf,
     if (symbol.name.empty()) {
       continue;
     }
+
+    symbol.start_in_file = elf_symbol.st_value - shdr->sh_addr + shdr->sh_offset;
+    if ((symbol.start_in_file & 1) != 0 && is_arm) {
+      // Arm sets bit 0 to mark it as thumb code, remove the flag.
+      symbol.start_in_file &= ~1;
+    }
+    symbol.len = elf_symbol.st_size;
+    int type = elf_symbol.getType();
+    if (type == STT_FUNC) {
+      symbol.is_func = true;
+    } else if (type == STT_NOTYPE) {
+      if (symbol.is_in_text_section) {
+        symbol.is_label = true;
+        // Arm has meaningless labels like $t, $d, $x.
+        if (is_arm && symbol.name.size() == 2 && symbol.name[0] == '$') {
+          symbol.is_label = false;
+        }
+      }
+    }
+
     callback(symbol);
   }
   return true;

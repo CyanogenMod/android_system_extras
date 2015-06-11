@@ -16,8 +16,11 @@
 
 #include "dso.h"
 
+#include <stdlib.h>
+#include <base/logging.h>
 #include "environment.h"
 #include "read_elf.h"
+#include "utils.h"
 
 bool SymbolComparator::operator()(const std::unique_ptr<SymbolEntry>& symbol1,
                                   const std::unique_ptr<SymbolEntry>& symbol2) {
@@ -39,6 +42,30 @@ const SymbolEntry* DsoEntry::FindSymbol(uint64_t offset_in_dso) {
   return nullptr;
 }
 
+bool DsoFactory::demangle = true;
+
+void DsoFactory::SetDemangle(bool demangle) {
+  DsoFactory::demangle = demangle;
+}
+
+std::string DsoFactory::symfs_dir;
+
+bool DsoFactory::SetSymFsDir(const std::string& symfs_dir) {
+  std::string dirname = symfs_dir;
+  if (!dirname.empty() && dirname.back() != '/') {
+    dirname.push_back('/');
+  }
+  std::vector<std::string> files;
+  std::vector<std::string> subdirs;
+  GetEntriesInDir(symfs_dir, &files, &subdirs);
+  if (files.empty() && subdirs.empty()) {
+    LOG(ERROR) << "Invalid symfs_dir '" << symfs_dir << "'";
+    return false;
+  }
+  DsoFactory::symfs_dir = dirname;
+  return true;
+}
+
 static bool IsKernelFunctionSymbol(const KernelSymbol& symbol) {
   return (symbol.type == 'T' || symbol.type == 't' || symbol.type == 'W' || symbol.type == 'w');
 }
@@ -53,23 +80,26 @@ static bool KernelSymbolCallback(const KernelSymbol& kernel_symbol, DsoEntry* ds
   return false;
 }
 
+static void FixupSymbolLength(DsoEntry* dso) {
+  SymbolEntry* prev_symbol = nullptr;
+  for (auto& symbol : dso->symbols) {
+    if (prev_symbol != nullptr && prev_symbol->len == 0) {
+      prev_symbol->len = symbol->addr - prev_symbol->addr;
+    }
+    prev_symbol = symbol.get();
+  }
+  if (prev_symbol != nullptr && prev_symbol->len == 0) {
+    prev_symbol->len = ULLONG_MAX - prev_symbol->addr;
+  }
+}
+
 std::unique_ptr<DsoEntry> DsoFactory::LoadKernel() {
   std::unique_ptr<DsoEntry> dso(new DsoEntry);
   dso->path = "[kernel.kallsyms]";
 
   ProcessKernelSymbols("/proc/kallsyms",
                        std::bind(&KernelSymbolCallback, std::placeholders::_1, dso.get()));
-  // Fix symbol.len.
-  auto prev_it = dso->symbols.end();
-  for (auto it = dso->symbols.begin(); it != dso->symbols.end(); ++it) {
-    if (prev_it != dso->symbols.end()) {
-      (*prev_it)->len = (*it)->addr - (*prev_it)->addr;
-    }
-    prev_it = it;
-  }
-  if (prev_it != dso->symbols.end()) {
-    (*prev_it)->len = ULLONG_MAX - (*prev_it)->addr;
-  }
+  FixupSymbolLength(dso.get());
   return dso;
 }
 
@@ -91,19 +121,37 @@ static bool SymbolFilterForKernelModule(const ElfFileSymbol& elf_symbol) {
 std::unique_ptr<DsoEntry> DsoFactory::LoadKernelModule(const std::string& dso_path) {
   std::unique_ptr<DsoEntry> dso(new DsoEntry);
   dso->path = dso_path;
-  ParseSymbolsFromElfFile(dso_path, std::bind(ParseSymbolCallback, std::placeholders::_1, dso.get(),
-                                              SymbolFilterForKernelModule));
+  ParseSymbolsFromElfFile(symfs_dir + dso_path, std::bind(ParseSymbolCallback, std::placeholders::_1,
+                                                          dso.get(), SymbolFilterForKernelModule));
+  FixupSymbolLength(dso.get());
   return dso;
 }
 
 static bool SymbolFilterForDso(const ElfFileSymbol& elf_symbol) {
-  return elf_symbol.is_func;
+  return elf_symbol.is_func || (elf_symbol.is_label && elf_symbol.is_in_text_section);
+}
+
+extern "C" char* __cxa_demangle(const char* mangled_name, char* buf, size_t* n, int* status);
+
+static void DemangleInPlace(std::string* name) {
+  int status;
+  char* demangled_name = __cxa_demangle(name->c_str(), nullptr, nullptr, &status);
+  if (status == 0) {
+    *name = demangled_name;
+    free(demangled_name);
+  }
 }
 
 std::unique_ptr<DsoEntry> DsoFactory::LoadDso(const std::string& dso_path) {
   std::unique_ptr<DsoEntry> dso(new DsoEntry);
   dso->path = dso_path;
-  ParseSymbolsFromElfFile(dso_path, std::bind(ParseSymbolCallback, std::placeholders::_1, dso.get(),
-                                              SymbolFilterForDso));
+  ParseSymbolsFromElfFile(symfs_dir + dso_path, std::bind(ParseSymbolCallback, std::placeholders::_1,
+                                                          dso.get(), SymbolFilterForDso));
+  if (demangle) {
+    for (auto& symbol : dso->symbols) {
+      DemangleInPlace(&symbol->name);
+    }
+  }
+  FixupSymbolLength(dso.get());
   return dso;
 }
