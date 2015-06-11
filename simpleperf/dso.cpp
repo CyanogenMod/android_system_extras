@@ -135,10 +135,22 @@ extern "C" char* __cxa_demangle(const char* mangled_name, char* buf, size_t* n, 
 
 static void DemangleInPlace(std::string* name) {
   int status;
-  char* demangled_name = __cxa_demangle(name->c_str(), nullptr, nullptr, &status);
+  bool is_linker_symbol = (name->find(linker_prefix) == 0);
+  const char* mangled_str = name->c_str();
+  if (is_linker_symbol) {
+    mangled_str += linker_prefix.size();
+  }
+  char* demangled_name = __cxa_demangle(mangled_str, nullptr, nullptr, &status);
   if (status == 0) {
-    *name = demangled_name;
+    if (is_linker_symbol) {
+      *name = std::string("[linker]") + demangled_name;
+    } else {
+      *name = demangled_name;
+    }
     free(demangled_name);
+  } else if (is_linker_symbol) {
+    std::string temp = std::string("[linker]") + mangled_str;
+    *name = std::move(temp);
   }
 }
 
