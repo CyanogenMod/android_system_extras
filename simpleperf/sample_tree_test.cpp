@@ -90,9 +90,9 @@ class SampleTreeTest : public testing::Test {
 };
 
 TEST_F(SampleTreeTest, ip_in_map) {
-  sample_tree->AddSample(1, 1, 1, 0, 0);
-  sample_tree->AddSample(1, 1, 5, 0, 0);
-  sample_tree->AddSample(1, 1, 10, 0, 0);
+  sample_tree->AddSample(1, 1, 1, 0, 0, false);
+  sample_tree->AddSample(1, 1, 5, 0, 0, false);
+  sample_tree->AddSample(1, 1, 10, 0, 0, false);
   std::vector<ExpectedSampleInMap> expected_samples = {
       {1, 1, 1, 1, 3},
   };
@@ -100,8 +100,8 @@ TEST_F(SampleTreeTest, ip_in_map) {
 }
 
 TEST_F(SampleTreeTest, different_pid) {
-  sample_tree->AddSample(1, 1, 1, 0, 0);
-  sample_tree->AddSample(2, 2, 1, 0, 0);
+  sample_tree->AddSample(1, 1, 1, 0, 0, false);
+  sample_tree->AddSample(2, 2, 1, 0, 0, false);
   std::vector<ExpectedSampleInMap> expected_samples = {
       {1, 1, 1, 1, 1}, {2, 2, 2, 1, 1},
   };
@@ -109,8 +109,8 @@ TEST_F(SampleTreeTest, different_pid) {
 }
 
 TEST_F(SampleTreeTest, different_tid) {
-  sample_tree->AddSample(1, 1, 1, 0, 0);
-  sample_tree->AddSample(1, 11, 1, 0, 0);
+  sample_tree->AddSample(1, 1, 1, 0, 0, false);
+  sample_tree->AddSample(1, 11, 1, 0, 0, false);
   std::vector<ExpectedSampleInMap> expected_samples = {
       {1, 1, 1, 1, 1}, {1, 11, 1, 1, 1},
   };
@@ -118,8 +118,8 @@ TEST_F(SampleTreeTest, different_tid) {
 }
 
 TEST_F(SampleTreeTest, different_map) {
-  sample_tree->AddSample(1, 1, 1, 0, 0);
-  sample_tree->AddSample(1, 1, 11, 0, 0);
+  sample_tree->AddSample(1, 1, 1, 0, 0, false);
+  sample_tree->AddSample(1, 1, 11, 0, 0, false);
   std::vector<ExpectedSampleInMap> expected_samples = {
       {1, 1, 1, 1, 1}, {1, 1, 1, 11, 1},
   };
@@ -127,9 +127,9 @@ TEST_F(SampleTreeTest, different_map) {
 }
 
 TEST_F(SampleTreeTest, unmapped_sample) {
-  sample_tree->AddSample(1, 1, 0, 0, 0);
-  sample_tree->AddSample(1, 1, 31, 0, 0);
-  sample_tree->AddSample(1, 1, 70, 0, 0);
+  sample_tree->AddSample(1, 1, 0, 0, 0, false);
+  sample_tree->AddSample(1, 1, 31, 0, 0, false);
+  sample_tree->AddSample(1, 1, 70, 0, 0, false);
   // Match the unknown map.
   std::vector<ExpectedSampleInMap> expected_samples = {
       {1, 1, 1, 0, 3},
@@ -138,8 +138,8 @@ TEST_F(SampleTreeTest, unmapped_sample) {
 }
 
 TEST_F(SampleTreeTest, map_kernel) {
-  sample_tree->AddSample(1, 1, 11, 0, 0);
-  sample_tree->AddSample(1, 1, 21, 0, 0);
+  sample_tree->AddSample(1, 1, 11, 0, 0, true);
+  sample_tree->AddSample(1, 1, 11, 0, 0, false);
   std::vector<ExpectedSampleInMap> expected_samples = {
       {1, 1, -1, 11, 1}, {1, 1, 1, 11, 1},
   };
@@ -148,14 +148,14 @@ TEST_F(SampleTreeTest, map_kernel) {
 
 TEST(sample_tree, overlapped_map) {
   auto sample_tree = std::unique_ptr<SampleTree>(new SampleTree(CompareSampleFunction));
-  sample_tree->AddUserMap(1, 1, 10, 0, 0, "");  // Add map 1.
-  sample_tree->AddSample(1, 1, 5, 0, 0);        // Hit map 1.
-  sample_tree->AddUserMap(1, 5, 20, 0, 0, "");  // Add map 2.
-  sample_tree->AddSample(1, 1, 6, 0, 0);        // Hit map 2.
-  sample_tree->AddSample(1, 1, 4, 0, 0);        // Hit unknown map.
-  sample_tree->AddUserMap(1, 2, 7, 0, 0, "");   // Add map 3.
-  sample_tree->AddSample(1, 1, 7, 0, 0);        // Hit map 3.
-  sample_tree->AddSample(1, 1, 10, 0, 0);       // Hit unknown map.
+  sample_tree->AddUserMap(1, 1, 10, 0, 0, "");    // Add map 1.
+  sample_tree->AddSample(1, 1, 5, 0, 0, false);   // Hit map 1.
+  sample_tree->AddUserMap(1, 5, 20, 0, 0, "");    // Add map 2.
+  sample_tree->AddSample(1, 1, 6, 0, 0, false);   // Hit map 2.
+  sample_tree->AddSample(1, 1, 4, 0, 0, false);   // Hit unknown map.
+  sample_tree->AddUserMap(1, 2, 7, 0, 0, "");     // Add map 3.
+  sample_tree->AddSample(1, 1, 7, 0, 0, false);   // Hit map 3.
+  sample_tree->AddSample(1, 1, 10, 0, 0, false);  // Hit unknown map.
 
   std::vector<ExpectedSampleInMap> expected_samples = {
       {1, 1, 1, 0, 2}, {1, 1, 1, 1, 1}, {1, 1, 1, 2, 1}, {1, 1, 1, 5, 1},

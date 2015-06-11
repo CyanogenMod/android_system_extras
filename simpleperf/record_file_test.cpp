@@ -35,6 +35,8 @@ class RecordFileTest : public ::testing::Test {
     const EventType* event_type = EventTypeFactory::FindEventTypeByName("cpu-cycles");
     ASSERT_TRUE(event_type != nullptr);
     event_attr = CreateDefaultPerfEventAttr(*event_type);
+    event_attr.sample_id_all = 1;
+    event_attr.sample_type |= PERF_SAMPLE_TIME;
     std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFileForProcess(event_attr, getpid());
     ASSERT_TRUE(event_fd != nullptr);
     event_fds.push_back(std::move(event_fd));
@@ -80,7 +82,6 @@ TEST_F(RecordFileTest, smoke) {
   // Read and check data section.
   std::vector<std::unique_ptr<const Record>> records = reader->DataSection();
   ASSERT_EQ(1u, records.size());
-  ASSERT_EQ(mmap_record.header.type, records[0]->header.type);
   CheckRecordEqual(mmap_record, *records[0]);
 
   // Read and check feature section.
@@ -92,6 +93,36 @@ TEST_F(RecordFileTest, smoke) {
   ASSERT_TRUE(header != nullptr);
   ASSERT_EQ(sections[0].size, header->size);
   CheckRecordEqual(build_id_record, BuildIdRecord(header));
+
+  ASSERT_TRUE(reader->Close());
+}
+
+TEST_F(RecordFileTest, records_sorted_by_time) {
+  // Write to a record file;
+  std::unique_ptr<RecordFileWriter> writer =
+      RecordFileWriter::CreateInstance(filename, event_attr, event_fds);
+  ASSERT_TRUE(writer != nullptr);
+
+  // Write data section.
+  MmapRecord r1 = CreateMmapRecord(event_attr, true, 1, 1, 0x100, 0x2000, 0x3000, "mmap_record1");
+  MmapRecord r2 = r1;
+  MmapRecord r3 = r1;
+  r1.sample_id.time_data.time = 2;
+  r2.sample_id.time_data.time = 1;
+  r3.sample_id.time_data.time = 3;
+  ASSERT_TRUE(writer->WriteData(r1.BinaryFormat()));
+  ASSERT_TRUE(writer->WriteData(r2.BinaryFormat()));
+  ASSERT_TRUE(writer->WriteData(r3.BinaryFormat()));
+  ASSERT_TRUE(writer->Close());
+
+  // Read from a record file.
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(filename);
+  ASSERT_TRUE(reader != nullptr);
+  std::vector<std::unique_ptr<const Record>> records = reader->DataSection();
+  ASSERT_EQ(3u, records.size());
+  CheckRecordEqual(r2, *records[0]);
+  CheckRecordEqual(r1, *records[1]);
+  CheckRecordEqual(r3, *records[2]);
 
   ASSERT_TRUE(reader->Close());
 }
