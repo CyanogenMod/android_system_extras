@@ -24,6 +24,9 @@
 bool GetBuildIdFromNoteFile(const std::string& filename, BuildId* build_id);
 bool GetBuildIdFromElfFile(const std::string& filename, BuildId* build_id);
 
+// The symbol prefix used to indicate that the symbol belongs to android linker.
+static const std::string linker_prefix = "__dl_";
+
 struct ElfFileSymbol {
   uint64_t start_in_file;
   uint64_t len;
