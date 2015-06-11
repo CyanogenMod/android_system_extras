@@ -37,9 +37,12 @@ struct PerfCounter {
 // EventFd represents an opened perf_event_file.
 class EventFd {
  public:
-  static std::unique_ptr<EventFd> OpenEventFileForProcess(const perf_event_attr& attr, pid_t pid);
-  static std::unique_ptr<EventFd> OpenEventFileForCpu(const perf_event_attr& attr, int cpu);
-  static std::unique_ptr<EventFd> OpenEventFile(const perf_event_attr& attr, pid_t pid, int cpu);
+  static std::unique_ptr<EventFd> OpenEventFileForProcess(const perf_event_attr& attr, pid_t pid,
+                                                          bool report_error = true);
+  static std::unique_ptr<EventFd> OpenEventFileForCpu(const perf_event_attr& attr, int cpu,
+                                                      bool report_error = true);
+  static std::unique_ptr<EventFd> OpenEventFile(const perf_event_attr& attr, pid_t pid, int cpu,
+                                                bool report_error = true);
 
   ~EventFd();
 

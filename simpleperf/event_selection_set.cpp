@@ -22,6 +22,18 @@
 #include "event_attr.h"
 #include "event_type.h"
 
+bool IsBranchSamplingSupported() {
+  const EventType* event_type = EventTypeFactory::FindEventTypeByName("cpu-cycles", false);
+  if (event_type == nullptr) {
+    return false;
+  }
+  perf_event_attr attr = CreateDefaultPerfEventAttr(*event_type);
+  attr.sample_type |= PERF_SAMPLE_BRANCH_STACK;
+  attr.branch_sample_type = PERF_SAMPLE_BRANCH_ANY;
+  auto event_fd = EventFd::OpenEventFileForProcess(attr, getpid(), false);
+  return event_fd != nullptr;
+}
+
 void EventSelectionSet::AddEventType(const EventType& event_type) {
   EventSelection selection;
   selection.event_type = &event_type;
@@ -64,6 +76,10 @@ bool EventSelectionSet::SetBranchSampling(uint64_t branch_sample_type) {
     LOG(ERROR) << "Invalid branch_sample_type: 0x" << std::hex << branch_sample_type;
     return false;
   }
+  if (branch_sample_type != 0 && !IsBranchSamplingSupported()) {
+    LOG(ERROR) << "branch stack sampling is not supported on this device.";
+    return false;
+  }
   for (auto& selection : selections_) {
     perf_event_attr& attr = selection.event_attr;
     if (branch_sample_type != 0) {
@@ -103,8 +119,6 @@ bool EventSelectionSet::OpenEventFilesForProcess(pid_t pid) {
   for (auto& selection : selections_) {
     auto event_fd = EventFd::OpenEventFileForProcess(selection.event_attr, pid);
     if (event_fd == nullptr) {
-      PLOG(ERROR) << "failed to open perf event file for event type " << selection.event_type->name
-                  << " on pid " << pid;
       return false;
     }
     selection.event_fds.push_back(std::move(event_fd));
