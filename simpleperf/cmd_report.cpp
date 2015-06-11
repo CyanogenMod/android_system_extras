@@ -133,9 +133,11 @@ class ReportCommand : public Command {
       : Command("report", "report sampling information in perf.data",
                 "Usage: simpleperf report [options]\n"
                 "    -i <file>     specify path of record file, default is perf.data\n"
+                "    --no-demangle        Don't demangle symbol names.\n"
                 "    --sort key1,key2,... Select the keys to sort and print the report.\n"
                 "                         Possible keys include pid, comm, dso, symbol.\n"
-                "                         Default keys are \"comm,pid,dso\"\n"),
+                "                         Default keys are \"comm,pid,dso\"\n"
+                "    --symfs <dir>  Look for files with symbols relative to this directory.\n"),
         record_filename_("perf.data") {
   }
 
@@ -191,6 +193,8 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
         return false;
       }
       record_filename_ = args[i];
+    } else if (args[i] == "--no-demangle") {
+      DsoFactory::SetDemangle(false);
     } else if (args[i] == "--sort") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -204,6 +208,13 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
           LOG(ERROR) << "Unknown sort key: " << key;
           return false;
         }
+      }
+    } else if (args[i] == "--symfs") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      if (!DsoFactory::SetSymFsDir(args[i])) {
+        return false;
       }
     } else {
       ReportUnknownOption(args, i);
