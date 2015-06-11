@@ -182,7 +182,7 @@ static void GetAllModuleFiles(const std::string& path,
     if (android::base::EndsWith(name, ".ko")) {
       std::string module_name = name.substr(0, name.size() - 3);
       std::replace(module_name.begin(), module_name.end(), '-', '_');
-      module_file_map->insert(std::make_pair(module_name, path + name));
+      module_file_map->insert(std::make_pair(module_name, path + "/" + name));
     }
   }
   for (auto& name : subdirs) {
