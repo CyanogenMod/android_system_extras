@@ -37,6 +37,11 @@ bool SampleTree::MapComparator::operator()(const MapEntry* map1, const MapEntry*
 }
 
 void SampleTree::AddProcess(int pid, const std::string& comm) {
+  auto it = process_tree_.find(pid);
+  if (it != process_tree_.end()) {
+    it->second->comm = comm;
+    return;
+  }
   ProcessEntry* process = new ProcessEntry{
       .pid = pid, .comm = comm,
   };
@@ -111,12 +116,8 @@ void SampleTree::RemoveOverlappedUserMap(const MapEntry* map) {
 const ProcessEntry* SampleTree::FindProcessEntryOrNew(int pid) {
   auto it = process_tree_.find(pid);
   if (it == process_tree_.end()) {
-    ProcessEntry* process = new ProcessEntry{
-        .pid = pid, .comm = "unknown",
-    };
-    auto pair = process_tree_.insert(std::make_pair(pid, std::unique_ptr<ProcessEntry>(process)));
-    it = pair.first;
-    CHECK(pair.second);
+    AddProcess(pid, "unknown");
+    it = process_tree_.find(pid);
   }
   return it->second.get();
 }
