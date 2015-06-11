@@ -28,6 +28,7 @@ struct ElfFileSymbol {
   uint64_t start_in_file;
   uint64_t len;
   bool is_func;
+  bool is_label;
   bool is_in_text_section;
   std::string name;
 };
