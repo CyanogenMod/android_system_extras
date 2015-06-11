@@ -56,7 +56,7 @@ static std::string PrintPid(const SampleEntry& sample) {
   return android::base::StringPrintf("%d", sample.process->pid);
 }
 
-static ReportItem report_pid_item = {
+static ReportItem report_pid = {
     .compare_function = ComparePid,
     .print_header_function = PrintHeaderPid,
     .print_function = PrintPid,
@@ -74,7 +74,7 @@ static std::string PrintComm(const SampleEntry& sample) {
   return sample.process->comm;
 }
 
-static ReportItem report_comm_item = {
+static ReportItem report_comm = {
     .compare_function = CompareComm,
     .print_header_function = PrintHeaderComm,
     .print_function = PrintComm,
@@ -96,7 +96,7 @@ static std::string PrintDso(const SampleEntry& sample) {
   return filename;
 }
 
-static ReportItem report_dso_item = {
+static ReportItem report_dso = {
     .compare_function = CompareDso,
     .print_header_function = PrintHeaderDso,
     .print_function = PrintDso,
@@ -114,17 +114,28 @@ static std::string PrintSymbol(const SampleEntry& sample) {
   return sample.symbol->name;
 }
 
-static ReportItem report_symbol_item = {
+static ReportItem report_symbol = {
     .compare_function = CompareSymbol,
     .print_header_function = PrintHeaderSymbol,
     .print_function = PrintSymbol,
 };
 
+static std::string PrintHeaderSampleCount() {
+  return "Sample";
+}
+
+static std::string PrintSampleCount(const SampleEntry& sample) {
+  return android::base::StringPrintf("%" PRId64, sample.sample_count);
+}
+
+static ReportItem report_sample_count = {
+    .compare_function = nullptr,
+    .print_header_function = PrintHeaderSampleCount,
+    .print_function = PrintSampleCount,
+};
+
 static std::unordered_map<std::string, ReportItem*> report_item_map = {
-    {"comm", &report_comm_item},
-    {"pid", &report_pid_item},
-    {"dso", &report_dso_item},
-    {"symbol", &report_symbol_item},
+    {"comm", &report_comm}, {"pid", &report_pid}, {"dso", &report_dso}, {"symbol", &report_symbol},
 };
 
 class ReportCommand : public Command {
@@ -132,7 +143,8 @@ class ReportCommand : public Command {
   ReportCommand()
       : Command("report", "report sampling information in perf.data",
                 "Usage: simpleperf report [options]\n"
-                "    -i <file>     specify path of record file, default is perf.data\n"
+                "    -i <file>     Specify path of record file, default is perf.data.\n"
+                "    -n            Print the sample count for each item.\n"
                 "    --no-demangle        Don't demangle symbol names.\n"
                 "    --sort key1,key2,... Select the keys to sort and print the report.\n"
                 "                         Possible keys include pid, comm, dso, symbol.\n"
@@ -187,14 +199,20 @@ bool ReportCommand::Run(const std::vector<std::string>& args) {
 }
 
 bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
+  bool print_sample_count = false;
   for (size_t i = 0; i < args.size(); ++i) {
     if (args[i] == "-i") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
       }
       record_filename_ = args[i];
+
+    } else if (args[i] == "-n") {
+      print_sample_count = true;
+
     } else if (args[i] == "--no-demangle") {
       DsoFactory::SetDemangle(false);
+
     } else if (args[i] == "--sort") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -226,6 +244,9 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
     report_items_.push_back(report_item_map["comm"]);
     report_items_.push_back(report_item_map["pid"]);
     report_items_.push_back(report_item_map["dso"]);
+  }
+  if (print_sample_count) {
+    report_items_.insert(report_items_.begin(), &report_sample_count);
   }
   return true;
 }
@@ -270,9 +291,11 @@ void ReportCommand::ReadSampleTreeFromRecordFile() {
 
 int ReportCommand::CompareSampleEntry(const SampleEntry& sample1, const SampleEntry& sample2) {
   for (auto& item : report_items_) {
-    int result = item->compare_function(sample1, sample2);
-    if (result != 0) {
-      return result;
+    if (item->compare_function != nullptr) {
+      int result = item->compare_function(sample1, sample2);
+      if (result != 0) {
+        return result;
+      }
     }
   }
   return 0;
@@ -320,10 +343,11 @@ void ReportCommand::CollectReportEntryWidth(const SampleEntry& sample) {
 
 void ReportCommand::PrintReportHeader() {
   printf("%8s", "Overhead");
-  for (auto& item : report_items_) {
+  for (size_t i = 0; i < report_items_.size(); ++i) {
+    auto& item = report_items_[i];
     printf("  ");
     std::string s = item->print_header_function();
-    printf("%*s", static_cast<int>(item->width), s.c_str());
+    printf("%-*s", (i + 1 == report_items_.size()) ? 0 : static_cast<int>(item->width), s.c_str());
   }
   printf("\n");
 }
@@ -334,10 +358,11 @@ void ReportCommand::PrintReportEntry(const SampleEntry& sample) {
     percentage = 100.0 * sample.period / sample_tree_->TotalPeriod();
   }
   printf("%7.2lf%%", percentage);
-  for (auto& item : report_items_) {
+  for (size_t i = 0; i < report_items_.size(); ++i) {
+    auto& item = report_items_[i];
     printf("  ");
     std::string s = item->print_function(sample);
-    printf("%*s", static_cast<int>(item->width), s.c_str());
+    printf("%-*s", (i + 1 == report_items_.size()) ? 0 : static_cast<int>(item->width), s.c_str());
   }
   printf("\n");
 }
