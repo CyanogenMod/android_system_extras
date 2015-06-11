@@ -114,3 +114,73 @@ bool GetBuildIdFromElfFile(const std::string& filename, BuildId* build_id) {
   }
   return result;
 }
+template <class ELFT>
+bool ParseSymbolsFromELFFile(const llvm::object::ELFFile<ELFT>* elf,
+                             std::function<void(const ElfFileSymbol&)> callback) {
+  auto begin = elf->begin_symbols();
+  auto end = elf->end_symbols();
+  if (begin == end) {
+    begin = elf->begin_dynamic_symbols();
+    end = elf->end_dynamic_symbols();
+  }
+  for (; begin != end; ++begin) {
+    auto& elf_symbol = *begin;
+
+    ElfFileSymbol symbol;
+    memset(&symbol, '\0', sizeof(symbol));
+
+    auto shdr = elf->getSection(&elf_symbol);
+    if (shdr == nullptr) {
+      continue;
+    }
+    auto section_name = elf->getSectionName(shdr);
+    if (section_name.getError() || section_name.get().empty()) {
+      continue;
+    }
+
+    symbol.start_in_file = elf_symbol.st_value - shdr->sh_addr + shdr->sh_offset;
+    symbol.len = elf_symbol.st_size;
+    int type = elf_symbol.getType();
+    if (type & STT_FUNC) {
+      symbol.is_func = true;
+    }
+    if (section_name.get() == ".text") {
+      symbol.is_in_text_section = true;
+    }
+
+    auto symbol_name = elf->getSymbolName(begin);
+    if (symbol_name.getError()) {
+      continue;
+    }
+    symbol.name = symbol_name.get();
+    if (symbol.name.empty()) {
+      continue;
+    }
+    callback(symbol);
+  }
+  return true;
+}
+
+bool ParseSymbolsFromElfFile(const std::string& filename,
+                             std::function<void(const ElfFileSymbol&)> callback) {
+  auto owning_binary = llvm::object::createBinary(llvm::StringRef(filename));
+  if (owning_binary.getError()) {
+    PLOG(DEBUG) << "can't open file " << filename;
+    return false;
+  }
+  bool result = false;
+  llvm::object::Binary* binary = owning_binary.get().getBinary();
+  if (auto obj = llvm::dyn_cast<llvm::object::ObjectFile>(binary)) {
+    if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(obj)) {
+      result = ParseSymbolsFromELFFile(elf->getELFFile(), callback);
+    } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(obj)) {
+      result = ParseSymbolsFromELFFile(elf->getELFFile(), callback);
+    } else {
+      PLOG(DEBUG) << "unknown elf format in file" << filename;
+    }
+  }
+  if (!result) {
+    PLOG(DEBUG) << "can't parse symbols from file " << filename;
+  }
+  return result;
+}
