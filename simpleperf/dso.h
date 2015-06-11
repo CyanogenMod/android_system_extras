@@ -41,9 +41,15 @@ struct DsoEntry {
 
 class DsoFactory {
  public:
+  static void SetDemangle(bool demangle);
+  static bool SetSymFsDir(const std::string& symfs_dir);
   static std::unique_ptr<DsoEntry> LoadKernel();
   static std::unique_ptr<DsoEntry> LoadKernelModule(const std::string& dso_path);
   static std::unique_ptr<DsoEntry> LoadDso(const std::string& dso_path);
+
+ private:
+  static bool demangle;
+  static std::string symfs_dir;
 };
 
 #endif  // SIMPLE_PERF_DSO_H_
