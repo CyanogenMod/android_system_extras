@@ -163,9 +163,13 @@ bool ParseSymbolsFromELFFile(const llvm::object::ELFFile<ELFT>* elf,
     } else if (type == STT_NOTYPE) {
       if (symbol.is_in_text_section) {
         symbol.is_label = true;
-        // Arm has meaningless labels like $t, $d, $x.
-        if (is_arm && symbol.name.size() == 2 && symbol.name[0] == '$') {
-          symbol.is_label = false;
+
+        // Arm has meaningless labels like $t, $d, $x, exclude them.
+        if (is_arm) {
+          size_t test_pos = (symbol.name.find(linker_prefix) == 0) ? linker_prefix.size() : 0;
+          if (test_pos + 2 == symbol.name.size() && symbol.name[test_pos] == '$') {
+            symbol.is_label = false;
+          }
         }
       }
     }
