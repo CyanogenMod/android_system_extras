@@ -34,6 +34,7 @@
 #include <set>
 #include <cctype>
 
+#include <base/file.h>
 #include <base/stringprintf.h>
 #include <cutils/properties.h>
 
@@ -481,6 +482,35 @@ static CKPROFILE_RESULT check_profiling_enabled(ConfigReader &config)
   return DO_COLLECT_PROFILE;
 }
 
+static void annotate_encoded_perf_profile(wireless_android_play_playlog::AndroidPerfProfile *profile)
+{
+  //
+  // Load average as reported by the kernel
+  //
+  std::string load;
+  double fload = 0.0;
+  if (android::base::ReadFileToString("/proc/loadavg", &load) &&
+      sscanf(load.c_str(), "%lf", &fload) == 1) {
+    int iload = static_cast<int>(fload * 100.0);
+    profile->set_sys_load_average(iload);
+  } else {
+    W_ALOGE("Failed to read or scan /proc/loadavg (%s)", strerror(errno));
+  }
+
+  //
+  // Examine the contents of wake_unlock to determine whether the
+  // device display is on or off. NB: is this really the only way to
+  // determine this info?
+  //
+  std::string disp;
+  if (android::base::ReadFileToString("/sys/power/wake_unlock", &disp)) {
+    bool ison = (strstr(disp.c_str(), "PowerManagerService.Display") == 0);
+    profile->set_display_on(ison);
+  } else {
+    W_ALOGE("Failed to read /sys/power/wake_unlock (%s)", strerror(errno));
+  }
+}
+
 inline char* string_as_array(std::string* str) {
   return str->empty() ? NULL : &*str->begin();
 }
@@ -500,6 +530,13 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
   if (encodedProfile.programs().size() == 0) {
     return ERR_PERF_ENCODE_FAILED;
   }
+
+  // All of the info in 'encodedProfile' is derived from the perf.data file;
+  // here we tack display status and system load.
+  wireless_android_play_playlog::AndroidPerfProfile &prof =
+      const_cast<wireless_android_play_playlog::AndroidPerfProfile&>
+      (encodedProfile);
+  annotate_encoded_perf_profile(&prof);
 
   //
   // Serialize protobuf to array

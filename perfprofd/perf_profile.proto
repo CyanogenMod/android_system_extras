@@ -91,4 +91,12 @@ message AndroidPerfProfile {
 
   // List of all load modules.
   repeated LoadModule load_modules = 4;
+
+  // is device screen on at point when profile is collected?
+  optional bool display_on = 5;
+
+  // system load at point when profile is collected; corresponds
+  // to first value from /proc/loadavg multiplied by 100 then
+  // converted to int32
+  optional int32 sys_load_average = 6;
 }
