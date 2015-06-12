@@ -60,18 +60,19 @@ static std::string vold_command(std::string const& command)
 
     struct pollfd poll_sock = {sock, POLLIN, 0};
 
-    int rc = poll(&poll_sock, 1, vold_command_timeout_ms);
+    int rc = TEMP_FAILURE_RETRY(poll(&poll_sock, 1, vold_command_timeout_ms));
     if (rc < 0) {
         KLOG_ERROR(TAG, "Error in poll %s\n", strerror(errno));
         return "";
     }
+
     if (!(poll_sock.revents & POLLIN)) {
         KLOG_ERROR(TAG, "Timeout\n");
         return "";
     }
     char buffer[4096];
     memset(buffer, 0, sizeof(buffer));
-    rc = read(sock, buffer, sizeof(buffer));
+    rc = TEMP_FAILURE_RETRY(read(sock, buffer, sizeof(buffer)));
     if (rc <= 0) {
         if (rc == 0) {
             KLOG_ERROR(TAG, "Lost connection to Vold - did it crash?\n");
