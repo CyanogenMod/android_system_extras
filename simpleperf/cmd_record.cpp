@@ -31,6 +31,7 @@
 #include "read_elf.h"
 #include "record.h"
 #include "record_file.h"
+#include "utils.h"
 #include "workload.h"
 
 static std::string default_measured_event_type = "cpu-cycles";
@@ -43,6 +44,11 @@ static std::unordered_map<std::string, uint64_t> branch_sampling_type_map = {
     {"any_ret", PERF_SAMPLE_BRANCH_ANY_RETURN},
     {"ind_call", PERF_SAMPLE_BRANCH_IND_CALL},
 };
+
+static volatile bool signaled;
+static void signal_handler(int) {
+  signaled = true;
+}
 
 class RecordCommand : public Command {
  public:
@@ -78,12 +84,9 @@ class RecordCommand : public Command {
         measured_event_type_(nullptr),
         perf_mmap_pages_(256),
         record_filename_("perf.data") {
-    // We need signal SIGCHLD to break poll().
-    saved_sigchild_handler_ = signal(SIGCHLD, [](int) {});
-  }
-
-  ~RecordCommand() {
-    signal(SIGCHLD, saved_sigchild_handler_);
+    signaled = false;
+    signal_handler_register_.reset(
+        new SignalHandlerRegister({SIGCHLD, SIGINT, SIGTERM}, signal_handler));
   }
 
   bool Run(const std::vector<std::string>& args);
@@ -115,7 +118,7 @@ class RecordCommand : public Command {
   std::string record_filename_;
   std::unique_ptr<RecordFileWriter> record_file_writer_;
 
-  sighandler_t saved_sigchild_handler_;
+  std::unique_ptr<SignalHandlerRegister> signal_handler_register_;
 };
 
 bool RecordCommand::Run(const std::vector<std::string>& args) {
@@ -193,7 +196,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
     if (!event_selection_set_.ReadMmapEventData(callback)) {
       return false;
     }
-    if (workload->IsFinished()) {
+    if (signaled) {
       break;
     }
     poll(&pollfds[0], pollfds.size(), -1);
