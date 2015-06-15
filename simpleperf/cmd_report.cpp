@@ -312,8 +312,7 @@ void ReportCommand::PrintReport() {
 }
 
 void ReportCommand::PrintReportContext() {
-  const EventType* event_type =
-      EventTypeFactory::FindEventTypeByConfig(event_attr_.type, event_attr_.config);
+  const EventType* event_type = FindEventTypeByConfig(event_attr_.type, event_attr_.config);
   std::string event_type_name;
   if (event_type != nullptr) {
     event_type_name = event_type->name;

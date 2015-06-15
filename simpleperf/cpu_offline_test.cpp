@@ -25,11 +25,11 @@
 #include "event_type.h"
 
 static std::unique_ptr<EventFd> OpenHardwareEventOnCpu0() {
-  const EventType* event_type = EventTypeFactory::FindEventTypeByName("cpu-cycles");
-  if (event_type == nullptr) {
+  std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType("cpu-cycles");
+  if (event_type_modifier == nullptr) {
     return nullptr;
   }
-  perf_event_attr attr = CreateDefaultPerfEventAttr(*event_type);
+  perf_event_attr attr = CreateDefaultPerfEventAttr(event_type_modifier->event_type);
   return EventFd::OpenEventFile(attr, getpid(), 0);
 }
 

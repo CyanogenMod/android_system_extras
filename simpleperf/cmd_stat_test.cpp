@@ -21,54 +21,51 @@
 #include "command.h"
 #include "test_util.h"
 
-class StatCommandTest : public ::testing::Test {
- protected:
-  virtual void SetUp() {
-    stat_cmd = CreateCommandInstance("stat");
-    ASSERT_TRUE(stat_cmd != nullptr);
-  }
-
- protected:
-  std::unique_ptr<Command> stat_cmd;
-};
-
-TEST_F(StatCommandTest, no_options) {
-  ASSERT_TRUE(stat_cmd->Run({"sleep", "1"}));
+static std::unique_ptr<Command> StatCmd() {
+  return CreateCommandInstance("stat");
 }
 
-TEST_F(StatCommandTest, event_option) {
-  ASSERT_TRUE(stat_cmd->Run({"-e", "cpu-clock,task-clock", "sleep", "1"}));
+TEST(stat_cmd, no_options) {
+  ASSERT_TRUE(StatCmd()->Run({"sleep", "1"}));
 }
 
-TEST_F(StatCommandTest, system_wide_option) {
-  ASSERT_TRUE(stat_cmd->Run({"-a", "sleep", "1"}));
+TEST(stat_cmd, event_option) {
+  ASSERT_TRUE(StatCmd()->Run({"-e", "cpu-clock,task-clock", "sleep", "1"}));
 }
 
-TEST_F(StatCommandTest, verbose_option) {
-  ASSERT_TRUE(stat_cmd->Run({"--verbose", "sleep", "1"}));
+TEST(stat_cmd, system_wide_option) {
+  ASSERT_TRUE(StatCmd()->Run({"-a", "sleep", "1"}));
 }
 
-TEST_F(StatCommandTest, tracepoint_event) {
-  ASSERT_TRUE(stat_cmd->Run({"-a", "-e", "sched:sched_switch", "sleep", "1"}));
+TEST(stat_cmd, verbose_option) {
+  ASSERT_TRUE(StatCmd()->Run({"--verbose", "sleep", "1"}));
 }
 
-TEST_F(StatCommandTest, existing_processes) {
+TEST(stat_cmd, tracepoint_event) {
+  ASSERT_TRUE(StatCmd()->Run({"-a", "-e", "sched:sched_switch", "sleep", "1"}));
+}
+
+TEST(stat_cmd, event_modifier) {
+  ASSERT_TRUE(StatCmd()->Run({"-e", "cpu-cycles:u,sched:sched_switch:k", "sleep", "1"}));
+}
+
+TEST(stat_cmd, existing_processes) {
   std::vector<std::unique_ptr<Workload>> workloads;
   CreateProcesses(2, &workloads);
   std::string pid_list =
       android::base::StringPrintf("%d,%d", workloads[0]->GetPid(), workloads[1]->GetPid());
-  ASSERT_TRUE(stat_cmd->Run({"-p", pid_list}));
+  ASSERT_TRUE(StatCmd()->Run({"-p", pid_list}));
 }
 
-TEST_F(StatCommandTest, existing_threads) {
+TEST(stat_cmd, existing_threads) {
   std::vector<std::unique_ptr<Workload>> workloads;
   CreateProcesses(2, &workloads);
   // Process id can be used as thread id in linux.
   std::string tid_list =
       android::base::StringPrintf("%d,%d", workloads[0]->GetPid(), workloads[1]->GetPid());
-  ASSERT_TRUE(stat_cmd->Run({"-t", tid_list}));
+  ASSERT_TRUE(StatCmd()->Run({"-t", tid_list}));
 }
 
-TEST_F(StatCommandTest, no_monitored_threads) {
-  ASSERT_FALSE(stat_cmd->Run({""}));
+TEST(stat_cmd, no_monitored_threads) {
+  ASSERT_FALSE(StatCmd()->Run({""}));
 }
