@@ -92,6 +92,12 @@ bool EventSelectionSet::SetBranchSampling(uint64_t branch_sample_type) {
   return true;
 }
 
+void EventSelectionSet::EnableCallChainSampling() {
+  for (auto& selection : selections_) {
+    selection.event_attr.sample_type |= PERF_SAMPLE_CALLCHAIN;
+  }
+}
+
 bool EventSelectionSet::OpenEventFilesForAllCpus() {
   std::vector<int> cpus = GetOnlineCpus();
   if (cpus.empty()) {
