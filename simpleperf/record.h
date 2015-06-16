@@ -68,6 +68,10 @@ struct PerfSamplePeriodType {
   uint64_t period;
 };
 
+struct PerfSampleCallChainType {
+  std::vector<uint64_t> ips;
+};
+
 struct PerfSampleBranchStackType {
   struct BranchStackItemType {
     uint64_t from;
@@ -186,6 +190,7 @@ struct SampleRecord : public Record {
   PerfSampleCpuType cpu_data;             // Valid if PERF_SAMPLE_CPU.
   PerfSamplePeriodType period_data;       // Valid if PERF_SAMPLE_PERIOD.
 
+  PerfSampleCallChainType callchain_data;       // Valid if PERF_SAMPLE_CALLCHAIN.
   PerfSampleBranchStackType branch_stack_data;  // Valid if PERF_SAMPLE_BRANCH_STACK.
 
   SampleRecord(const perf_event_attr& attr, const perf_event_header* pheader);

@@ -270,6 +270,12 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, const perf_event_header*
   if (sample_type & PERF_SAMPLE_PERIOD) {
     MoveFromBinaryFormat(period_data, p);
   }
+  if (sample_type & PERF_SAMPLE_CALLCHAIN) {
+    uint64_t nr;
+    MoveFromBinaryFormat(nr, p);
+    callchain_data.ips.resize(nr);
+    MoveFromBinaryFormat(callchain_data.ips.data(), nr, p);
+  }
   if (sample_type & PERF_SAMPLE_BRANCH_STACK) {
     uint64_t nr;
     MoveFromBinaryFormat(nr, p);
@@ -308,6 +314,12 @@ void SampleRecord::DumpData(size_t indent) const {
   }
   if (sample_type & PERF_SAMPLE_PERIOD) {
     PrintIndented(indent, "period %" PRId64 "\n", period_data.period);
+  }
+  if (sample_type & PERF_SAMPLE_CALLCHAIN) {
+    PrintIndented(indent, "callchain nr=%" PRIu64 "\n", callchain_data.ips.size());
+    for (auto& ip : callchain_data.ips) {
+      PrintIndented(indent + 1, "0x%" PRIx64 "\n", ip);
+    }
   }
   if (sample_type & PERF_SAMPLE_BRANCH_STACK) {
     PrintIndented(indent, "branch_stack nr=%" PRIu64 "\n", branch_stack_data.stack.size());

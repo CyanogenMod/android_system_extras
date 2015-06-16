@@ -54,6 +54,7 @@ class EventSelectionSet {
   void SetSampleFreq(uint64_t sample_freq);
   void SetSamplePeriod(uint64_t sample_period);
   bool SetBranchSampling(uint64_t branch_sample_type);
+  void EnableCallChainSampling();
 
   bool OpenEventFilesForAllCpus();
   bool OpenEventFilesForProcess(pid_t pid);
