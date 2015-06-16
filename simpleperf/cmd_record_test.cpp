@@ -99,3 +99,7 @@ TEST(record_cmd, branch_sampling) {
         << "This test does nothing as branch stack sampling is not supported on this device.";
   }
 }
+
+TEST(record_cmd, callchain_sampling) {
+  ASSERT_TRUE(RecordCmd()->Run({"-g", "sleep", "1"}));
+}

@@ -58,6 +58,7 @@ class RecordCommand : public Command {
                 "                 to find all possible event names.\n"
                 "    -f freq      Set event sample frequency.\n"
                 "    -F freq      Same as '-f freq'.\n"
+                "    -g           Enables call-graph recording.\n"
                 "    -j branch_filter1,branch_filter2,...\n"
                 "                 Enable taken branch stack sampling. Each sample\n"
                 "                 captures a series of consecutive taken branches.\n"
@@ -75,6 +76,7 @@ class RecordCommand : public Command {
         sample_freq_(1000),
         system_wide_collection_(false),
         branch_sampling_(0),
+        callchain_sampling_(false),
         measured_event_type_(nullptr),
         perf_mmap_pages_(256),
         record_filename_("perf.data") {
@@ -106,6 +108,7 @@ class RecordCommand : public Command {
 
   bool system_wide_collection_;
   uint64_t branch_sampling_;
+  bool callchain_sampling_;
   const EventType* measured_event_type_;
   EventSelectionSet event_selection_set_;
 
@@ -246,6 +249,8 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         return false;
       }
       use_sample_freq_ = true;
+    } else if (args[i] == "-g") {
+      callchain_sampling_ = true;
     } else if (args[i] == "-j") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -298,6 +303,9 @@ bool RecordCommand::SetEventSelection() {
   event_selection_set_.SampleIdAll();
   if (!event_selection_set_.SetBranchSampling(branch_sampling_)) {
     return false;
+  }
+  if (callchain_sampling_) {
+    event_selection_set_.EnableCallChainSampling();
   }
   return true;
 }
