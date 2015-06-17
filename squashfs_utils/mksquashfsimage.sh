@@ -5,7 +5,7 @@
 function usage() {
 cat<<EOT
 Usage:
-${0##*/} SRC_DIR OUTPUT_FILE [-m MOUNT_POINT] [-c FILE_CONTEXTS] [-b BLOCK_SIZE]
+${0##*/} SRC_DIR OUTPUT_FILE [-m MOUNT_POINT] [-c FILE_CONTEXTS] [-b BLOCK_SIZE] [-z COMPRESSOR] [-zo COMPRESSOR_OPT]
 EOT
 }
 
@@ -42,6 +42,19 @@ if [[ "$1" == "-b" ]]; then
     shift; shift
 fi
 
+COMPRESSOR="lz4"
+COMPRESSOR_OPT="-Xhc"
+if [[ "$1" == "-z" ]]; then
+    COMPRESSOR=$2
+    COMPRESSOR_OPT=
+    shift; shift
+fi
+
+if [[ "$1" == "-zo" ]]; then
+    COMPRESSOR_OPT=$2
+    shift; shift
+fi
+
 OPT=""
 if [ -n "$MOUNT_POINT" ]; then
   OPT="$OPT -mount-point $MOUNT_POINT"
@@ -53,7 +66,7 @@ if [ -n "$BLOCK_SIZE" ]; then
   OPT="$OPT -b $BLOCK_SIZE"
 fi
 
-MAKE_SQUASHFS_CMD="mksquashfs $SRC_DIR $OUTPUT_FILE -no-progress -comp lz4 -Xhc -no-exports -noappend -no-recovery -android-fs-config $OPT"
+MAKE_SQUASHFS_CMD="mksquashfs $SRC_DIR $OUTPUT_FILE -no-progress -comp $COMPRESSOR $COMPRESSOR_OPT -no-exports -noappend -no-recovery -android-fs-config $OPT"
 echo $MAKE_SQUASHFS_CMD
 $MAKE_SQUASHFS_CMD
 if [ $? -ne 0 ]; then
