@@ -134,7 +134,7 @@ static const std::string GetFeatureName(int feature) {
       {FEAT_EVENT_DESC, "event_desc"},
       {FEAT_CPU_TOPOLOGY, "cpu_topology"},
       {FEAT_NUMA_TOPOLOGY, "numa_topology"},
-      {FEAT_BRANCH_STACK, "branck_stack"},
+      {FEAT_BRANCH_STACK, "branch_stack"},
       {FEAT_PMU_MAPPINGS, "pmu_mappings"},
       {FEAT_GROUP_DESC, "group_desc"},
   };

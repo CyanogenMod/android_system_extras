@@ -20,6 +20,7 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <base/logging.h>
@@ -65,4 +66,19 @@ void GetEntriesInDir(const std::string& dirpath, std::vector<std::string>* files
     }
   }
   closedir(dir);
+}
+
+bool RemovePossibleFile(const std::string& filename) {
+  struct stat st;
+  if (stat(filename.c_str(), &st) == 0) {
+    if (!S_ISREG(st.st_mode)) {
+      LOG(ERROR) << filename << " is not a file.";
+      return false;
+    }
+    if (unlink(filename.c_str()) == -1) {
+      PLOG(ERROR) << "unlink(" << filename << ") failed";
+      return false;
+    }
+  }
+  return true;
 }
