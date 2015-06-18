@@ -17,6 +17,7 @@
 #ifndef SIMPLE_PERF_UTILS_H_
 #define SIMPLE_PERF_UTILS_H_
 
+#include <signal.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -50,6 +51,25 @@ class LineReader {
   FILE* fp_;
   char* buf_;
   size_t bufsize_;
+};
+
+class SignalHandlerRegister {
+ public:
+  SignalHandlerRegister(const std::vector<int>& signums, void (*handler)(int)) {
+    for (auto& sig : signums) {
+      sighandler_t old_handler = signal(sig, handler);
+      saved_signal_handlers_.push_back(std::make_pair(sig, old_handler));
+    }
+  }
+
+  ~SignalHandlerRegister() {
+    for (auto& pair : saved_signal_handlers_) {
+      signal(pair.first, pair.second);
+    }
+  }
+
+ private:
+  std::vector<std::pair<int, sighandler_t>> saved_signal_handlers_;
 };
 
 void PrintIndented(size_t indent, const char* fmt, ...);
