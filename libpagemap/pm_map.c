@@ -46,7 +46,8 @@ int pm_map_usage_flags(pm_map_t *map, pm_memusage_t *usage_out,
     for (i = 0; i < len; i++) {
         usage.vss += map->proc->ker->pagesize;
 
-        if (!PM_PAGEMAP_PRESENT(pagemap[i]))
+        if (!PM_PAGEMAP_PRESENT(pagemap[i]) &&
+	    !PM_PAGEMAP_SWAPPED(pagemap[i]))
             continue;
 
         if (!PM_PAGEMAP_SWAPPED(pagemap[i])) {
