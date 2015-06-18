@@ -18,6 +18,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <chrono>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -48,11 +49,14 @@ class StatCommand : public Command {
   StatCommand()
       : Command("stat", "gather performance counter information",
                 "Usage: simpleperf stat [options] [command [command-args]]\n"
-                "    Gather performance counter information of running [command]. If [command]\n"
-                "    is not specified, sleep 1 is used instead.\n\n"
+                "    Gather performance counter information of running [command].\n"
                 "    -a           Collect system-wide information.\n"
                 "    -e event1,event2,... Select the event list to count. Use `simpleperf list`\n"
                 "                         to find all possible event names.\n"
+                "    -p pid1,pid2,...\n"
+                "                 Stat events on existing processes. Mutually exclusive with -a.\n"
+                "    -t tid1,tid2,...\n"
+                "                 Stat events on existing threads. Mutually exclusive with -a.\n"
                 "    --verbose    Show result in verbose mode.\n"),
         verbose_mode_(false),
         system_wide_collection_(false) {
@@ -73,6 +77,7 @@ class StatCommand : public Command {
   EventSelectionSet event_selection_set_;
   bool verbose_mode_;
   bool system_wide_collection_;
+  std::vector<pid_t> monitored_threads_;
 
   std::unique_ptr<SignalHandlerRegister> signal_handler_register_;
 };
@@ -92,13 +97,21 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
   }
 
   // 3. Create workload.
-  if (workload_args.empty()) {
-    // TODO: change default workload to sleep 99999, and run stat until Ctrl-C.
-    workload_args = std::vector<std::string>({"sleep", "1"});
+  std::unique_ptr<Workload> workload;
+  if (!workload_args.empty()) {
+    workload = Workload::CreateWorkload(workload_args);
+    if (workload == nullptr) {
+      return false;
+    }
   }
-  std::unique_ptr<Workload> workload = Workload::CreateWorkload(workload_args);
-  if (workload == nullptr) {
-    return false;
+  if (!system_wide_collection_ && monitored_threads_.empty()) {
+    if (workload != nullptr) {
+      monitored_threads_.push_back(workload->GetPid());
+      event_selection_set_.SetEnableOnExec(true);
+    } else {
+      LOG(ERROR) << "No threads to monitor. Try `simpleperf help stat` for help\n";
+      return false;
+    }
   }
 
   // 4. Open perf_event_files.
@@ -107,22 +120,19 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
       return false;
     }
   } else {
-    event_selection_set_.EnableOnExec();
-    if (!event_selection_set_.OpenEventFilesForProcess(workload->GetPid())) {
+    if (!event_selection_set_.OpenEventFilesForThreads(monitored_threads_)) {
       return false;
     }
   }
 
   // 5. Count events while workload running.
   auto start_time = std::chrono::steady_clock::now();
-  // If monitoring only one process, we use the enable_on_exec flag, and don't need to start
-  // counting manually.
-  if (system_wide_collection_) {
+  if (!event_selection_set_.GetEnableOnExec()) {
     if (!event_selection_set_.EnableEvents()) {
       return false;
     }
   }
-  if (!workload->Start()) {
+  if (workload != nullptr && !workload->Start()) {
     return false;
   }
   while (!signaled) {
@@ -143,6 +153,7 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
 
 bool StatCommand::ParseOptions(const std::vector<std::string>& args,
                                std::vector<std::string>* non_option_args) {
+  std::set<pid_t> tid_set;
   size_t i;
   for (i = 0; i < args.size() && args[i].size() > 0 && args[i][0] == '-'; ++i) {
     if (args[i] == "-a") {
@@ -157,12 +168,32 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
           return false;
         }
       }
+    } else if (args[i] == "-p") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      if (!GetValidThreadsFromProcessString(args[i], &tid_set)) {
+        return false;
+      }
+    } else if (args[i] == "-t") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      if (!GetValidThreadsFromThreadString(args[i], &tid_set)) {
+        return false;
+      }
     } else if (args[i] == "--verbose") {
       verbose_mode_ = true;
     } else {
       ReportUnknownOption(args, i);
       return false;
     }
+  }
+
+  monitored_threads_.insert(monitored_threads_.end(), tid_set.begin(), tid_set.end());
+  if (system_wide_collection_ && !monitored_threads_.empty()) {
+    LOG(ERROR) << "Stat system wide and existing processes/threads can't be used at the same time.";
+    return false;
   }
 
   if (non_option_args != nullptr) {

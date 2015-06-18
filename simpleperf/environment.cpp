@@ -273,7 +273,8 @@ static bool ReadThreadNameAndTgid(const std::string& status_file, std::string* c
   return false;
 }
 
-static bool GetThreadComm(pid_t pid, std::vector<ThreadComm>* thread_comms) {
+static std::vector<pid_t> GetThreadsInProcess(pid_t pid) {
+  std::vector<pid_t> result;
   std::string task_dirname = android::base::StringPrintf("/proc/%d/task", pid);
   std::vector<std::string> subdirs;
   GetEntriesInDir(task_dirname, nullptr, &subdirs);
@@ -282,11 +283,20 @@ static bool GetThreadComm(pid_t pid, std::vector<ThreadComm>* thread_comms) {
     if (!StringToPid(name, &tid)) {
       continue;
     }
-    std::string status_file = task_dirname + "/" + name + "/status";
+    result.push_back(tid);
+  }
+  return result;
+}
+
+static bool GetThreadComm(pid_t pid, std::vector<ThreadComm>* thread_comms) {
+  std::vector<pid_t> tids = GetThreadsInProcess(pid);
+  for (auto& tid : tids) {
+    std::string status_file = android::base::StringPrintf("/proc/%d/task/%d/status", pid, tid);
     std::string comm;
     pid_t tgid;
+    // It is possible that the process or thread exited before we can read its status.
     if (!ReadThreadNameAndTgid(status_file, &comm, &tgid)) {
-      return false;
+      continue;
     }
     ThreadComm thread;
     thread.tid = tid;
@@ -355,4 +365,39 @@ bool GetKernelBuildId(BuildId* build_id) {
 bool GetModuleBuildId(const std::string& module_name, BuildId* build_id) {
   std::string notefile = "/sys/module/" + module_name + "/notes/.note.gnu.build-id";
   return GetBuildIdFromNoteFile(notefile, build_id);
+}
+
+bool GetValidThreadsFromProcessString(const std::string& pid_str, std::set<pid_t>* tid_set) {
+  std::vector<std::string> strs = android::base::Split(pid_str, ",");
+  for (auto& s : strs) {
+    pid_t pid;
+    if (!StringToPid(s, &pid)) {
+      LOG(ERROR) << "Invalid pid '" << s << "'";
+      return false;
+    }
+    std::vector<pid_t> tids = GetThreadsInProcess(pid);
+    if (tids.empty()) {
+      LOG(ERROR) << "Non existing process '" << pid << "'";
+      return false;
+    }
+    tid_set->insert(tids.begin(), tids.end());
+  }
+  return true;
+}
+
+bool GetValidThreadsFromThreadString(const std::string& tid_str, std::set<pid_t>* tid_set) {
+  std::vector<std::string> strs = android::base::Split(tid_str, ",");
+  for (auto& s : strs) {
+    pid_t tid;
+    if (!StringToPid(s, &tid)) {
+      LOG(ERROR) << "Invalid tid '" << s << "'";
+      return false;
+    }
+    if (!IsDir(android::base::StringPrintf("/proc/%d", tid))) {
+      LOG(ERROR) << "Non existing thread '" << tid << "'";
+      return false;
+    }
+    tid_set->insert(tid);
+  }
+  return true;
 }

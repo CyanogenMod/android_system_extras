@@ -30,7 +30,7 @@ bool IsBranchSamplingSupported() {
   perf_event_attr attr = CreateDefaultPerfEventAttr(*event_type);
   attr.sample_type |= PERF_SAMPLE_BRANCH_STACK;
   attr.branch_sample_type = PERF_SAMPLE_BRANCH_ANY;
-  auto event_fd = EventFd::OpenEventFileForProcess(attr, getpid(), false);
+  auto event_fd = EventFd::OpenEventFile(attr, getpid(), -1, false);
   return event_fd != nullptr;
 }
 
@@ -41,10 +41,19 @@ void EventSelectionSet::AddEventType(const EventType& event_type) {
   selections_.push_back(std::move(selection));
 }
 
-void EventSelectionSet::EnableOnExec() {
+void EventSelectionSet::SetEnableOnExec(bool enable) {
   for (auto& selection : selections_) {
-    selection.event_attr.enable_on_exec = 1;
+    selection.event_attr.enable_on_exec = (enable ? 1 : 0);
   }
+}
+
+bool EventSelectionSet::GetEnableOnExec() {
+  for (auto& selection : selections_) {
+    if (selection.event_attr.enable_on_exec == 0) {
+      return false;
+    }
+  }
+  return true;
 }
 
 void EventSelectionSet::SampleIdAll() {
@@ -105,7 +114,7 @@ bool EventSelectionSet::OpenEventFilesForAllCpus() {
   }
   for (auto& selection : selections_) {
     for (auto& cpu : cpus) {
-      auto event_fd = EventFd::OpenEventFileForCpu(selection.event_attr, cpu);
+      auto event_fd = EventFd::OpenEventFile(selection.event_attr, -1, cpu);
       if (event_fd != nullptr) {
         selection.event_fds.push_back(std::move(event_fd));
       }
@@ -121,13 +130,15 @@ bool EventSelectionSet::OpenEventFilesForAllCpus() {
   return true;
 }
 
-bool EventSelectionSet::OpenEventFilesForProcess(pid_t pid) {
+bool EventSelectionSet::OpenEventFilesForThreads(const std::vector<pid_t>& threads) {
   for (auto& selection : selections_) {
-    auto event_fd = EventFd::OpenEventFileForProcess(selection.event_attr, pid);
-    if (event_fd == nullptr) {
-      return false;
+    for (auto& tid : threads) {
+      auto event_fd = EventFd::OpenEventFile(selection.event_attr, tid, -1);
+      if (event_fd == nullptr) {
+        return false;
+      }
+      selection.event_fds.push_back(std::move(event_fd));
     }
-    selection.event_fds.push_back(std::move(event_fd));
   }
   return true;
 }
