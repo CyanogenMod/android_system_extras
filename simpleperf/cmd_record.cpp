@@ -377,10 +377,17 @@ bool RecordCommand::DumpThreadCommAndMmaps() {
 }
 
 bool RecordCommand::DumpAdditionalFeatures() {
-  if (!record_file_writer_->WriteFeatureHeader(1)) {
+  size_t feature_count = (branch_sampling_ != 0 ? 2 : 1);
+  if (!record_file_writer_->WriteFeatureHeader(feature_count)) {
     return false;
   }
-  return DumpBuildIdFeature();
+  if (!DumpBuildIdFeature()) {
+    return false;
+  }
+  if (branch_sampling_ != 0 && !record_file_writer_->WriteBranchStackFeature()) {
+    return false;
+  }
+  return true;
 }
 
 bool RecordCommand::DumpBuildIdFeature() {

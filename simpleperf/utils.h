@@ -78,5 +78,6 @@ bool IsPowerOfTwo(uint64_t value);
 
 void GetEntriesInDir(const std::string& dirpath, std::vector<std::string>* files,
                      std::vector<std::string>* subdirs);
+bool RemovePossibleFile(const std::string& filename);
 
 #endif  // SIMPLE_PERF_UTILS_H_
