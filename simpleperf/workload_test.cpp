@@ -16,28 +16,67 @@
 
 #include <gtest/gtest.h>
 
+#include <signal.h>
+#include <utils.h>
 #include <workload.h>
 
-#include <chrono>
+static volatile bool signaled;
+static void signal_handler(int) {
+  signaled = true;
+}
 
-using namespace std::chrono;
-
-TEST(workload, smoke) {
+TEST(workload, success) {
+  signaled = false;
+  SignalHandlerRegister signal_handler_register({SIGCHLD}, signal_handler);
   auto workload = Workload::CreateWorkload({"sleep", "1"});
   ASSERT_TRUE(workload != nullptr);
-  ASSERT_FALSE(workload->IsFinished());
   ASSERT_TRUE(workload->GetPid() != 0);
-  auto start_time = steady_clock::now();
   ASSERT_TRUE(workload->Start());
-  ASSERT_FALSE(workload->IsFinished());
-  workload->WaitFinish();
-  ASSERT_TRUE(workload->IsFinished());
-  auto end_time = steady_clock::now();
-  ASSERT_TRUE(end_time >= start_time + seconds(1));
+  while (!signaled) {
+  }
 }
 
 TEST(workload, execvp_failure) {
   auto workload = Workload::CreateWorkload({"/dev/null"});
   ASSERT_TRUE(workload != nullptr);
   ASSERT_FALSE(workload->Start());
+}
+
+static void run_signaled_workload() {
+  {
+    signaled = false;
+    SignalHandlerRegister signal_handler_register({SIGCHLD}, signal_handler);
+    auto workload = Workload::CreateWorkload({"sleep", "10"});
+    ASSERT_TRUE(workload != nullptr);
+    ASSERT_TRUE(workload->Start());
+    ASSERT_EQ(0, kill(workload->GetPid(), SIGSEGV));
+    while (!signaled) {
+    }
+  }
+  // Make sure all destructors are called before exit().
+  exit(0);
+}
+
+TEST(workload, signaled_warning) {
+  ASSERT_EXIT(run_signaled_workload(), testing::ExitedWithCode(0),
+              "child process was terminated by signal");
+}
+
+static void run_exit_nonzero_workload() {
+  {
+    signaled = false;
+    SignalHandlerRegister signal_handler_register({SIGCHLD}, signal_handler);
+    auto workload = Workload::CreateWorkload({"ls", "nonexistdir"});
+    ASSERT_TRUE(workload != nullptr);
+    ASSERT_TRUE(workload->Start());
+    while (!signaled) {
+    }
+  }
+  // Make sure all destructors are called before exit().
+  exit(0);
+}
+
+TEST(workload, exit_nonzero_warning) {
+  ASSERT_EXIT(run_exit_nonzero_workload(), testing::ExitedWithCode(0),
+              "child process exited with exit code");
 }

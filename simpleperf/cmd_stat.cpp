@@ -15,6 +15,7 @@
  */
 
 #include <inttypes.h>
+#include <signal.h>
 #include <stdio.h>
 #include <chrono>
 #include <string>
@@ -28,6 +29,7 @@
 #include "event_selection_set.h"
 #include "event_type.h"
 #include "perf_event.h"
+#include "utils.h"
 #include "workload.h"
 
 static std::vector<std::string> default_measured_event_types{
@@ -35,6 +37,11 @@ static std::vector<std::string> default_measured_event_types{
     "instructions", "branch-instructions",     "branch-misses",
     "task-clock",   "context-switches",        "page-faults",
 };
+
+static volatile bool signaled;
+static void signal_handler(int) {
+  signaled = true;
+}
 
 class StatCommand : public Command {
  public:
@@ -49,6 +56,9 @@ class StatCommand : public Command {
                 "    --verbose    Show result in verbose mode.\n"),
         verbose_mode_(false),
         system_wide_collection_(false) {
+    signaled = false;
+    signal_handler_register_.reset(
+        new SignalHandlerRegister({SIGCHLD, SIGINT, SIGTERM}, signal_handler));
   }
 
   bool Run(const std::vector<std::string>& args);
@@ -63,6 +73,8 @@ class StatCommand : public Command {
   EventSelectionSet event_selection_set_;
   bool verbose_mode_;
   bool system_wide_collection_;
+
+  std::unique_ptr<SignalHandlerRegister> signal_handler_register_;
 };
 
 bool StatCommand::Run(const std::vector<std::string>& args) {
@@ -113,7 +125,9 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
   if (!workload->Start()) {
     return false;
   }
-  workload->WaitFinish();
+  while (!signaled) {
+    sleep(1);
+  }
   auto end_time = std::chrono::steady_clock::now();
 
   // 6. Read and print counters.
