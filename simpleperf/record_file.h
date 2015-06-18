@@ -52,6 +52,7 @@ class RecordFileWriter {
 
   bool WriteFeatureHeader(size_t feature_count);
   bool WriteBuildIdFeature(const std::vector<BuildIdRecord>& build_id_records);
+  bool WriteBranchStackFeature();
 
   // Normally, Close() should be called after writing. But if something
   // wrong happens and we need to finish in advance, the destructor
@@ -67,6 +68,8 @@ class RecordFileWriter {
                              std::vector<std::string>* hit_user_files);
   bool WriteFileHeader();
   bool Write(const void* buf, size_t len);
+  bool SeekFileEnd(uint64_t* file_end);
+  bool ModifyFeatureSectionDescriptor(size_t feature_index, uint64_t offset, uint64_t size);
 
   const std::string filename_;
   FILE* record_fp_;

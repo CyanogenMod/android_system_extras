@@ -35,6 +35,10 @@ using namespace PerfFileFormat;
 std::unique_ptr<RecordFileWriter> RecordFileWriter::CreateInstance(
     const std::string& filename, const perf_event_attr& event_attr,
     const std::vector<std::unique_ptr<EventFd>>& event_fds) {
+  // Remove old perf.data to avoid file ownership problems.
+  if (!RemovePossibleFile(filename)) {
+    return nullptr;
+  }
   FILE* fp = fopen(filename.c_str(), "web+");
   if (fp == nullptr) {
     PLOG(ERROR) << "failed to open record file '" << filename << "'";
@@ -191,16 +195,11 @@ bool RecordFileWriter::GetHitModules(std::vector<std::string>* hit_kernel_module
     PLOG(ERROR) << "fflush() failed";
     return false;
   }
-  if (fseek(record_fp_, 0, SEEK_END) == -1) {
-    PLOG(ERROR) << "fseek() failed";
+  uint64_t file_size;
+  if (!SeekFileEnd(&file_size)) {
     return false;
   }
-  long file_size = ftell(record_fp_);
-  if (file_size == -1) {
-    PLOG(ERROR) << "ftell() failed";
-    return false;
-  }
-  size_t mmap_len = file_size;
+  size_t mmap_len = static_cast<size_t>(file_size);
   void* mmap_addr = mmap(nullptr, mmap_len, PROT_READ, MAP_SHARED, fileno(record_fp_), 0);
   if (mmap_addr == MAP_FAILED) {
     PLOG(ERROR) << "mmap() failed";
@@ -214,6 +213,20 @@ bool RecordFileWriter::GetHitModules(std::vector<std::string>* hit_kernel_module
     PLOG(ERROR) << "munmap() failed";
     return false;
   }
+  return true;
+}
+
+bool RecordFileWriter::SeekFileEnd(uint64_t* file_end) {
+  if (fseek(record_fp_, 0, SEEK_END) == -1) {
+    PLOG(ERROR) << "fseek() failed";
+    return false;
+  }
+  long offset = ftell(record_fp_);
+  if (offset == -1) {
+    PLOG(ERROR) << "ftell() failed";
+    return false;
+  }
+  *file_end = static_cast<uint64_t>(offset);
   return true;
 }
 
@@ -232,17 +245,10 @@ bool RecordFileWriter::WriteFeatureHeader(size_t feature_count) {
 }
 
 bool RecordFileWriter::WriteBuildIdFeature(const std::vector<BuildIdRecord>& build_id_records) {
-  if (current_feature_index_ >= feature_count_) {
-    return false;
-  }
+  CHECK_LT(current_feature_index_, feature_count_);
   // Always write features at the end of the file.
-  if (fseek(record_fp_, 0, SEEK_END) == -1) {
-    PLOG(ERROR) << "fseek() failed";
-    return false;
-  }
-  long section_start = ftell(record_fp_);
-  if (section_start == -1) {
-    PLOG(ERROR) << "ftell() failed";
+  uint64_t start_offset;
+  if (!SeekFileEnd(&start_offset)) {
     return false;
   }
   for (auto& record : build_id_records) {
@@ -251,18 +257,41 @@ bool RecordFileWriter::WriteBuildIdFeature(const std::vector<BuildIdRecord>& bui
       return false;
     }
   }
-  long section_end = ftell(record_fp_);
-  if (section_end == -1) {
+  uint64_t end_offset;
+  if (!SeekFileEnd(&end_offset)) {
     return false;
   }
 
-  // Write feature section descriptor for build_id feature.
+  if (!ModifyFeatureSectionDescriptor(current_feature_index_, start_offset,
+                                      end_offset - start_offset)) {
+    return false;
+  }
+  ++current_feature_index_;
+  features_.push_back(FEAT_BUILD_ID);
+  return true;
+}
+
+bool RecordFileWriter::WriteBranchStackFeature() {
+  CHECK_LT(current_feature_index_, feature_count_);
+  uint64_t start_offset;
+  if (!SeekFileEnd(&start_offset)) {
+    return false;
+  }
+  if (!ModifyFeatureSectionDescriptor(current_feature_index_, start_offset, 0)) {
+    return false;
+  }
+  ++current_feature_index_;
+  features_.push_back(FEAT_BRANCH_STACK);
+  return true;
+}
+
+bool RecordFileWriter::ModifyFeatureSectionDescriptor(size_t feature_index, uint64_t offset,
+                                                      uint64_t size) {
   SectionDesc desc;
-  desc.offset = section_start;
-  desc.size = section_end - section_start;
+  desc.offset = offset;
+  desc.size = size;
   uint64_t feature_offset = data_section_offset_ + data_section_size_;
-  if (fseek(record_fp_, feature_offset + current_feature_index_ * sizeof(SectionDesc), SEEK_SET) ==
-      -1) {
+  if (fseek(record_fp_, feature_offset + feature_index * sizeof(SectionDesc), SEEK_SET) == -1) {
     PLOG(ERROR) << "fseek() failed";
     return false;
   }
@@ -270,8 +299,6 @@ bool RecordFileWriter::WriteBuildIdFeature(const std::vector<BuildIdRecord>& bui
     PLOG(ERROR) << "fwrite() failed";
     return false;
   }
-  ++current_feature_index_;
-  features_.push_back(FEAT_BUILD_ID);
   return true;
 }
 
