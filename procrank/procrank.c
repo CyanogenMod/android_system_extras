@@ -324,7 +324,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (has_swap) {
-        printf("%6" PRIu64 "K  ", total_swap);
+        printf("%6" PRIu64 "K  ", total_swap / 1024);
     }
 
     printf("TOTAL\n");
