@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-#include "sample_tree.h"
-
 #include <gtest/gtest.h>
+
+#include "sample_tree.h"
 
 struct ExpectedSampleInMap {
   int pid;
