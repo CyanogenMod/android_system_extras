@@ -37,16 +37,12 @@ struct PerfCounter {
 // EventFd represents an opened perf_event_file.
 class EventFd {
  public:
-  static std::unique_ptr<EventFd> OpenEventFileForProcess(const perf_event_attr& attr, pid_t pid,
-                                                          bool report_error = true);
-  static std::unique_ptr<EventFd> OpenEventFileForCpu(const perf_event_attr& attr, int cpu,
-                                                      bool report_error = true);
-  static std::unique_ptr<EventFd> OpenEventFile(const perf_event_attr& attr, pid_t pid, int cpu,
+  static std::unique_ptr<EventFd> OpenEventFile(const perf_event_attr& attr, pid_t tid, int cpu,
                                                 bool report_error = true);
 
   ~EventFd();
 
-  // Give information about this perf_event_file, like (event_name, pid, cpu).
+  // Give information about this perf_event_file, like (event_name, tid, cpu).
   std::string Name() const;
 
   uint64_t Id() const;
@@ -75,11 +71,11 @@ class EventFd {
   void PreparePollForMmapData(pollfd* poll_fd);
 
  private:
-  EventFd(int perf_event_fd, const std::string& event_name, pid_t pid, int cpu)
+  EventFd(int perf_event_fd, const std::string& event_name, pid_t tid, int cpu)
       : perf_event_fd_(perf_event_fd),
         id_(0),
         event_name_(event_name),
-        pid_(pid),
+        tid_(tid),
         cpu_(cpu),
         mmap_addr_(nullptr),
         mmap_len_(0) {
@@ -88,7 +84,7 @@ class EventFd {
   int perf_event_fd_;
   mutable uint64_t id_;
   const std::string event_name_;
-  pid_t pid_;
+  pid_t tid_;
   int cpu_;
 
   void* mmap_addr_;

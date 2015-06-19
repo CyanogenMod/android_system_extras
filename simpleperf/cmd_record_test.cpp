@@ -16,10 +16,13 @@
 
 #include <gtest/gtest.h>
 
+#include <base/stringprintf.h>
+
 #include "command.h"
 #include "environment.h"
 #include "record.h"
 #include "record_file.h"
+#include "test_util.h"
 
 using namespace PerfFileFormat;
 
@@ -102,4 +105,25 @@ TEST(record_cmd, branch_sampling) {
 
 TEST(record_cmd, callchain_sampling) {
   ASSERT_TRUE(RecordCmd()->Run({"-g", "sleep", "1"}));
+}
+
+TEST(record_cmd, existing_processes) {
+  std::vector<std::unique_ptr<Workload>> workloads;
+  CreateProcesses(2, &workloads);
+  std::string pid_list =
+      android::base::StringPrintf("%d,%d", workloads[0]->GetPid(), workloads[1]->GetPid());
+  ASSERT_TRUE(RecordCmd()->Run({"-p", pid_list}));
+}
+
+TEST(record_cmd, existing_threads) {
+  std::vector<std::unique_ptr<Workload>> workloads;
+  CreateProcesses(2, &workloads);
+  // Process id can also be used as thread id in linux.
+  std::string tid_list =
+      android::base::StringPrintf("%d,%d", workloads[0]->GetPid(), workloads[1]->GetPid());
+  ASSERT_TRUE(RecordCmd()->Run({"-t", tid_list}));
+}
+
+TEST(record_cmd, no_monitored_threads) {
+  ASSERT_FALSE(RecordCmd()->Run({""}));
 }

@@ -17,6 +17,7 @@
 #include <libgen.h>
 #include <poll.h>
 #include <signal.h>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -53,33 +54,37 @@ static void signal_handler(int) {
 class RecordCommand : public Command {
  public:
   RecordCommand()
-      : Command("record", "record sampling info in perf.data",
-                "Usage: simpleperf record [options] [command [command-args]]\n"
-                "    Gather sampling information when running [command]. If [command]\n"
-                "    is not specified, sleep 1 is used instead.\n"
-                "    -a           System-wide collection.\n"
-                "    -b           Enable take branch stack sampling. Same as '-j any'\n"
-                "    -c count     Set event sample period.\n"
-                "    -e event     Select the event to sample (Use `simpleperf list`)\n"
-                "                 to find all possible event names.\n"
-                "    -f freq      Set event sample frequency.\n"
-                "    -F freq      Same as '-f freq'.\n"
-                "    -g           Enables call-graph recording.\n"
-                "    -j branch_filter1,branch_filter2,...\n"
-                "                 Enable taken branch stack sampling. Each sample\n"
-                "                 captures a series of consecutive taken branches.\n"
-                "                 The following filters are defined:\n"
-                "                   any: any type of branch\n"
-                "                   any_call: any function call or system call\n"
-                "                   any_ret: any function return or system call return\n"
-                "                   ind_call: any indirect branch\n"
-                "                   u: only when the branch target is at the user level\n"
-                "                   k: only when the branch target is in the kernel\n"
-                "                 This option requires at least one branch type among any,\n"
-                "                 any_call, any_ret, ind_call.\n"
-                "    -o record_file_name    Set record file name, default is perf.data.\n"),
+      : Command(
+            "record", "record sampling info in perf.data",
+            "Usage: simpleperf record [options] [command [command-args]]\n"
+            "    Gather sampling information when running [command].\n"
+            "    -a           System-wide collection.\n"
+            "    -b           Enable take branch stack sampling. Same as '-j any'\n"
+            "    -c count     Set event sample period.\n"
+            "    -e event     Select the event to sample (Use `simpleperf list`)\n"
+            "                 to find all possible event names.\n"
+            "    -f freq      Set event sample frequency.\n"
+            "    -F freq      Same as '-f freq'.\n"
+            "    -g           Enables call-graph recording.\n"
+            "    -j branch_filter1,branch_filter2,...\n"
+            "                 Enable taken branch stack sampling. Each sample\n"
+            "                 captures a series of consecutive taken branches.\n"
+            "                 The following filters are defined:\n"
+            "                   any: any type of branch\n"
+            "                   any_call: any function call or system call\n"
+            "                   any_ret: any function return or system call return\n"
+            "                   ind_call: any indirect branch\n"
+            "                   u: only when the branch target is at the user level\n"
+            "                   k: only when the branch target is in the kernel\n"
+            "                 This option requires at least one branch type among any,\n"
+            "                 any_call, any_ret, ind_call.\n"
+            "    -o record_file_name    Set record file name, default is perf.data.\n"
+            "    -p pid1,pid2,...\n"
+            "                 Record events on existing processes. Mutually exclusive with -a.\n"
+            "    -t tid1,tid2,...\n"
+            "                 Record events on existing threads. Mutually exclusive with -a.\n"),
         use_sample_freq_(true),
-        sample_freq_(1000),
+        sample_freq_(4000),
         system_wide_collection_(false),
         branch_sampling_(0),
         callchain_sampling_(false),
@@ -110,6 +115,7 @@ class RecordCommand : public Command {
   uint64_t sample_period_;  // Sample once when 'sample_period_' events occur.
 
   bool system_wide_collection_;
+  std::vector<pid_t> monitored_threads_;
   uint64_t branch_sampling_;
   bool callchain_sampling_;
   const EventType* measured_event_type_;
@@ -140,13 +146,21 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   }
 
   // 2. Create workload.
-  if (workload_args.empty()) {
-    // TODO: change default workload to sleep 99999, and run record until Ctrl-C.
-    workload_args = std::vector<std::string>({"sleep", "1"});
+  std::unique_ptr<Workload> workload;
+  if (!workload_args.empty()) {
+    workload = Workload::CreateWorkload(workload_args);
+    if (workload == nullptr) {
+      return false;
+    }
   }
-  std::unique_ptr<Workload> workload = Workload::CreateWorkload(workload_args);
-  if (workload == nullptr) {
-    return false;
+  if (!system_wide_collection_ && monitored_threads_.empty()) {
+    if (workload != nullptr) {
+      monitored_threads_.push_back(workload->GetPid());
+      event_selection_set_.SetEnableOnExec(true);
+    } else {
+      LOG(ERROR) << "No threads to monitor. Try `simpleperf help record` for help\n";
+      return false;
+    }
   }
 
   // 3. Open perf_event_files, create memory mapped buffers for perf_event_files, add prepare poll
@@ -156,8 +170,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
       return false;
     }
   } else {
-    event_selection_set_.EnableOnExec();
-    if (!event_selection_set_.OpenEventFilesForProcess(workload->GetPid())) {
+    if (!event_selection_set_.OpenEventFilesForThreads(monitored_threads_)) {
       return false;
     }
   }
@@ -182,15 +195,12 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   }
 
   // 5. Write records in mmap buffers of perf_event_files to output file while workload is running.
-
-  // If monitoring only one process, we use the enable_on_exec flag, and don't need to start
-  // recording manually.
-  if (system_wide_collection_) {
+  if (!event_selection_set_.GetEnableOnExec()) {
     if (!event_selection_set_.EnableEvents()) {
       return false;
     }
   }
-  if (!workload->Start()) {
+  if (workload != nullptr && !workload->Start()) {
     return false;
   }
   auto callback =
@@ -217,6 +227,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
 
 bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
                                  std::vector<std::string>* non_option_args) {
+  std::set<pid_t> tid_set;
   size_t i;
   for (i = 0; i < args.size() && args[i].size() > 0 && args[i][0] == '-'; ++i) {
     if (args[i] == "-a") {
@@ -272,10 +283,31 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         return false;
       }
       record_filename_ = args[i];
+    } else if (args[i] == "-p") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      if (!GetValidThreadsFromProcessString(args[i], &tid_set)) {
+        return false;
+      }
+    } else if (args[i] == "-t") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      if (!GetValidThreadsFromThreadString(args[i], &tid_set)) {
+        return false;
+      }
     } else {
       ReportUnknownOption(args, i);
       return false;
     }
+  }
+
+  monitored_threads_.insert(monitored_threads_.end(), tid_set.begin(), tid_set.end());
+  if (system_wide_collection_ && !monitored_threads_.empty()) {
+    LOG(ERROR)
+        << "Record system wide and existing processes/threads can't be used at the same time.";
+    return false;
   }
 
   if (non_option_args != nullptr) {

@@ -38,17 +38,7 @@ static int perf_event_open(perf_event_attr* attr, pid_t pid, int cpu, int group_
   return syscall(__NR_perf_event_open, attr, pid, cpu, group_fd, flags);
 }
 
-std::unique_ptr<EventFd> EventFd::OpenEventFileForProcess(const perf_event_attr& attr, pid_t pid,
-                                                          bool report_error) {
-  return OpenEventFile(attr, pid, -1, report_error);
-}
-
-std::unique_ptr<EventFd> EventFd::OpenEventFileForCpu(const perf_event_attr& attr, int cpu,
-                                                      bool report_error) {
-  return OpenEventFile(attr, -1, cpu, report_error);
-}
-
-std::unique_ptr<EventFd> EventFd::OpenEventFile(const perf_event_attr& attr, pid_t pid, int cpu,
+std::unique_ptr<EventFd> EventFd::OpenEventFile(const perf_event_attr& attr, pid_t tid, int cpu,
                                                 bool report_error) {
   perf_event_attr perf_attr = attr;
   std::string event_name = "unknown event";
@@ -57,19 +47,19 @@ std::unique_ptr<EventFd> EventFd::OpenEventFile(const perf_event_attr& attr, pid
   if (event_type != nullptr) {
     event_name = event_type->name;
   }
-  int perf_event_fd = perf_event_open(&perf_attr, pid, cpu, -1, 0);
+  int perf_event_fd = perf_event_open(&perf_attr, tid, cpu, -1, 0);
   if (perf_event_fd == -1) {
     (report_error ? PLOG(ERROR) : PLOG(DEBUG)) << "open perf_event_file (event " << event_name
-                                               << ", pid " << pid << ", cpu " << cpu << ") failed";
+                                               << ", tid " << tid << ", cpu " << cpu << ") failed";
     return nullptr;
   }
   if (fcntl(perf_event_fd, F_SETFD, FD_CLOEXEC) == -1) {
     (report_error ? PLOG(ERROR) : PLOG(DEBUG)) << "fcntl(FD_CLOEXEC) for perf_event_file (event "
-                                               << event_name << ", pid " << pid << ", cpu " << cpu
+                                               << event_name << ", tid " << tid << ", cpu " << cpu
                                                << ") failed";
     return nullptr;
   }
-  return std::unique_ptr<EventFd>(new EventFd(perf_event_fd, event_name, pid, cpu));
+  return std::unique_ptr<EventFd>(new EventFd(perf_event_fd, event_name, tid, cpu));
 }
 
 EventFd::~EventFd() {
@@ -80,8 +70,8 @@ EventFd::~EventFd() {
 }
 
 std::string EventFd::Name() const {
-  return android::base::StringPrintf("perf_event_file(event %s, pid %d, cpu %d)",
-                                     event_name_.c_str(), pid_, cpu_);
+  return android::base::StringPrintf("perf_event_file(event %s, tid %d, cpu %d)",
+                                     event_name_.c_str(), tid_, cpu_);
 }
 
 uint64_t EventFd::Id() const {

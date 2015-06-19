@@ -16,7 +16,10 @@
 
 #include <gtest/gtest.h>
 
+#include <base/stringprintf.h>
+
 #include "command.h"
+#include "test_util.h"
 
 class StatCommandTest : public ::testing::Test {
  protected:
@@ -47,4 +50,25 @@ TEST_F(StatCommandTest, verbose_option) {
 
 TEST_F(StatCommandTest, tracepoint_event) {
   ASSERT_TRUE(stat_cmd->Run({"-a", "-e", "sched:sched_switch", "sleep", "1"}));
+}
+
+TEST_F(StatCommandTest, existing_processes) {
+  std::vector<std::unique_ptr<Workload>> workloads;
+  CreateProcesses(2, &workloads);
+  std::string pid_list =
+      android::base::StringPrintf("%d,%d", workloads[0]->GetPid(), workloads[1]->GetPid());
+  ASSERT_TRUE(stat_cmd->Run({"-p", pid_list}));
+}
+
+TEST_F(StatCommandTest, existing_threads) {
+  std::vector<std::unique_ptr<Workload>> workloads;
+  CreateProcesses(2, &workloads);
+  // Process id can be used as thread id in linux.
+  std::string tid_list =
+      android::base::StringPrintf("%d,%d", workloads[0]->GetPid(), workloads[1]->GetPid());
+  ASSERT_TRUE(stat_cmd->Run({"-t", tid_list}));
+}
+
+TEST_F(StatCommandTest, no_monitored_threads) {
+  ASSERT_FALSE(stat_cmd->Run({""}));
 }
