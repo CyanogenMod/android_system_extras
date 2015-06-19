@@ -23,21 +23,27 @@
 #include "event_type.h"
 
 bool IsBranchSamplingSupported() {
-  const EventType* event_type = EventTypeFactory::FindEventTypeByName("cpu-cycles", false);
-  if (event_type == nullptr) {
+  std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType("cpu-cycles", false);
+  if (event_type_modifier == nullptr) {
     return false;
   }
-  perf_event_attr attr = CreateDefaultPerfEventAttr(*event_type);
+  perf_event_attr attr = CreateDefaultPerfEventAttr(event_type_modifier->event_type);
   attr.sample_type |= PERF_SAMPLE_BRANCH_STACK;
   attr.branch_sample_type = PERF_SAMPLE_BRANCH_ANY;
   auto event_fd = EventFd::OpenEventFile(attr, getpid(), -1, false);
   return event_fd != nullptr;
 }
 
-void EventSelectionSet::AddEventType(const EventType& event_type) {
+void EventSelectionSet::AddEventType(const EventTypeAndModifier& event_type_modifier) {
   EventSelection selection;
-  selection.event_type = &event_type;
-  selection.event_attr = CreateDefaultPerfEventAttr(event_type);
+  selection.event_type = event_type_modifier.event_type;
+  selection.event_attr = CreateDefaultPerfEventAttr(event_type_modifier.event_type);
+  selection.event_attr.exclude_user = event_type_modifier.exclude_user;
+  selection.event_attr.exclude_kernel = event_type_modifier.exclude_kernel;
+  selection.event_attr.exclude_hv = event_type_modifier.exclude_hv;
+  selection.event_attr.exclude_host = event_type_modifier.exclude_host;
+  selection.event_attr.exclude_guest = event_type_modifier.exclude_guest;
+  selection.event_attr.precise_ip = event_type_modifier.precise_ip;
   selections_.push_back(std::move(selection));
 }
 
@@ -122,7 +128,7 @@ bool EventSelectionSet::OpenEventFilesForAllCpus() {
     // As the online cpus can be enabled or disabled at runtime, we may not open event file for
     // all cpus successfully. But we should open at least one cpu successfully.
     if (selection.event_fds.empty()) {
-      PLOG(ERROR) << "failed to open perf event file for event_type " << selection.event_type->name
+      PLOG(ERROR) << "failed to open perf event file for event_type " << selection.event_type.name
                   << " on all cpus";
       return false;
     }
@@ -165,7 +171,7 @@ bool EventSelectionSet::ReadCounters(
       }
       counters.push_back(counter);
     }
-    counters_map->insert(std::make_pair(selection.event_type, counters));
+    counters_map->insert(std::make_pair(&selection.event_type, counters));
   }
   return true;
 }
@@ -241,7 +247,7 @@ std::string EventSelectionSet::FindEventFileNameById(uint64_t id) {
 EventSelectionSet::EventSelection* EventSelectionSet::FindSelectionByType(
     const EventType& event_type) {
   for (auto& selection : selections_) {
-    if (selection.event_type->name == event_type.name) {
+    if (selection.event_type.name == event_type.name) {
       return &selection;
     }
   }

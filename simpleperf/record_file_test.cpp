@@ -32,9 +32,9 @@ class RecordFileTest : public ::testing::Test {
  protected:
   virtual void SetUp() {
     filename = "temporary.record_file";
-    const EventType* event_type = EventTypeFactory::FindEventTypeByName("cpu-cycles");
-    ASSERT_TRUE(event_type != nullptr);
-    event_attr = CreateDefaultPerfEventAttr(*event_type);
+    std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType("cpu-cycles");
+    ASSERT_TRUE(event_type_modifier != nullptr);
+    event_attr = CreateDefaultPerfEventAttr(event_type_modifier->event_type);
     event_attr.sample_id_all = 1;
     event_attr.sample_type |= PERF_SAMPLE_TIME;
     std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(event_attr, getpid(), -1);

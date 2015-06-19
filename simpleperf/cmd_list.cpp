@@ -71,7 +71,7 @@ bool ListCommand::Run(const std::vector<std::string>& args) {
     }
   }
 
-  auto& event_types = EventTypeFactory::GetAllEventTypes();
+  auto& event_types = GetAllEventTypes();
 
   for (auto& name : names) {
     auto it = type_map.find(name);
