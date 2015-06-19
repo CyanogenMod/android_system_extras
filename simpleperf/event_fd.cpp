@@ -42,8 +42,7 @@ std::unique_ptr<EventFd> EventFd::OpenEventFile(const perf_event_attr& attr, pid
                                                 bool report_error) {
   perf_event_attr perf_attr = attr;
   std::string event_name = "unknown event";
-  const EventType* event_type =
-      EventTypeFactory::FindEventTypeByConfig(perf_attr.type, perf_attr.config);
+  const EventType* event_type = FindEventTypeByConfig(perf_attr.type, perf_attr.config);
   if (event_type != nullptr) {
     event_name = event_type->name;
   }

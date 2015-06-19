@@ -95,7 +95,7 @@ perf_event_attr CreateDefaultPerfEventAttr(const EventType& event_type) {
 
 void DumpPerfEventAttr(const perf_event_attr& attr, size_t indent) {
   std::string event_name = "unknown";
-  const EventType* event_type = EventTypeFactory::FindEventTypeByConfig(attr.type, attr.config);
+  const EventType* event_type = FindEventTypeByConfig(attr.type, attr.config);
   if (event_type != nullptr) {
     event_name = event_type->name;
   }
@@ -116,21 +116,21 @@ void DumpPerfEventAttr(const perf_event_attr& attr, size_t indent) {
   PrintIndented(indent + 1, "read_format (0x%llx) %s\n", attr.read_format,
                 ReadFormatToString(attr.read_format).c_str());
 
-  PrintIndented(indent + 1, "disabled %llu, inherit %llu, pinned %llu, exclusive %llu\n",
+  PrintIndented(indent + 1, "disabled %u, inherit %u, pinned %u, exclusive %u\n",
                 attr.disabled, attr.inherit, attr.pinned, attr.exclusive);
 
-  PrintIndented(indent + 1, "exclude_user %llu, exclude_kernel %llu, exclude_hv %llu\n",
+  PrintIndented(indent + 1, "exclude_user %u, exclude_kernel %u, exclude_hv %u\n",
                 attr.exclude_user, attr.exclude_kernel, attr.exclude_hv);
 
-  PrintIndented(indent + 1, "exclude_idle %llu, mmap %llu, comm %llu, freq %llu\n",
+  PrintIndented(indent + 1, "exclude_idle %u, mmap %u, comm %u, freq %u\n",
                 attr.exclude_idle, attr.mmap, attr.comm, attr.freq);
 
-  PrintIndented(indent + 1, "inherit_stat %llu, enable_on_exec %llu, task %llu\n",
+  PrintIndented(indent + 1, "inherit_stat %u, enable_on_exec %u, task %u\n",
                 attr.inherit_stat, attr.enable_on_exec, attr.task);
 
-  PrintIndented(indent + 1, "watermark %llu, precise_ip %llu, mmap_data %llu\n", attr.watermark,
+  PrintIndented(indent + 1, "watermark %u, precise_ip %u, mmap_data %u\n", attr.watermark,
                 attr.precise_ip, attr.mmap_data);
 
-  PrintIndented(indent + 1, "sample_id_all %llu, exclude_host %llu, exclude_guest %llu\n",
+  PrintIndented(indent + 1, "sample_id_all %u, exclude_host %u, exclude_guest %u\n",
                 attr.sample_id_all, attr.exclude_host, attr.exclude_guest);
 }

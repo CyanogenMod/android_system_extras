@@ -18,6 +18,7 @@
 #define SIMPLE_PERF_EVENT_H_
 
 #include <stdint.h>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -41,12 +42,29 @@ struct EventType {
   uint64_t config;
 };
 
-class EventTypeFactory {
- public:
-  static const std::vector<EventType>& GetAllEventTypes();
-  static const EventType* FindEventTypeByName(const std::string& name,
-                                              bool report_unsupported_type = true);
-  static const EventType* FindEventTypeByConfig(uint32_t type, uint64_t config);
+const std::vector<EventType>& GetAllEventTypes();
+const EventType* FindEventTypeByConfig(uint32_t type, uint64_t config);
+
+struct EventTypeAndModifier {
+  EventType event_type;
+  bool exclude_user;
+  bool exclude_kernel;
+  bool exclude_hv;
+  bool exclude_host;
+  bool exclude_guest;
+  int precise_ip : 2;
+
+  EventTypeAndModifier()
+      : exclude_user(false),
+        exclude_kernel(false),
+        exclude_hv(false),
+        exclude_host(false),
+        exclude_guest(false),
+        precise_ip(0) {
+  }
 };
+
+std::unique_ptr<EventTypeAndModifier> ParseEventType(const std::string& event_type_str,
+                                                     bool report_unsupported_type = true);
 
 #endif  // SIMPLE_PERF_EVENT_H_

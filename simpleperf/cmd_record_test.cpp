@@ -103,6 +103,10 @@ TEST(record_cmd, branch_sampling) {
   }
 }
 
+TEST(record_cmd, event_modifier) {
+  ASSERT_TRUE(RecordCmd()->Run({"-e", "cpu-cycles:u", "sleep", "1"}));
+}
+
 TEST(record_cmd, callchain_sampling) {
   ASSERT_TRUE(RecordCmd()->Run({"-g", "sleep", "1"}));
 }

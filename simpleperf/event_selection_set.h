@@ -25,9 +25,8 @@
 #include <base/macros.h>
 
 #include "event_fd.h"
+#include "event_type.h"
 #include "perf_event.h"
-
-struct EventType;
 
 // EventSelectionSet helps to monitor events.
 // Firstly, the user creates an EventSelectionSet, and adds the specific event types to monitor.
@@ -47,7 +46,7 @@ class EventSelectionSet {
     return selections_.empty();
   }
 
-  void AddEventType(const EventType& event_type);
+  void AddEventType(const EventTypeAndModifier& event_type_modifier);
 
   void SetEnableOnExec(bool enable);
   bool GetEnableOnExec();
@@ -71,7 +70,7 @@ class EventSelectionSet {
 
  private:
   struct EventSelection {
-    const EventType* event_type;
+    EventType event_type;
     perf_event_attr event_attr;
     std::vector<std::unique_ptr<EventFd>> event_fds;
   };
