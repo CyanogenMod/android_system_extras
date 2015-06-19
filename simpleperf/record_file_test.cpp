@@ -37,7 +37,7 @@ class RecordFileTest : public ::testing::Test {
     event_attr = CreateDefaultPerfEventAttr(*event_type);
     event_attr.sample_id_all = 1;
     event_attr.sample_type |= PERF_SAMPLE_TIME;
-    std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFileForProcess(event_attr, getpid());
+    std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(event_attr, getpid(), -1);
     ASSERT_TRUE(event_fd != nullptr);
     event_fds.push_back(std::move(event_fd));
   }

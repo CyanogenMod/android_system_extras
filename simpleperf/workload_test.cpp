@@ -17,8 +17,9 @@
 #include <gtest/gtest.h>
 
 #include <signal.h>
-#include <utils.h>
-#include <workload.h>
+
+#include "utils.h"
+#include "workload.h"
 
 static volatile bool signaled;
 static void signal_handler(int) {
@@ -49,7 +50,7 @@ static void run_signaled_workload() {
     auto workload = Workload::CreateWorkload({"sleep", "10"});
     ASSERT_TRUE(workload != nullptr);
     ASSERT_TRUE(workload->Start());
-    ASSERT_EQ(0, kill(workload->GetPid(), SIGSEGV));
+    ASSERT_EQ(0, kill(workload->GetPid(), SIGABRT));
     while (!signaled) {
     }
   }

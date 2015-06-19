@@ -18,6 +18,7 @@
 #define SIMPLE_PERF_ENVIRONMENT_H_
 
 #include <functional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -67,6 +68,9 @@ static const char* DEFAULT_KERNEL_FILENAME_FOR_BUILD_ID = "[kernel.kallsyms]";
 
 bool GetKernelBuildId(BuildId* build_id);
 bool GetModuleBuildId(const std::string& module_name, BuildId* build_id);
+
+bool GetValidThreadsFromProcessString(const std::string& pid_str, std::set<pid_t>* tid_set);
+bool GetValidThreadsFromThreadString(const std::string& tid_str, std::set<pid_t>* tid_set);
 
 // Expose the following functions for unit tests.
 std::vector<int> GetOnlineCpusFromString(const std::string& s);
