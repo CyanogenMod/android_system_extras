@@ -24,9 +24,9 @@
 class RecordTest : public ::testing::Test {
  protected:
   virtual void SetUp() {
-    const EventType* event_type = EventTypeFactory::FindEventTypeByName("cpu-cycles");
-    ASSERT_TRUE(event_type != nullptr);
-    event_attr = CreateDefaultPerfEventAttr(*event_type);
+    std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType("cpu-cycles");
+    ASSERT_TRUE(event_type_modifier != nullptr);
+    event_attr = CreateDefaultPerfEventAttr(event_type_modifier->event_type);
   }
 
   template <class RecordType>

@@ -51,8 +51,12 @@ class StatCommand : public Command {
                 "Usage: simpleperf stat [options] [command [command-args]]\n"
                 "    Gather performance counter information of running [command].\n"
                 "    -a           Collect system-wide information.\n"
-                "    -e event1,event2,... Select the event list to count. Use `simpleperf list`\n"
-                "                         to find all possible event names.\n"
+                "    -e event1[:modifier1],event2[:modifier2],...\n"
+                "                 Select the event list to count. Use `simpleperf list` to find\n"
+                "                 all possible event names. Modifiers can be added to define\n"
+                "                 how the event should be monitored. Possible modifiers are:\n"
+                "                   u - monitor user space events only\n"
+                "                   k - monitor kernel space events only\n"
                 "    -p pid1,pid2,...\n"
                 "                 Stat events on existing processes. Mutually exclusive with -a.\n"
                 "    -t tid1,tid2,...\n"
@@ -74,6 +78,7 @@ class StatCommand : public Command {
   bool ShowCounters(const std::map<const EventType*, std::vector<PerfCounter>>& counters_map,
                     std::chrono::steady_clock::duration counting_duration);
 
+  std::vector<std::pair<std::string, EventType>> measured_event_types_;
   EventSelectionSet event_selection_set_;
   bool verbose_mode_;
   bool system_wide_collection_;
@@ -207,12 +212,13 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
 
 bool StatCommand::AddMeasuredEventType(const std::string& event_type_name,
                                        bool report_unsupported_type) {
-  const EventType* event_type =
-      EventTypeFactory::FindEventTypeByName(event_type_name, report_unsupported_type);
-  if (event_type == nullptr) {
+  std::unique_ptr<EventTypeAndModifier> event_type_modifier =
+      ParseEventType(event_type_name, report_unsupported_type);
+  if (event_type_modifier == nullptr) {
     return false;
   }
-  event_selection_set_.AddEventType(*event_type);
+  measured_event_types_.push_back(std::make_pair(event_type_name, event_type_modifier->event_type));
+  event_selection_set_.AddEventType(*event_type_modifier);
   return true;
 }
 
@@ -263,8 +269,14 @@ bool StatCommand::ShowCounters(
                                             sum_counter.time_enabled / sum_counter.time_running);
       }
     }
+    std::string event_type_name;
+    for (auto& pair : measured_event_types_) {
+      if (pair.second.name == event_type->name) {
+        event_type_name = pair.first;
+      }
+    }
     printf("%'30" PRId64 "%s  %s\n", scaled_count, scaled ? "(scaled)" : "       ",
-           event_type->name.c_str());
+           event_type_name.c_str());
   }
   printf("\nTotal test time: %lf seconds.\n",
          std::chrono::duration_cast<std::chrono::duration<double>>(counting_duration).count());
