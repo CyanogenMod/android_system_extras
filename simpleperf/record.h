@@ -149,6 +149,29 @@ struct MmapRecord : public Record {
   void DumpData(size_t indent) const override;
 };
 
+struct Mmap2Record : public Record {
+  struct Mmap2RecordDataType {
+    uint32_t pid, tid;
+    uint64_t addr;
+    uint64_t len;
+    uint64_t pgoff;
+    uint32_t maj;
+    uint32_t min;
+    uint64_t ino;
+    uint64_t ino_generation;
+    uint32_t prot, flags;
+  } data;
+  std::string filename;
+
+  Mmap2Record() {
+  }
+
+  Mmap2Record(const perf_event_attr& attr, const perf_event_header* pheader);
+
+ protected:
+  void DumpData(size_t indent) const override;
+};
+
 struct CommRecord : public Record {
   struct CommRecordDataType {
     uint32_t pid, tid;
@@ -165,17 +188,34 @@ struct CommRecord : public Record {
   void DumpData(size_t indent) const override;
 };
 
-struct ExitRecord : public Record {
-  struct ExitRecordDataType {
+struct ExitOrForkRecord : public Record {
+  struct ExitOrForkRecordDataType {
     uint32_t pid, ppid;
     uint32_t tid, ptid;
     uint64_t time;
   } data;
 
-  ExitRecord(const perf_event_attr& attr, const perf_event_header* pheader);
+  ExitOrForkRecord() {
+  }
+  ExitOrForkRecord(const perf_event_attr& attr, const perf_event_header* pheader);
 
  protected:
   void DumpData(size_t indent) const override;
+};
+
+struct ExitRecord : public ExitOrForkRecord {
+  ExitRecord(const perf_event_attr& attr, const perf_event_header* pheader)
+      : ExitOrForkRecord(attr, pheader) {
+  }
+};
+
+struct ForkRecord : public ExitOrForkRecord {
+  ForkRecord() {
+  }
+  ForkRecord(const perf_event_attr& attr, const perf_event_header* pheader)
+      : ExitOrForkRecord(attr, pheader) {
+  }
+  std::vector<char> BinaryFormat() const;
 };
 
 struct SampleRecord : public Record {
@@ -222,6 +262,8 @@ MmapRecord CreateMmapRecord(const perf_event_attr& attr, bool in_kernel, uint32_
                             const std::string& filename);
 CommRecord CreateCommRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid,
                             const std::string& comm);
+ForkRecord CreateForkRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid, uint32_t ppid,
+                            uint32_t ptid);
 BuildIdRecord CreateBuildIdRecord(bool in_kernel, pid_t pid, const BuildId& build_id,
                                   const std::string& filename);
 #endif  // SIMPLE_PERF_RECORD_H_

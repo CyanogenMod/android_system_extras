@@ -116,17 +116,17 @@ void DumpPerfEventAttr(const perf_event_attr& attr, size_t indent) {
   PrintIndented(indent + 1, "read_format (0x%llx) %s\n", attr.read_format,
                 ReadFormatToString(attr.read_format).c_str());
 
-  PrintIndented(indent + 1, "disabled %u, inherit %u, pinned %u, exclusive %u\n",
-                attr.disabled, attr.inherit, attr.pinned, attr.exclusive);
+  PrintIndented(indent + 1, "disabled %u, inherit %u, pinned %u, exclusive %u\n", attr.disabled,
+                attr.inherit, attr.pinned, attr.exclusive);
 
   PrintIndented(indent + 1, "exclude_user %u, exclude_kernel %u, exclude_hv %u\n",
                 attr.exclude_user, attr.exclude_kernel, attr.exclude_hv);
 
-  PrintIndented(indent + 1, "exclude_idle %u, mmap %u, comm %u, freq %u\n",
-                attr.exclude_idle, attr.mmap, attr.comm, attr.freq);
+  PrintIndented(indent + 1, "exclude_idle %u, mmap %u, comm %u, freq %u\n", attr.exclude_idle,
+                attr.mmap, attr.comm, attr.freq);
 
-  PrintIndented(indent + 1, "inherit_stat %u, enable_on_exec %u, task %u\n",
-                attr.inherit_stat, attr.enable_on_exec, attr.task);
+  PrintIndented(indent + 1, "inherit_stat %u, enable_on_exec %u, task %u\n", attr.inherit_stat,
+                attr.enable_on_exec, attr.task);
 
   PrintIndented(indent + 1, "watermark %u, precise_ip %u, mmap_data %u\n", attr.watermark,
                 attr.precise_ip, attr.mmap_data);

@@ -45,7 +45,7 @@ struct ReportItem {
 };
 
 static int ComparePid(const SampleEntry& sample1, const SampleEntry& sample2) {
-  return sample1.process->pid - sample2.process->pid;
+  return sample1.thread->pid - sample2.thread->pid;
 }
 
 static std::string PrintHeaderPid() {
@@ -53,7 +53,7 @@ static std::string PrintHeaderPid() {
 }
 
 static std::string PrintPid(const SampleEntry& sample) {
-  return android::base::StringPrintf("%d", sample.process->pid);
+  return android::base::StringPrintf("%d", sample.thread->pid);
 }
 
 static ReportItem report_pid = {
@@ -62,8 +62,26 @@ static ReportItem report_pid = {
     .print_function = PrintPid,
 };
 
+static int CompareTid(const SampleEntry& sample1, const SampleEntry& sample2) {
+  return sample1.thread->tid - sample2.thread->tid;
+}
+
+static std::string PrintHeaderTid() {
+  return "Tid";
+}
+
+static std::string PrintTid(const SampleEntry& sample) {
+  return android::base::StringPrintf("%d", sample.thread->tid);
+}
+
+static ReportItem report_tid = {
+    .compare_function = CompareTid,
+    .print_header_function = PrintHeaderTid,
+    .print_function = PrintTid,
+};
+
 static int CompareComm(const SampleEntry& sample1, const SampleEntry& sample2) {
-  return strcmp(sample1.process->comm.c_str(), sample2.process->comm.c_str());
+  return strcmp(sample1.thread_comm, sample2.thread_comm);
 }
 
 static std::string PrintHeaderComm() {
@@ -71,7 +89,7 @@ static std::string PrintHeaderComm() {
 }
 
 static std::string PrintComm(const SampleEntry& sample) {
-  return sample.process->comm;
+  return sample.thread_comm;
 }
 
 static ReportItem report_comm = {
@@ -135,7 +153,8 @@ static ReportItem report_sample_count = {
 };
 
 static std::unordered_map<std::string, ReportItem*> report_item_map = {
-    {"comm", &report_comm}, {"pid", &report_pid}, {"dso", &report_dso}, {"symbol", &report_symbol},
+    {"comm", &report_comm}, {"pid", &report_pid},       {"tid", &report_tid},
+    {"dso", &report_dso},   {"symbol", &report_symbol},
 };
 
 class ReportCommand : public Command {
@@ -147,8 +166,8 @@ class ReportCommand : public Command {
                 "    -n            Print the sample count for each item.\n"
                 "    --no-demangle        Don't demangle symbol names.\n"
                 "    --sort key1,key2,... Select the keys to sort and print the report.\n"
-                "                         Possible keys include pid, comm, dso, symbol.\n"
-                "                         Default keys are \"comm,pid,dso\"\n"
+                "                         Possible keys include pid, tid, comm, dso, symbol.\n"
+                "                         Default keys are \"comm,pid,tid,dso,symbol\"\n"
                 "    --symfs <dir>  Look for files with symbols relative to this directory.\n"),
         record_filename_("perf.data") {
   }
@@ -243,7 +262,9 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
   if (report_items_.empty()) {
     report_items_.push_back(report_item_map["comm"]);
     report_items_.push_back(report_item_map["pid"]);
+    report_items_.push_back(report_item_map["tid"]);
     report_items_.push_back(report_item_map["dso"]);
+    report_items_.push_back(report_item_map["symbol"]);
   }
   if (print_sample_count) {
     report_items_.insert(report_items_.begin(), &report_sample_count);
@@ -265,7 +286,7 @@ void ReportCommand::ReadSampleTreeFromRecordFile() {
   compare_sample_func_t compare_sample_callback = std::bind(
       &ReportCommand::CompareSampleEntry, this, std::placeholders::_1, std::placeholders::_2);
   sample_tree_ = std::unique_ptr<SampleTree>(new SampleTree(compare_sample_callback));
-  sample_tree_->AddProcess(0, "swapper");
+  sample_tree_->AddThread(0, 0, "swapper");
 
   std::vector<std::unique_ptr<const Record>> records = record_file_reader_->DataSection();
   for (auto& record : records) {
@@ -275,8 +296,17 @@ void ReportCommand::ReadSampleTreeFromRecordFile() {
         sample_tree_->AddKernelMap(r.data.addr, r.data.len, r.data.pgoff,
                                    r.sample_id.time_data.time, r.filename);
       } else {
-        sample_tree_->AddUserMap(r.data.pid, r.data.addr, r.data.len, r.data.pgoff,
-                                 r.sample_id.time_data.time, r.filename);
+        sample_tree_->AddThreadMap(r.data.pid, r.data.tid, r.data.addr, r.data.len, r.data.pgoff,
+                                   r.sample_id.time_data.time, r.filename);
+      }
+    } else if (record->header.type == PERF_RECORD_MMAP2) {
+      const Mmap2Record& r = *static_cast<const Mmap2Record*>(record.get());
+      if ((r.header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL) {
+        sample_tree_->AddKernelMap(r.data.addr, r.data.len, r.data.pgoff,
+                                   r.sample_id.time_data.time, r.filename);
+      } else {
+        sample_tree_->AddThreadMap(r.data.pid, r.data.tid, r.data.addr, r.data.len, r.data.pgoff,
+                                   r.sample_id.time_data.time, r.filename);
       }
     } else if (record->header.type == PERF_RECORD_SAMPLE) {
       const SampleRecord& r = *static_cast<const SampleRecord*>(record.get());
@@ -285,7 +315,10 @@ void ReportCommand::ReadSampleTreeFromRecordFile() {
                               r.period_data.period, in_kernel);
     } else if (record->header.type == PERF_RECORD_COMM) {
       const CommRecord& r = *static_cast<const CommRecord*>(record.get());
-      sample_tree_->AddProcess(r.data.pid, r.comm);
+      sample_tree_->AddThread(r.data.pid, r.data.tid, r.comm);
+    } else if (record->header.type == PERF_RECORD_FORK) {
+      const ForkRecord& r = *static_cast<const ForkRecord*>(record.get());
+      sample_tree_->ForkThread(r.data.pid, r.data.tid, r.data.ppid, r.data.ptid);
     }
   }
 }

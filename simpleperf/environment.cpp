@@ -298,11 +298,11 @@ static bool GetThreadComm(pid_t pid, std::vector<ThreadComm>* thread_comms) {
     if (!ReadThreadNameAndTgid(status_file, &comm, &tgid)) {
       continue;
     }
+    CHECK_EQ(pid, tgid);
     ThreadComm thread;
     thread.tid = tid;
-    thread.tgid = tgid;
+    thread.pid = pid;
     thread.comm = comm;
-    thread.is_process = (tid == pid);
     thread_comms->push_back(thread);
   }
   return true;
