@@ -26,13 +26,7 @@
 
 #include "dso.h"
 
-struct ProcessEntry {
-  int pid;
-  std::string comm;
-};
-
 struct MapEntry {
-  int pid;  // pid = -1 for kernel map entries.
   uint64_t start_addr;
   uint64_t len;
   uint64_t pgoff;
@@ -40,13 +34,24 @@ struct MapEntry {
   DsoEntry* dso;
 };
 
-struct SampleEntry {
+struct MapComparator {
+  bool operator()(const MapEntry* map1, const MapEntry* map2) const;
+};
+
+struct ThreadEntry {
+  int pid;
   int tid;
+  const char* comm;  // It always refers to the latest comm.
+  std::set<MapEntry*, MapComparator> maps;
+};
+
+struct SampleEntry {
   uint64_t ip;
   uint64_t time;
   uint64_t period;
   uint64_t sample_count;
-  const ProcessEntry* process;
+  const ThreadEntry* thread;
+  const char* thread_comm;  // It refers to the thread comm when the sample happens.
   const MapEntry* map;
   const SymbolEntry* symbol;
 };
@@ -62,17 +67,23 @@ class SampleTree {
         sorted_sample_tree_(sorted_sample_comparator_),
         total_samples_(0),
         total_period_(0) {
-    unknown_dso_.path = "unknown";
+    unknown_map_ = {
+        .start_addr = 0, .len = ULLONG_MAX, .pgoff = 0, .time = 0, .dso = &unknown_dso_,
+    };
+    unknown_dso_ = {
+        .path = "unknown",
+    };
     unknown_symbol_ = {
         .name = "unknown", .addr = 0, .len = ULLONG_MAX,
     };
   }
 
-  void AddProcess(int pid, const std::string& comm);
+  void AddThread(int pid, int tid, const std::string& comm);
+  void ForkThread(int pid, int tid, int ppid, int ptid);
   void AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff, uint64_t time,
                     const std::string& filename);
-  void AddUserMap(int pid, uint64_t start_addr, uint64_t len, uint64_t pgoff, uint64_t time,
-                  const std::string& filename);
+  void AddThreadMap(int pid, int tid, uint64_t start_addr, uint64_t len, uint64_t pgoff,
+                    uint64_t time, const std::string& filename);
   void AddSample(int pid, int tid, uint64_t ip, uint64_t time, uint64_t period, bool in_kernel);
   void VisitAllSamples(std::function<void(const SampleEntry&)> callback);
 
@@ -85,20 +96,14 @@ class SampleTree {
   }
 
  private:
-  void RemoveOverlappedUserMap(const MapEntry* map);
-  const ProcessEntry* FindProcessEntryOrNew(int pid);
-  const MapEntry* FindMapEntryOrNew(int pid, uint64_t ip, bool in_kernel);
-  const MapEntry* FindUnknownMapEntryOrNew(int pid);
+  ThreadEntry* FindThreadOrNew(int pid, int tid);
+  const MapEntry* FindMap(const ThreadEntry* thread, uint64_t ip, bool in_kernel);
   DsoEntry* FindKernelDsoOrNew(const std::string& filename);
   DsoEntry* FindUserDsoOrNew(const std::string& filename);
-  const SymbolEntry* FindSymbolEntry(uint64_t ip, const MapEntry* map_entry);
-
-  struct MapComparator {
-    bool operator()(const MapEntry* map1, const MapEntry* map2);
-  };
+  const SymbolEntry* FindSymbol(const MapEntry* map, uint64_t ip);
 
   struct SampleComparator {
-    bool operator()(const SampleEntry& sample1, const SampleEntry& sample2) {
+    bool operator()(const SampleEntry& sample1, const SampleEntry& sample2) const {
       return compare_function(sample1, sample2) < 0;
     }
     SampleComparator(compare_sample_func_t compare_function) : compare_function(compare_function) {
@@ -108,7 +113,7 @@ class SampleTree {
   };
 
   struct SortedSampleComparator {
-    bool operator()(const SampleEntry& sample1, const SampleEntry& sample2) {
+    bool operator()(const SampleEntry& sample1, const SampleEntry& sample2) const {
       if (sample1.period != sample2.period) {
         return sample1.period > sample2.period;
       }
@@ -121,12 +126,12 @@ class SampleTree {
     compare_sample_func_t compare_function;
   };
 
-  std::unordered_map<int, std::unique_ptr<ProcessEntry>> process_tree_;
+  std::unordered_map<int, std::unique_ptr<ThreadEntry>> thread_tree_;
+  std::vector<std::unique_ptr<std::string>> thread_comm_storage_;
 
   std::set<MapEntry*, MapComparator> kernel_map_tree_;
-  std::set<MapEntry*, MapComparator> user_map_tree_;
-  std::unordered_map<int, MapEntry*> unknown_maps_;
   std::vector<std::unique_ptr<MapEntry>> map_storage_;
+  MapEntry unknown_map_;
 
   std::unique_ptr<DsoEntry> kernel_dso_;
   std::unordered_map<std::string, std::unique_ptr<DsoEntry>> module_dso_tree_;

@@ -387,28 +387,46 @@ bool RecordCommand::DumpThreadCommAndMmaps() {
   }
   const perf_event_attr& attr =
       event_selection_set_.FindEventAttrByType(measured_event_type_modifier_->event_type);
+
+  // Dump processes.
   for (auto& thread : thread_comms) {
-    CommRecord record = CreateCommRecord(attr, thread.tgid, thread.tid, thread.comm);
+    if (thread.pid != thread.tid) {
+      continue;
+    }
+    CommRecord record = CreateCommRecord(attr, thread.pid, thread.tid, thread.comm);
     if (!record_file_writer_->WriteData(record.BinaryFormat())) {
       return false;
     }
-    if (thread.is_process) {
-      std::vector<ThreadMmap> thread_mmaps;
-      if (!GetThreadMmapsInProcess(thread.tgid, &thread_mmaps)) {
-        // The thread may exit before we get its info.
-        continue;
+    std::vector<ThreadMmap> thread_mmaps;
+    if (!GetThreadMmapsInProcess(thread.pid, &thread_mmaps)) {
+      // The thread may exit before we get its info.
+      continue;
+    }
+    for (auto& thread_mmap : thread_mmaps) {
+      if (thread_mmap.executable == 0) {
+        continue;  // No need to dump non-executable mmap info.
       }
-      for (auto& thread_mmap : thread_mmaps) {
-        if (thread_mmap.executable == 0) {
-          continue;  // No need to dump non-executable mmap info.
-        }
-        MmapRecord record =
-            CreateMmapRecord(attr, false, thread.tgid, thread.tid, thread_mmap.start_addr,
-                             thread_mmap.len, thread_mmap.pgoff, thread_mmap.name);
-        if (!record_file_writer_->WriteData(record.BinaryFormat())) {
-          return false;
-        }
+      MmapRecord record =
+          CreateMmapRecord(attr, false, thread.pid, thread.tid, thread_mmap.start_addr,
+                           thread_mmap.len, thread_mmap.pgoff, thread_mmap.name);
+      if (!record_file_writer_->WriteData(record.BinaryFormat())) {
+        return false;
       }
+    }
+  }
+
+  // Dump threads.
+  for (auto& thread : thread_comms) {
+    if (thread.pid == thread.tid) {
+      continue;
+    }
+    ForkRecord fork_record = CreateForkRecord(attr, thread.pid, thread.tid, thread.pid, thread.pid);
+    if (!record_file_writer_->WriteData(fork_record.BinaryFormat())) {
+      return false;
+    }
+    CommRecord comm_record = CreateCommRecord(attr, thread.pid, thread.tid, thread.comm);
+    if (!record_file_writer_->WriteData(comm_record.BinaryFormat())) {
+      return false;
     }
   }
   return true;
