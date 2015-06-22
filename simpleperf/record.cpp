@@ -32,6 +32,7 @@ static std::string RecordTypeToString(int record_type) {
       {PERF_RECORD_THROTTLE, "throttle"}, {PERF_RECORD_UNTHROTTLE, "unthrottle"},
       {PERF_RECORD_FORK, "fork"},         {PERF_RECORD_READ, "read"},
       {PERF_RECORD_SAMPLE, "sample"},     {PERF_RECORD_BUILD_ID, "build_id"},
+      {PERF_RECORD_MMAP2, "mmap2"},
   };
 
   auto it = record_type_names.find(record_type);
@@ -184,8 +185,8 @@ MmapRecord::MmapRecord(const perf_event_attr& attr, const perf_event_header* phe
 }
 
 void MmapRecord::DumpData(size_t indent) const {
-  PrintIndented(indent, "pid %u, tid %u, addr %p, len 0x%" PRIx64 "\n", data.pid, data.tid,
-                reinterpret_cast<void*>(data.addr), data.len);
+  PrintIndented(indent, "pid %u, tid %u, addr 0x" PRIx64 ", len 0x%" PRIx64 "\n", data.pid,
+                data.tid, data.addr, data.len);
   PrintIndented(indent, "pgoff 0x%" PRIx64 ", filename %s\n", data.pgoff, filename.c_str());
 }
 
@@ -198,6 +199,27 @@ std::vector<char> MmapRecord::BinaryFormat() const {
   p += ALIGN(filename.size() + 1, 8);
   sample_id.WriteToBinaryFormat(p);
   return buf;
+}
+
+Mmap2Record::Mmap2Record(const perf_event_attr& attr, const perf_event_header* pheader)
+    : Record(pheader) {
+  const char* p = reinterpret_cast<const char*>(pheader + 1);
+  const char* end = reinterpret_cast<const char*>(pheader) + pheader->size;
+  MoveFromBinaryFormat(data, p);
+  filename = p;
+  p += ALIGN(filename.size() + 1, 8);
+  CHECK_LE(p, end);
+  sample_id.ReadFromBinaryFormat(attr, p, end);
+}
+
+void Mmap2Record::DumpData(size_t indent) const {
+  PrintIndented(indent, "pid %u, tid %u, addr 0x%" PRIx64 ", len 0x%" PRIx64 "\n", data.pid,
+                data.tid, data.addr, data.len);
+  PrintIndented(indent,
+                "pgoff 0x" PRIx64 ", maj %u, min %u, ino %" PRId64 ", ino_generation %" PRIu64 "\n",
+                data.pgoff, data.maj, data.min, data.ino, data.ino_generation);
+  PrintIndented(indent, "prot %u, flags %u, filenames %s\n", data.prot, data.flags,
+                filename.c_str());
 }
 
 CommRecord::CommRecord(const perf_event_attr& attr, const perf_event_header* pheader)
@@ -226,7 +248,7 @@ std::vector<char> CommRecord::BinaryFormat() const {
   return buf;
 }
 
-ExitRecord::ExitRecord(const perf_event_attr& attr, const perf_event_header* pheader)
+ExitOrForkRecord::ExitOrForkRecord(const perf_event_attr& attr, const perf_event_header* pheader)
     : Record(pheader) {
   const char* p = reinterpret_cast<const char*>(pheader + 1);
   const char* end = reinterpret_cast<const char*>(pheader) + pheader->size;
@@ -235,9 +257,18 @@ ExitRecord::ExitRecord(const perf_event_attr& attr, const perf_event_header* phe
   sample_id.ReadFromBinaryFormat(attr, p, end);
 }
 
-void ExitRecord::DumpData(size_t indent) const {
+void ExitOrForkRecord::DumpData(size_t indent) const {
   PrintIndented(indent, "pid %u, ppid %u, tid %u, ptid %u\n", data.pid, data.ppid, data.tid,
                 data.ptid);
+}
+
+std::vector<char> ForkRecord::BinaryFormat() const {
+  std::vector<char> buf(header.size);
+  char* p = buf.data();
+  MoveToBinaryFormat(header, p);
+  MoveToBinaryFormat(data, p);
+  sample_id.WriteToBinaryFormat(p);
+  return buf;
 }
 
 SampleRecord::SampleRecord(const perf_event_attr& attr, const perf_event_header* pheader)
@@ -368,10 +399,14 @@ std::unique_ptr<const Record> ReadRecordFromBuffer(const perf_event_attr& attr,
   switch (pheader->type) {
     case PERF_RECORD_MMAP:
       return std::unique_ptr<const Record>(new MmapRecord(attr, pheader));
+    case PERF_RECORD_MMAP2:
+      return std::unique_ptr<const Record>(new Mmap2Record(attr, pheader));
     case PERF_RECORD_COMM:
       return std::unique_ptr<const Record>(new CommRecord(attr, pheader));
     case PERF_RECORD_EXIT:
       return std::unique_ptr<const Record>(new ExitRecord(attr, pheader));
+    case PERF_RECORD_FORK:
+      return std::unique_ptr<const Record>(new ForkRecord(attr, pheader));
     case PERF_RECORD_SAMPLE:
       return std::unique_ptr<const Record>(new SampleRecord(attr, pheader));
     default:
@@ -408,6 +443,21 @@ CommRecord CreateCommRecord(const perf_event_attr& attr, uint32_t pid, uint32_t 
   size_t sample_id_size = record.sample_id.CreateContent(attr);
   record.header.size = sizeof(record.header) + sizeof(record.data) +
                        ALIGN(record.comm.size() + 1, 8) + sample_id_size;
+  return record;
+}
+
+ForkRecord CreateForkRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid, uint32_t ppid,
+                            uint32_t ptid) {
+  ForkRecord record;
+  record.header.type = PERF_RECORD_FORK;
+  record.header.misc = 0;
+  record.data.pid = pid;
+  record.data.ppid = ppid;
+  record.data.tid = tid;
+  record.data.ptid = ptid;
+  record.data.time = 0;
+  size_t sample_id_size = record.sample_id.CreateContent(attr);
+  record.header.size = sizeof(record.header) + sizeof(record.data) + sample_id_size;
   return record;
 }
 
