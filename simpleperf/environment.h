@@ -45,9 +45,8 @@ struct ModuleMmap {
 bool GetKernelAndModuleMmaps(KernelMmap* kernel_mmap, std::vector<ModuleMmap>* module_mmaps);
 
 struct ThreadComm {
-  pid_t tgid, tid;
+  pid_t pid, tid;
   std::string comm;
-  bool is_process;
 };
 
 bool GetThreadComms(std::vector<ThreadComm>* thread_comms);

@@ -20,10 +20,7 @@
 
 #include "environment.h"
 
-bool SampleTree::MapComparator::operator()(const MapEntry* map1, const MapEntry* map2) {
-  if (map1->pid != map2->pid) {
-    return map1->pid < map2->pid;
-  }
+bool MapComparator::operator()(const MapEntry* map1, const MapEntry* map2) const {
   if (map1->start_addr != map2->start_addr) {
     return map1->start_addr < map2->start_addr;
   }
@@ -36,26 +33,52 @@ bool SampleTree::MapComparator::operator()(const MapEntry* map1, const MapEntry*
   return false;
 }
 
-void SampleTree::AddProcess(int pid, const std::string& comm) {
-  auto it = process_tree_.find(pid);
-  if (it != process_tree_.end()) {
-    it->second->comm = comm;
-    return;
+void SampleTree::AddThread(int pid, int tid, const std::string& comm) {
+  auto it = thread_tree_.find(tid);
+  if (it == thread_tree_.end()) {
+    ThreadEntry* thread = new ThreadEntry{
+        .pid = pid, .tid = tid,
+    };
+    auto pair = thread_tree_.insert(std::make_pair(tid, std::unique_ptr<ThreadEntry>(thread)));
+    CHECK(pair.second);
+    it = pair.first;
   }
-  ProcessEntry* process = new ProcessEntry{
-      .pid = pid, .comm = comm,
-  };
-  // TODO: Check the return value of below insertion operation when per thread comm is used.
-  process_tree_.insert(std::make_pair(pid, std::unique_ptr<ProcessEntry>(process)));
+  thread_comm_storage_.push_back(std::unique_ptr<std::string>(new std::string(comm)));
+  it->second->comm = thread_comm_storage_.back()->c_str();
+}
+
+void SampleTree::ForkThread(int pid, int tid, int ppid, int ptid) {
+  ThreadEntry* parent = FindThreadOrNew(ppid, ptid);
+  ThreadEntry* child = FindThreadOrNew(pid, tid);
+  child->comm = parent->comm;
+  child->maps = parent->maps;
+}
+
+static void RemoveOverlappedMap(std::set<MapEntry*, MapComparator>* map_set, const MapEntry* map) {
+  for (auto it = map_set->begin(); it != map_set->end();) {
+    if ((*it)->start_addr >= map->start_addr + map->len) {
+      break;
+    }
+    if ((*it)->start_addr + (*it)->len <= map->start_addr) {
+      ++it;
+    } else {
+      it = map_set->erase(it);
+    }
+  }
 }
 
 void SampleTree::AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff, uint64_t time,
                               const std::string& filename) {
+  // kernel map len can be 0 when record command is not run in supervisor mode.
+  if (len == 0) {
+    return;
+  }
   DsoEntry* dso = FindKernelDsoOrNew(filename);
   MapEntry* map = new MapEntry{
-      .pid = -1, .start_addr = start_addr, .len = len, .pgoff = pgoff, .time = time, .dso = dso,
+      .start_addr = start_addr, .len = len, .pgoff = pgoff, .time = time, .dso = dso,
   };
   map_storage_.push_back(std::unique_ptr<MapEntry>(map));
+  RemoveOverlappedMap(&kernel_map_tree_, map);
   auto pair = kernel_map_tree_.insert(map);
   CHECK(pair.second);
 }
@@ -75,16 +98,28 @@ DsoEntry* SampleTree::FindKernelDsoOrNew(const std::string& filename) {
   return it->second.get();
 }
 
-void SampleTree::AddUserMap(int pid, uint64_t start_addr, uint64_t len, uint64_t pgoff,
-                            uint64_t time, const std::string& filename) {
+void SampleTree::AddThreadMap(int pid, int tid, uint64_t start_addr, uint64_t len, uint64_t pgoff,
+                              uint64_t time, const std::string& filename) {
+  ThreadEntry* thread = FindThreadOrNew(pid, tid);
   DsoEntry* dso = FindUserDsoOrNew(filename);
   MapEntry* map = new MapEntry{
-      .pid = pid, .start_addr = start_addr, .len = len, .pgoff = pgoff, .time = time, .dso = dso,
+      .start_addr = start_addr, .len = len, .pgoff = pgoff, .time = time, .dso = dso,
   };
   map_storage_.push_back(std::unique_ptr<MapEntry>(map));
-  RemoveOverlappedUserMap(map);
-  auto pair = user_map_tree_.insert(map);
+  RemoveOverlappedMap(&thread->maps, map);
+  auto pair = thread->maps.insert(map);
   CHECK(pair.second);
+}
+
+ThreadEntry* SampleTree::FindThreadOrNew(int pid, int tid) {
+  auto it = thread_tree_.find(tid);
+  if (it == thread_tree_.end()) {
+    AddThread(pid, tid, "unknown");
+    it = thread_tree_.find(tid);
+  } else {
+    CHECK_EQ(pid, it->second.get()->pid);
+  }
+  return it->second.get();
 }
 
 DsoEntry* SampleTree::FindUserDsoOrNew(const std::string& filename) {
@@ -96,92 +131,44 @@ DsoEntry* SampleTree::FindUserDsoOrNew(const std::string& filename) {
   return it->second.get();
 }
 
-void SampleTree::RemoveOverlappedUserMap(const MapEntry* map) {
-  MapEntry find_map = {
-      .pid = map->pid, .start_addr = 0, .len = 0, .time = 0,
-  };
-  auto it = user_map_tree_.lower_bound(&find_map);
-  while (it != user_map_tree_.end() && (*it)->pid == map->pid) {
-    if ((*it)->start_addr >= map->start_addr + map->len) {
-      break;
-    }
-    if ((*it)->start_addr + (*it)->len <= map->start_addr) {
-      ++it;
-    } else {
-      it = user_map_tree_.erase(it);
-    }
-  }
+static bool IsIpInMap(uint64_t ip, const MapEntry* map) {
+  return (map->start_addr <= ip && map->start_addr + map->len > ip);
 }
 
-const ProcessEntry* SampleTree::FindProcessEntryOrNew(int pid) {
-  auto it = process_tree_.find(pid);
-  if (it == process_tree_.end()) {
-    AddProcess(pid, "unknown");
-    it = process_tree_.find(pid);
-  }
-  return it->second.get();
-}
-
-static bool IsIpInMap(int pid, uint64_t ip, const MapEntry* map) {
-  return (pid == map->pid && map->start_addr <= ip && map->start_addr + map->len > ip);
-}
-
-const MapEntry* SampleTree::FindMapEntryOrNew(int pid, uint64_t ip, bool in_kernel) {
+const MapEntry* SampleTree::FindMap(const ThreadEntry* thread, uint64_t ip, bool in_kernel) {
   // Construct a map_entry which is strictly after the searched map_entry, based on MapComparator.
   MapEntry find_map = {
-      .pid = (in_kernel) ? -1 : pid,
-      .start_addr = ip,
-      .len = static_cast<uint64_t>(-1),
-      .time = static_cast<uint64_t>(-1),
+      .start_addr = ip, .len = static_cast<uint64_t>(-1), .time = static_cast<uint64_t>(-1),
   };
   if (!in_kernel) {
-    auto it = user_map_tree_.upper_bound(&find_map);
-    if (it != user_map_tree_.begin() && IsIpInMap(pid, ip, *--it)) {
+    auto it = thread->maps.upper_bound(&find_map);
+    if (it != thread->maps.begin() && IsIpInMap(ip, *--it)) {
       return *it;
     }
   } else {
     auto it = kernel_map_tree_.upper_bound(&find_map);
-    if (it != kernel_map_tree_.begin() && IsIpInMap(-1, ip, *--it)) {
+    if (it != kernel_map_tree_.begin() && IsIpInMap(ip, *--it)) {
       return *it;
     }
   }
-  return FindUnknownMapEntryOrNew(pid);
-}
-
-const MapEntry* SampleTree::FindUnknownMapEntryOrNew(int pid) {
-  auto it = unknown_maps_.find(pid);
-  if (it == unknown_maps_.end()) {
-    MapEntry* map = new MapEntry{
-        .pid = pid,
-        .start_addr = 0,
-        .len = static_cast<uint64_t>(-1),
-        .pgoff = 0,
-        .time = 0,
-        .dso = &unknown_dso_,
-    };
-    map_storage_.push_back(std::unique_ptr<MapEntry>(map));
-    auto pair = unknown_maps_.insert(std::make_pair(pid, map));
-    it = pair.first;
-    CHECK(pair.second);
-  }
-  return it->second;
+  return &unknown_map_;
 }
 
 void SampleTree::AddSample(int pid, int tid, uint64_t ip, uint64_t time, uint64_t period,
                            bool in_kernel) {
-  const ProcessEntry* process_entry = FindProcessEntryOrNew(pid);
-  const MapEntry* map_entry = FindMapEntryOrNew(pid, ip, in_kernel);
-  const SymbolEntry* symbol_entry = FindSymbolEntry(ip, map_entry);
+  ThreadEntry* thread = FindThreadOrNew(pid, tid);
+  const MapEntry* map = FindMap(thread, ip, in_kernel);
+  const SymbolEntry* symbol = FindSymbol(map, ip);
 
   SampleEntry find_sample = {
-      .tid = tid,
       .ip = ip,
       .time = time,
       .period = period,
       .sample_count = 1,
-      .process = process_entry,
-      .map = map_entry,
-      .symbol = symbol_entry,
+      .thread = thread,
+      .thread_comm = thread->comm,
+      .map = map,
+      .symbol = symbol,
   };
   auto it = sample_tree_.find(find_sample);
   if (it == sample_tree_.end()) {
@@ -196,14 +183,14 @@ void SampleTree::AddSample(int pid, int tid, uint64_t ip, uint64_t time, uint64_
   total_period_ += period;
 }
 
-const SymbolEntry* SampleTree::FindSymbolEntry(uint64_t ip, const MapEntry* map_entry) {
+const SymbolEntry* SampleTree::FindSymbol(const MapEntry* map, uint64_t ip) {
   uint64_t offset_in_file;
-  if (map_entry->dso == kernel_dso_.get()) {
+  if (map->dso == kernel_dso_.get()) {
     offset_in_file = ip;
   } else {
-    offset_in_file = ip - map_entry->start_addr + map_entry->pgoff;
+    offset_in_file = ip - map->start_addr + map->pgoff;
   }
-  const SymbolEntry* symbol = map_entry->dso->FindSymbol(offset_in_file);
+  const SymbolEntry* symbol = map->dso->FindSymbol(offset_in_file);
   if (symbol == nullptr) {
     symbol = &unknown_symbol_;
   }
