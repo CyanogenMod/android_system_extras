@@ -57,13 +57,16 @@ class StatCommand : public Command {
                 "                 how the event should be monitored. Possible modifiers are:\n"
                 "                   u - monitor user space events only\n"
                 "                   k - monitor kernel space events only\n"
+                "    --no-inherit\n"
+                "                 Don't stat created child threads/processes.\n"
                 "    -p pid1,pid2,...\n"
                 "                 Stat events on existing processes. Mutually exclusive with -a.\n"
                 "    -t tid1,tid2,...\n"
                 "                 Stat events on existing threads. Mutually exclusive with -a.\n"
                 "    --verbose    Show result in verbose mode.\n"),
         verbose_mode_(false),
-        system_wide_collection_(false) {
+        system_wide_collection_(false),
+        child_inherit_(true) {
     signaled = false;
     signal_handler_register_.reset(
         new SignalHandlerRegister({SIGCHLD, SIGINT, SIGTERM}, signal_handler));
@@ -75,33 +78,34 @@ class StatCommand : public Command {
   bool ParseOptions(const std::vector<std::string>& args, std::vector<std::string>* non_option_args);
   bool AddMeasuredEventType(const std::string& event_type_name, bool report_unsupported_type = true);
   bool AddDefaultMeasuredEventTypes();
+  void SetEventSelection();
   bool ShowCounters(const std::map<const EventType*, std::vector<PerfCounter>>& counters_map,
                     std::chrono::steady_clock::duration counting_duration);
 
-  std::vector<std::pair<std::string, EventType>> measured_event_types_;
-  EventSelectionSet event_selection_set_;
   bool verbose_mode_;
   bool system_wide_collection_;
+  bool child_inherit_;
   std::vector<pid_t> monitored_threads_;
+  std::vector<std::pair<std::string, EventTypeAndModifier>> measured_event_types_;
+  EventSelectionSet event_selection_set_;
 
   std::unique_ptr<SignalHandlerRegister> signal_handler_register_;
 };
 
 bool StatCommand::Run(const std::vector<std::string>& args) {
-  // 1. Parse options.
+  // 1. Parse options, and use default measured event types if not given.
   std::vector<std::string> workload_args;
   if (!ParseOptions(args, &workload_args)) {
     return false;
   }
-
-  // 2. Add default measured event types.
-  if (event_selection_set_.Empty()) {
+  if (measured_event_types_.empty()) {
     if (!AddDefaultMeasuredEventTypes()) {
       return false;
     }
   }
+  SetEventSelection();
 
-  // 3. Create workload.
+  // 2. Create workload.
   std::unique_ptr<Workload> workload;
   if (!workload_args.empty()) {
     workload = Workload::CreateWorkload(workload_args);
@@ -119,7 +123,7 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
     }
   }
 
-  // 4. Open perf_event_files.
+  // 3. Open perf_event_files.
   if (system_wide_collection_) {
     if (!event_selection_set_.OpenEventFilesForAllCpus()) {
       return false;
@@ -130,7 +134,7 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
     }
   }
 
-  // 5. Count events while workload running.
+  // 4. Count events while workload running.
   auto start_time = std::chrono::steady_clock::now();
   if (!event_selection_set_.GetEnableOnExec()) {
     if (!event_selection_set_.EnableEvents()) {
@@ -145,7 +149,7 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
   }
   auto end_time = std::chrono::steady_clock::now();
 
-  // 6. Read and print counters.
+  // 5. Read and print counters.
   std::map<const EventType*, std::vector<PerfCounter>> counters_map;
   if (!event_selection_set_.ReadCounters(&counters_map)) {
     return false;
@@ -173,6 +177,8 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
           return false;
         }
       }
+    } else if (args[i] == "--no-inherit") {
+      child_inherit_ = false;
     } else if (args[i] == "-p") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -217,8 +223,7 @@ bool StatCommand::AddMeasuredEventType(const std::string& event_type_name,
   if (event_type_modifier == nullptr) {
     return false;
   }
-  measured_event_types_.push_back(std::make_pair(event_type_name, event_type_modifier->event_type));
-  event_selection_set_.AddEventType(*event_type_modifier);
+  measured_event_types_.push_back(std::make_pair(event_type_name, *event_type_modifier));
   return true;
 }
 
@@ -227,11 +232,18 @@ bool StatCommand::AddDefaultMeasuredEventTypes() {
     // It is not an error when some event types in the default list are not supported by the kernel.
     AddMeasuredEventType(name, false);
   }
-  if (event_selection_set_.Empty()) {
+  if (measured_event_types_.empty()) {
     LOG(ERROR) << "Failed to add any supported default measured types";
     return false;
   }
   return true;
+}
+
+void StatCommand::SetEventSelection() {
+  for (auto& pair : measured_event_types_) {
+    event_selection_set_.AddEventType(pair.second);
+  }
+  event_selection_set_.SetInherit(child_inherit_);
 }
 
 bool StatCommand::ShowCounters(
@@ -271,7 +283,7 @@ bool StatCommand::ShowCounters(
     }
     std::string event_type_name;
     for (auto& pair : measured_event_types_) {
-      if (pair.second.name == event_type->name) {
+      if (pair.second.event_type.name == event_type->name) {
         event_type_name = pair.first;
       }
     }

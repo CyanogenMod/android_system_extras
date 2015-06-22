@@ -17,6 +17,7 @@
 #include "event_selection_set.h"
 
 #include <base/logging.h>
+#include <base/stringprintf.h>
 
 #include "environment.h"
 #include "event_attr.h"
@@ -113,37 +114,48 @@ void EventSelectionSet::EnableCallChainSampling() {
   }
 }
 
+void EventSelectionSet::SetInherit(bool enable) {
+  for (auto& selection : selections_) {
+    selection.event_attr.inherit = (enable ? 1 : 0);
+  }
+}
+
 bool EventSelectionSet::OpenEventFilesForAllCpus() {
+  return OpenEventFilesForThreadsOnAllCpus({-1});
+}
+
+bool EventSelectionSet::OpenEventFilesForThreads(const std::vector<pid_t>& threads) {
+  return OpenEventFiles(threads, {-1});
+}
+
+bool EventSelectionSet::OpenEventFilesForThreadsOnAllCpus(const std::vector<pid_t>& threads) {
   std::vector<int> cpus = GetOnlineCpus();
   if (cpus.empty()) {
     return false;
   }
-  for (auto& selection : selections_) {
-    for (auto& cpu : cpus) {
-      auto event_fd = EventFd::OpenEventFile(selection.event_attr, -1, cpu);
-      if (event_fd != nullptr) {
-        selection.event_fds.push_back(std::move(event_fd));
-      }
-    }
-    // As the online cpus can be enabled or disabled at runtime, we may not open event file for
-    // all cpus successfully. But we should open at least one cpu successfully.
-    if (selection.event_fds.empty()) {
-      PLOG(ERROR) << "failed to open perf event file for event_type " << selection.event_type.name
-                  << " on all cpus";
-      return false;
-    }
-  }
-  return true;
+  return OpenEventFiles(threads, cpus);
 }
 
-bool EventSelectionSet::OpenEventFilesForThreads(const std::vector<pid_t>& threads) {
+bool EventSelectionSet::OpenEventFiles(const std::vector<pid_t>& threads,
+                                       const std::vector<int>& cpus) {
   for (auto& selection : selections_) {
     for (auto& tid : threads) {
-      auto event_fd = EventFd::OpenEventFile(selection.event_attr, tid, -1);
-      if (event_fd == nullptr) {
+      size_t open_per_thread = 0;
+      for (auto& cpu : cpus) {
+        auto event_fd = EventFd::OpenEventFile(selection.event_attr, tid, cpu);
+        if (event_fd != nullptr) {
+          selection.event_fds.push_back(std::move(event_fd));
+          ++open_per_thread;
+        }
+      }
+      // As the online cpus can be enabled or disabled at runtime, we may not open event file for
+      // all cpus successfully. But we should open at least one cpu successfully.
+      if (open_per_thread == 0) {
+        PLOG(ERROR) << "failed to open perf event file for event_type " << selection.event_type.name
+                    << " for "
+                    << (tid == -1 ? "all threads" : android::base::StringPrintf(" thread %d", tid));
         return false;
       }
-      selection.event_fds.push_back(std::move(event_fd));
     }
   }
   return true;
