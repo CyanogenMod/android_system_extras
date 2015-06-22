@@ -55,9 +55,11 @@ class EventSelectionSet {
   void SetSamplePeriod(uint64_t sample_period);
   bool SetBranchSampling(uint64_t branch_sample_type);
   void EnableCallChainSampling();
+  void SetInherit(bool enable);
 
   bool OpenEventFilesForAllCpus();
   bool OpenEventFilesForThreads(const std::vector<pid_t>& threads);
+  bool OpenEventFilesForThreadsOnAllCpus(const std::vector<pid_t>& threads);
   bool EnableEvents();
   bool ReadCounters(std::map<const EventType*, std::vector<PerfCounter>>* counters_map);
   void PreparePollForEventFiles(std::vector<pollfd>* pollfds);
@@ -69,6 +71,8 @@ class EventSelectionSet {
   const std::vector<std::unique_ptr<EventFd>>& FindEventFdsByType(const EventType& event_type);
 
  private:
+  bool OpenEventFiles(const std::vector<pid_t>& threads, const std::vector<int>& cpus);
+
   struct EventSelection {
     EventType event_type;
     perf_event_attr event_attr;
