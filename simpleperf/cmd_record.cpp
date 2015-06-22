@@ -82,6 +82,8 @@ class RecordCommand : public Command {
             "                   k: only when the branch target is in the kernel\n"
             "                 This option requires at least one branch type among any,\n"
             "                 any_call, any_ret, ind_call.\n"
+            "    --no-inherit\n"
+            "                 Don't record created child threads/processes.\n"
             "    -o record_file_name    Set record file name, default is perf.data.\n"
             "    -p pid1,pid2,...\n"
             "                 Record events on existing processes. Mutually exclusive with -a.\n"
@@ -92,6 +94,7 @@ class RecordCommand : public Command {
         system_wide_collection_(false),
         branch_sampling_(0),
         callchain_sampling_(false),
+        child_inherit_(true),
         perf_mmap_pages_(256),
         record_filename_("perf.data") {
     signaled = false;
@@ -118,10 +121,11 @@ class RecordCommand : public Command {
   uint64_t sample_period_;  // Sample once when 'sample_period_' events occur.
 
   bool system_wide_collection_;
-  std::vector<pid_t> monitored_threads_;
   uint64_t branch_sampling_;
-  std::unique_ptr<EventTypeAndModifier> measured_event_type_modifier_;
   bool callchain_sampling_;
+  bool child_inherit_;
+  std::vector<pid_t> monitored_threads_;
+  std::unique_ptr<EventTypeAndModifier> measured_event_type_modifier_;
   EventSelectionSet event_selection_set_;
 
   // mmap pages used by each perf event file, should be power of 2.
@@ -173,7 +177,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
       return false;
     }
   } else {
-    if (!event_selection_set_.OpenEventFilesForThreads(monitored_threads_)) {
+    if (!event_selection_set_.OpenEventFilesForThreadsOnAllCpus(monitored_threads_)) {
       return false;
     }
   }
@@ -282,6 +286,8 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         }
         branch_sampling_ |= it->second;
       }
+    } else if (args[i] == "--no-inherit") {
+      child_inherit_ = false;
     } else if (args[i] == "-o") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -346,6 +352,7 @@ bool RecordCommand::SetEventSelection() {
   if (callchain_sampling_) {
     event_selection_set_.EnableCallChainSampling();
   }
+  event_selection_set_.SetInherit(child_inherit_);
   return true;
 }
 
