@@ -263,7 +263,7 @@ static int compress_file(const char *method, const char *ifile, const char *ofil
 
 	if (fstat(ifd, &st) != 0)
 		goto out;
-	orig_size = htole64(st.st_size);
+	orig_size = cpu_to_le64(st.st_size);
 
 	obufsize = ent->compressbound(XCOMP_BUFSIZE);
 	ibuf = (unsigned char *)malloc(XCOMP_BUFSIZE);
