@@ -72,6 +72,12 @@ class SignalHandlerRegister {
   std::vector<std::pair<int, sighandler_t>> saved_signal_handlers_;
 };
 
+template <class T>
+void MoveFromBinaryFormat(T& data, const char*& p) {
+  data = *reinterpret_cast<const T*>(p);
+  p += sizeof(T);
+}
+
 void PrintIndented(size_t indent, const char* fmt, ...);
 
 bool IsPowerOfTwo(uint64_t value);

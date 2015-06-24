@@ -43,12 +43,6 @@ static std::string RecordTypeToString(int record_type) {
 }
 
 template <class T>
-void MoveFromBinaryFormat(T& data, const char*& p) {
-  data = *reinterpret_cast<const T*>(p);
-  p += sizeof(T);
-}
-
-template <class T>
 void MoveFromBinaryFormat(T* data_p, size_t n, const char*& p) {
   size_t size = n * sizeof(T);
   memcpy(data_p, p, size);

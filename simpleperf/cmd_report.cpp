@@ -253,6 +253,7 @@ class ReportCommand : public Command {
   bool ParseOptions(const std::vector<std::string>& args);
   bool ReadEventAttrFromRecordFile();
   void ReadSampleTreeFromRecordFile();
+  void ReadFeaturesFromRecordFile();
   int CompareSampleEntry(const SampleEntry& sample1, const SampleEntry& sample2);
   void PrintReport();
   void PrintReportContext();
@@ -267,6 +268,7 @@ class ReportCommand : public Command {
   std::vector<ReportItem*> report_items_;
   std::unique_ptr<SampleTree> sample_tree_;
   bool use_branch_address_;
+  std::string record_cmdline_;
 };
 
 bool ReportCommand::Run(const std::vector<std::string>& args) {
@@ -410,6 +412,13 @@ void ReportCommand::ReadSampleTreeFromRecordFile() {
   }
 }
 
+void ReportCommand::ReadFeaturesFromRecordFile() {
+  std::vector<std::string> cmdline = record_file_reader_->ReadCmdlineFeature();
+  if (!cmdline.empty()) {
+    record_cmdline_ = android::base::Join(cmdline, ' ');
+  }
+}
+
 int ReportCommand::CompareSampleEntry(const SampleEntry& sample1, const SampleEntry& sample2) {
   for (auto& item : report_items_) {
     if (item->compare_function != nullptr) {
@@ -439,6 +448,9 @@ void ReportCommand::PrintReportContext() {
   } else {
     event_type_name =
         android::base::StringPrintf("(type %u, config %llu)", event_attr_.type, event_attr_.config);
+  }
+  if (!record_cmdline_.empty()) {
+    printf("Cmdline: %s\n", record_cmdline_.c_str());
   }
   printf("Samples: %" PRIu64 " of event '%s'\n", sample_tree_->TotalSamples(),
          event_type_name.c_str());
