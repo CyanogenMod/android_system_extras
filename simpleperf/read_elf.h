@@ -39,4 +39,7 @@ struct ElfFileSymbol {
 bool ParseSymbolsFromElfFile(const std::string& filename,
                              std::function<void(const ElfFileSymbol&)> callback);
 
+// Expose the following functions for unit tests.
+bool IsArmMappingSymbol(const char* name);
+
 #endif  // SIMPLE_PERF_READ_ELF_H_
