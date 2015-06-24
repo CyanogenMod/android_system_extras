@@ -430,13 +430,12 @@ class MultiNetworkBaseTest(net_test.NetworkTest):
       raise ValueError("Unknown interface selection mode %s" % mode)
 
   def BuildSocket(self, version, constructor, netid, routing_mode):
-    uid = self.UidForNetid(netid) if routing_mode == "uid" else None
-    with net_test.RunAsUid(uid):
-      family = self.GetProtocolFamily(version)
-      s = constructor(family)
+    s = constructor(self.GetProtocolFamily(version))
 
     if routing_mode not in [None, "uid"]:
       self.SelectInterface(s, netid, routing_mode)
+    elif routing_mode == "uid":
+      os.fchown(s.fileno(), self.UidForNetid(netid), -1)
 
     return s
 
