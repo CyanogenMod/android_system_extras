@@ -36,3 +36,10 @@ TEST(read_elf, parse_symbols_from_elf_file) {
       ParseSymbolsFromElfFile(elf_file, std::bind(ParseSymbol, std::placeholders::_1, &result)));
   ASSERT_TRUE(result);
 }
+
+TEST(read_elf, arm_mapping_symbol) {
+  ASSERT_TRUE(IsArmMappingSymbol("$a"));
+  ASSERT_FALSE(IsArmMappingSymbol("$b"));
+  ASSERT_TRUE(IsArmMappingSymbol("$a.anything"));
+  ASSERT_FALSE(IsArmMappingSymbol("$a_no_dot"));
+}
