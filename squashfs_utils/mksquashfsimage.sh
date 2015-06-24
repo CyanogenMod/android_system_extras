@@ -59,7 +59,7 @@ if [ -n "$BLOCK_SIZE" ]; then
   OPT="$OPT -b $BLOCK_SIZE"
 fi
 
-MAKE_SQUASHFS_CMD="mksquashfs $SRC_DIR $OUTPUT_FILE -no-progress -comp lz4 -Xhc -no-exports -noappend -no-recovery -android-fs-config $OPT"
+MAKE_SQUASHFS_CMD="mksquashfs $SRC_DIR/ $OUTPUT_FILE -no-progress -comp lz4 -Xhc -no-exports -noappend -no-recovery -android-fs-config $OPT"
 echo $MAKE_SQUASHFS_CMD
 $MAKE_SQUASHFS_CMD
 
