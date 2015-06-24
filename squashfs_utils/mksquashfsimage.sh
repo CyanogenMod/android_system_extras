@@ -5,7 +5,7 @@
 function usage() {
 cat<<EOT
 Usage:
-${0##*/} SRC_DIR OUTPUT_FILE [-m MOUNT_POINT] [-c FILE_CONTEXTS] [-b BLOCK_SIZE] [-z COMPRESSOR] [-zo COMPRESSOR_OPT]
+${0##*/} SRC_DIR OUTPUT_FILE [-s] [-m MOUNT_POINT] [-c FILE_CONTEXTS] [-b BLOCK_SIZE] [-z COMPRESSOR] [-zo COMPRESSOR_OPT]
 EOT
 }
 
@@ -23,6 +23,12 @@ if [ ! -d $SRC_DIR ]; then
 fi
 OUTPUT_FILE=$2
 shift; shift
+
+SPARSE=false
+if [[ "$1" == "-s" ]]; then
+    SPARSE=true
+    shift;
+fi
 
 MOUNT_POINT=
 if [[ "$1" == "-m" ]]; then
@@ -69,6 +75,17 @@ fi
 MAKE_SQUASHFS_CMD="mksquashfs $SRC_DIR $OUTPUT_FILE -no-progress -comp $COMPRESSOR $COMPRESSOR_OPT -no-exports -noappend -no-recovery -android-fs-config $OPT"
 echo $MAKE_SQUASHFS_CMD
 $MAKE_SQUASHFS_CMD
+
 if [ $? -ne 0 ]; then
     exit 4
 fi
+
+SPARSE_SUFFIX=".sparse"
+if [ "$SPARSE" = true ]; then
+    img2simg $OUTPUT_FILE $OUTPUT_FILE$SPARSE_SUFFIX
+    if [ $? -ne 0 ]; then
+        exit 4
+    fi
+    mv $OUTPUT_FILE$SPARSE_SUFFIX $OUTPUT_FILE
+fi
+
