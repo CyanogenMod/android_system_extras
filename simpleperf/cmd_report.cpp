@@ -17,6 +17,7 @@
 #include <inttypes.h>
 #include <functional>
 #include <map>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -138,6 +139,63 @@ static ReportItem report_symbol = {
     .print_function = PrintSymbol,
 };
 
+static int CompareDsoFrom(const SampleEntry& sample1, const SampleEntry& sample2) {
+  return strcmp(sample1.branch_from.map->dso->path.c_str(),
+                sample2.branch_from.map->dso->path.c_str());
+}
+
+static std::string PrintHeaderDsoFrom() {
+  return "Source Shared Object";
+}
+
+static std::string PrintDsoFrom(const SampleEntry& sample) {
+  return sample.branch_from.map->dso->path;
+}
+
+static ReportItem report_dso_from = {
+    .compare_function = CompareDsoFrom,
+    .print_header_function = PrintHeaderDsoFrom,
+    .print_function = PrintDsoFrom,
+};
+
+static std::string PrintHeaderDsoTo() {
+  return "Target Shared Object";
+}
+
+static ReportItem report_dso_to = {
+    .compare_function = CompareDso,
+    .print_header_function = PrintHeaderDsoTo,
+    .print_function = PrintDso,
+};
+
+static int CompareSymbolFrom(const SampleEntry& sample1, const SampleEntry& sample2) {
+  return strcmp(sample1.branch_from.symbol->name.c_str(), sample2.branch_from.symbol->name.c_str());
+}
+
+static std::string PrintHeaderSymbolFrom() {
+  return "Source Symbol";
+}
+
+static std::string PrintSymbolFrom(const SampleEntry& sample) {
+  return sample.branch_from.symbol->name;
+}
+
+static ReportItem report_symbol_from = {
+    .compare_function = CompareSymbolFrom,
+    .print_header_function = PrintHeaderSymbolFrom,
+    .print_function = PrintSymbolFrom,
+};
+
+static std::string PrintHeaderSymbolTo() {
+  return "Target Symbol";
+}
+
+static ReportItem report_symbol_to = {
+    .compare_function = CompareSymbol,
+    .print_header_function = PrintHeaderSymbolTo,
+    .print_function = PrintSymbol,
+};
+
 static std::string PrintHeaderSampleCount() {
   return "Sample";
 }
@@ -153,23 +211,40 @@ static ReportItem report_sample_count = {
 };
 
 static std::unordered_map<std::string, ReportItem*> report_item_map = {
-    {"comm", &report_comm}, {"pid", &report_pid},       {"tid", &report_tid},
-    {"dso", &report_dso},   {"symbol", &report_symbol},
+    {"comm", &report_comm},
+    {"pid", &report_pid},
+    {"tid", &report_tid},
+    {"dso", &report_dso},
+    {"symbol", &report_symbol},
+    {"dso_from", &report_dso_from},
+    {"dso_to", &report_dso_to},
+    {"symbol_from", &report_symbol_from},
+    {"symbol_to", &report_symbol_to}};
+
+static std::set<std::string> branch_sort_keys = {
+    "dso_from", "dso_to", "symbol_from", "symbol_to",
 };
 
 class ReportCommand : public Command {
  public:
   ReportCommand()
-      : Command("report", "report sampling information in perf.data",
-                "Usage: simpleperf report [options]\n"
-                "    -i <file>     Specify path of record file, default is perf.data.\n"
-                "    -n            Print the sample count for each item.\n"
-                "    --no-demangle        Don't demangle symbol names.\n"
-                "    --sort key1,key2,... Select the keys to sort and print the report.\n"
-                "                         Possible keys include pid, tid, comm, dso, symbol.\n"
-                "                         Default keys are \"comm,pid,tid,dso,symbol\"\n"
-                "    --symfs <dir>  Look for files with symbols relative to this directory.\n"),
-        record_filename_("perf.data") {
+      : Command(
+            "report", "report sampling information in perf.data",
+            "Usage: simpleperf report [options]\n"
+            "    -b            Use the branch-to addresses in sampled take branches instead of\n"
+            "                  the instruction addresses. Only valid for perf.data recorded with\n"
+            "                  -b/-j option."
+            "    -i <file>     Specify path of record file, default is perf.data.\n"
+            "    -n            Print the sample count for each item.\n"
+            "    --no-demangle        Don't demangle symbol names.\n"
+            "    --sort key1,key2,...\n"
+            "                  Select the keys to sort and print the report. Possible keys\n"
+            "                  include pid, tid, comm, dso, symbol, dso_from, dso_to, symbol_from\n"
+            "                  symbol_to. dso_from, dso_to, symbol_from, symbol_to can only be\n"
+            "                  used with -b option. Default keys are \"comm,pid,tid,dso,symbol\"\n"
+            "    --symfs <dir>  Look for files with symbols relative to this directory.\n"),
+        record_filename_("perf.data"),
+        use_branch_address_(false) {
   }
 
   bool Run(const std::vector<std::string>& args);
@@ -191,6 +266,7 @@ class ReportCommand : public Command {
   perf_event_attr event_attr_;
   std::vector<ReportItem*> report_items_;
   std::unique_ptr<SampleTree> sample_tree_;
+  bool use_branch_address_;
 };
 
 bool ReportCommand::Run(const std::vector<std::string>& args) {
@@ -209,9 +285,7 @@ bool ReportCommand::Run(const std::vector<std::string>& args) {
   }
   ReadSampleTreeFromRecordFile();
 
-  // 3. Read symbol table from elf files.
-
-  // 4. Show collected information.
+  // 3. Show collected information.
   PrintReport();
 
   return true;
@@ -219,8 +293,11 @@ bool ReportCommand::Run(const std::vector<std::string>& args) {
 
 bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
   bool print_sample_count = false;
+  std::vector<std::string> sort_keys = {"comm", "pid", "tid", "dso", "symbol"};
   for (size_t i = 0; i < args.size(); ++i) {
-    if (args[i] == "-i") {
+    if (args[i] == "-b") {
+      use_branch_address_ = true;
+    } else if (args[i] == "-i") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
       }
@@ -236,16 +313,7 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
       if (!NextArgumentOrError(args, &i)) {
         return false;
       }
-      std::vector<std::string> sort_keys = android::base::Split(args[i], ",");
-      for (auto& key : sort_keys) {
-        auto it = report_item_map.find(key);
-        if (it != report_item_map.end()) {
-          report_items_.push_back(it->second);
-        } else {
-          LOG(ERROR) << "Unknown sort key: " << key;
-          return false;
-        }
-      }
+      sort_keys = android::base::Split(args[i], ",");
     } else if (args[i] == "--symfs") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -259,15 +327,21 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
     }
   }
 
-  if (report_items_.empty()) {
-    report_items_.push_back(report_item_map["comm"]);
-    report_items_.push_back(report_item_map["pid"]);
-    report_items_.push_back(report_item_map["tid"]);
-    report_items_.push_back(report_item_map["dso"]);
-    report_items_.push_back(report_item_map["symbol"]);
-  }
   if (print_sample_count) {
-    report_items_.insert(report_items_.begin(), &report_sample_count);
+    report_items_.push_back(&report_sample_count);
+  }
+  for (auto& key : sort_keys) {
+    if (!use_branch_address_ && branch_sort_keys.find(key) != branch_sort_keys.end()) {
+      LOG(ERROR) << "sort key '" << key << "' can only be used with -b option.";
+      return false;
+    }
+    auto it = report_item_map.find(key);
+    if (it != report_item_map.end()) {
+      report_items_.push_back(it->second);
+    } else {
+      LOG(ERROR) << "Unknown sort key: " << key;
+      return false;
+    }
   }
   return true;
 }
@@ -279,6 +353,10 @@ bool ReportCommand::ReadEventAttrFromRecordFile() {
     return false;
   }
   event_attr_ = attrs[0]->attr;
+  if (use_branch_address_ && (event_attr_.sample_type & PERF_SAMPLE_BRANCH_STACK) == 0) {
+    LOG(ERROR) << record_filename_ << " is not recorded with branch stack sampling option.";
+    return false;
+  }
   return true;
 }
 
@@ -310,9 +388,18 @@ void ReportCommand::ReadSampleTreeFromRecordFile() {
       }
     } else if (record->header.type == PERF_RECORD_SAMPLE) {
       const SampleRecord& r = *static_cast<const SampleRecord*>(record.get());
-      bool in_kernel = (r.header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL;
-      sample_tree_->AddSample(r.tid_data.pid, r.tid_data.tid, r.ip_data.ip, r.time_data.time,
-                              r.period_data.period, in_kernel);
+      if (use_branch_address_ == false) {
+        bool in_kernel = (r.header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL;
+        sample_tree_->AddSample(r.tid_data.pid, r.tid_data.tid, r.ip_data.ip, r.time_data.time,
+                                r.period_data.period, in_kernel);
+      } else {
+        for (auto& item : r.branch_stack_data.stack) {
+          if (item.from != 0 && item.to != 0) {
+            sample_tree_->AddBranchSample(r.tid_data.pid, r.tid_data.tid, item.from, item.to,
+                                          item.flags, r.time_data.time, r.period_data.period);
+          }
+        }
+      }
     } else if (record->header.type == PERF_RECORD_COMM) {
       const CommRecord& r = *static_cast<const CommRecord*>(record.get());
       sample_tree_->AddThread(r.data.pid, r.data.tid, r.comm);
