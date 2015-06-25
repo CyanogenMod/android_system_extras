@@ -18,6 +18,7 @@
 #define SIMPLE_PERF_RECORD_FILE_H_
 
 #include <stdio.h>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -52,6 +53,7 @@ class RecordFileWriter {
 
   bool WriteFeatureHeader(size_t feature_count);
   bool WriteBuildIdFeature(const std::vector<BuildIdRecord>& build_id_records);
+  bool WriteCmdlineFeature(const std::vector<std::string>& cmdline);
   bool WriteBranchStackFeature();
 
   // Normally, Close() should be called after writing. But if something
@@ -69,7 +71,8 @@ class RecordFileWriter {
   bool WriteFileHeader();
   bool Write(const void* buf, size_t len);
   bool SeekFileEnd(uint64_t* file_end);
-  bool ModifyFeatureSectionDescriptor(size_t feature_index, uint64_t offset, uint64_t size);
+  bool WriteFeatureBegin(uint64_t* start_offset);
+  bool WriteFeatureEnd(int feature, uint64_t start_offset);
 
   const std::string filename_;
   FILE* record_fp_;
@@ -98,10 +101,11 @@ class RecordFileReader {
   std::vector<const PerfFileFormat::FileAttr*> AttrSection();
   std::vector<uint64_t> IdsForAttr(const PerfFileFormat::FileAttr* attr);
   std::vector<std::unique_ptr<const Record>> DataSection();
-  std::vector<PerfFileFormat::SectionDesc> FeatureSectionDescriptors();
+  const std::map<int, PerfFileFormat::SectionDesc>& FeatureSectionDescriptors();
   const char* DataAtOffset(uint64_t offset) {
     return mmap_addr_ + offset;
   }
+  std::vector<std::string> ReadCmdlineFeature();
   bool Close();
 
  private:
@@ -113,6 +117,8 @@ class RecordFileReader {
 
   const char* mmap_addr_;
   size_t mmap_len_;
+
+  std::map<int, PerfFileFormat::SectionDesc> feature_sections_;
 
   DISALLOW_COPY_AND_ASSIGN(RecordFileReader);
 };

@@ -22,11 +22,13 @@
 
 #include <base/logging.h>
 #include <base/stringprintf.h>
+#include <base/strings.h>
 
 #include "command.h"
 #include "event_attr.h"
 #include "record.h"
 #include "record_file.h"
+#include "utils.h"
 
 using namespace PerfFileFormat;
 
@@ -50,8 +52,6 @@ class DumpRecordCommand : public Command {
 
   std::string record_filename_;
   std::unique_ptr<RecordFileReader> record_file_reader_;
-
-  std::vector<int> features_;
 };
 
 bool DumpRecordCommand::Run(const std::vector<std::string>& args) {
@@ -105,15 +105,15 @@ void DumpRecordCommand::DumpFileHeader() {
   printf("event_types[file section]: offset %" PRId64 ", size %" PRId64 "\n",
          header->event_types.offset, header->event_types.size);
 
-  features_.clear();
+  std::vector<int> features;
   for (size_t i = 0; i < FEAT_MAX_NUM; ++i) {
     size_t j = i / 8;
     size_t k = i % 8;
     if ((header->features[j] & (1 << k)) != 0) {
-      features_.push_back(i);
+      features.push_back(i);
     }
   }
-  for (auto& feature : features_) {
+  for (auto& feature : features) {
     printf("feature: %s\n", GetFeatureName(feature).c_str());
   }
 }
@@ -172,11 +172,10 @@ void DumpRecordCommand::DumpDataSection() {
 }
 
 void DumpRecordCommand::DumpFeatureSection() {
-  std::vector<SectionDesc> sections = record_file_reader_->FeatureSectionDescriptors();
-  CHECK_EQ(sections.size(), features_.size());
-  for (size_t i = 0; i < features_.size(); ++i) {
-    int feature = features_[i];
-    SectionDesc& section = sections[i];
+  std::map<int, SectionDesc> section_map = record_file_reader_->FeatureSectionDescriptors();
+  for (auto& pair : section_map) {
+    int feature = pair.first;
+    SectionDesc& section = pair.second;
     printf("feature section for %s: offset %" PRId64 ", size %" PRId64 "\n",
            GetFeatureName(feature).c_str(), section.offset, section.size);
     if (feature == FEAT_BUILD_ID) {
@@ -190,6 +189,9 @@ void DumpRecordCommand::DumpFeatureSection() {
         record.Dump(1);
         p += header->size;
       }
+    } else if (feature == FEAT_CMDLINE) {
+      std::vector<std::string> cmdline = record_file_reader_->ReadCmdlineFeature();
+      PrintIndented(1, "cmdline: %s\n", android::base::Join(cmdline, ' ').c_str());
     }
   }
 }

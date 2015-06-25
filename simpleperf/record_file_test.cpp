@@ -86,12 +86,13 @@ TEST_F(RecordFileTest, smoke) {
 
   // Read and check feature section.
   ASSERT_TRUE(file_header->features[FEAT_BUILD_ID / 8] & (1 << (FEAT_BUILD_ID % 8)));
-  std::vector<SectionDesc> sections = reader->FeatureSectionDescriptors();
+  std::map<int, SectionDesc> sections = reader->FeatureSectionDescriptors();
   ASSERT_EQ(1u, sections.size());
-  const perf_event_header* header =
-      reinterpret_cast<const perf_event_header*>(reader->DataAtOffset(sections[0].offset));
+  ASSERT_TRUE(sections.find(FEAT_BUILD_ID) != sections.end());
+  const perf_event_header* header = reinterpret_cast<const perf_event_header*>(
+      reader->DataAtOffset(sections[FEAT_BUILD_ID].offset));
   ASSERT_TRUE(header != nullptr);
-  ASSERT_EQ(sections[0].size, header->size);
+  ASSERT_EQ(sections[FEAT_BUILD_ID].size, header->size);
   CheckRecordEqual(build_id_record, BuildIdRecord(header));
 
   ASSERT_TRUE(reader->Close());

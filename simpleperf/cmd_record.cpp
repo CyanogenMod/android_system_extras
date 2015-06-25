@@ -113,7 +113,7 @@ class RecordCommand : public Command {
   bool WriteData(const char* data, size_t size);
   bool DumpKernelAndModuleMmaps();
   bool DumpThreadCommAndMmaps();
-  bool DumpAdditionalFeatures();
+  bool DumpAdditionalFeatures(const std::vector<std::string>& args);
   bool DumpBuildIdFeature();
 
   bool use_sample_freq_;    // Use sample_freq_ when true, otherwise using sample_period_.
@@ -224,7 +224,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   }
 
   // 6. Dump additional features, and close record file.
-  if (!DumpAdditionalFeatures()) {
+  if (!DumpAdditionalFeatures(args)) {
     return false;
   }
   if (!record_file_writer_->Close()) {
@@ -439,12 +439,21 @@ bool RecordCommand::DumpThreadCommAndMmaps() {
   return true;
 }
 
-bool RecordCommand::DumpAdditionalFeatures() {
-  size_t feature_count = (branch_sampling_ != 0 ? 2 : 1);
+bool RecordCommand::DumpAdditionalFeatures(const std::vector<std::string>& args) {
+  size_t feature_count = (branch_sampling_ != 0 ? 3 : 2);
   if (!record_file_writer_->WriteFeatureHeader(feature_count)) {
     return false;
   }
   if (!DumpBuildIdFeature()) {
+    return false;
+  }
+  std::string exec_path = "simpleperf";
+  GetExecPath(&exec_path);
+  std::vector<std::string> cmdline;
+  cmdline.push_back(exec_path);
+  cmdline.push_back("record");
+  cmdline.insert(cmdline.end(), args.begin(), args.end());
+  if (!record_file_writer_->WriteCmdlineFeature(cmdline)) {
     return false;
   }
   if (branch_sampling_ != 0 && !record_file_writer_->WriteBranchStackFeature()) {

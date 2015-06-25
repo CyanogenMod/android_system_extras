@@ -401,3 +401,15 @@ bool GetValidThreadsFromThreadString(const std::string& tid_str, std::set<pid_t>
   }
   return true;
 }
+
+bool GetExecPath(std::string* exec_path) {
+  char path[PATH_MAX];
+  ssize_t path_len = readlink("/proc/self/exe", path, sizeof(path));
+  if (path_len <= 0 || path_len >= static_cast<ssize_t>(sizeof(path))) {
+    PLOG(ERROR) << "readlink failed";
+    return false;
+  }
+  path[path_len] = '\0';
+  *exec_path = path;
+  return true;
+}
