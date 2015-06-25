@@ -49,3 +49,16 @@ TEST_F(ReportCommandTest, sort_option_pid) {
 TEST_F(ReportCommandTest, sort_option_all) {
   ASSERT_TRUE(ReportCmd()->Run({"--sort", "comm,pid,dso,symbol"}));
 }
+
+extern bool IsBranchSamplingSupported();
+
+TEST(report_cmd, use_branch_address) {
+  if (IsBranchSamplingSupported()) {
+    ASSERT_TRUE(RecordCmd()->Run({"-b", "sleep", "1"}));
+    ASSERT_TRUE(
+        ReportCmd()->Run({"-b", "--sort", "comm,pid,dso_from,symbol_from,dso_to,symbol_to"}));
+  } else {
+    GTEST_LOG_(INFO)
+        << "This test does nothing as branch stack sampling is not supported on this device.";
+  }
+}
