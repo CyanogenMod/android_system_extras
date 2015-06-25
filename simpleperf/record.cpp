@@ -185,7 +185,7 @@ MmapRecord::MmapRecord(const perf_event_attr& attr, const perf_event_header* phe
 }
 
 void MmapRecord::DumpData(size_t indent) const {
-  PrintIndented(indent, "pid %u, tid %u, addr 0x" PRIx64 ", len 0x%" PRIx64 "\n", data.pid,
+  PrintIndented(indent, "pid %u, tid %u, addr 0x%" PRIx64 ", len 0x%" PRIx64 "\n", data.pid,
                 data.tid, data.addr, data.len);
   PrintIndented(indent, "pgoff 0x%" PRIx64 ", filename %s\n", data.pgoff, filename.c_str());
 }
