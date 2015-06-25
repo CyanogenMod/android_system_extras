@@ -117,7 +117,7 @@ ThreadEntry* SampleTree::FindThreadOrNew(int pid, int tid) {
     AddThread(pid, tid, "unknown");
     it = thread_tree_.find(tid);
   } else {
-    CHECK_EQ(pid, it->second.get()->pid);
+    CHECK_EQ(pid, it->second.get()->pid) << "tid = " << tid;
   }
   return it->second.get();
 }
@@ -156,11 +156,11 @@ const MapEntry* SampleTree::FindMap(const ThreadEntry* thread, uint64_t ip, bool
 
 void SampleTree::AddSample(int pid, int tid, uint64_t ip, uint64_t time, uint64_t period,
                            bool in_kernel) {
-  ThreadEntry* thread = FindThreadOrNew(pid, tid);
+  const ThreadEntry* thread = FindThreadOrNew(pid, tid);
   const MapEntry* map = FindMap(thread, ip, in_kernel);
   const SymbolEntry* symbol = FindSymbol(map, ip);
 
-  SampleEntry find_sample = {
+  SampleEntry sample = {
       .ip = ip,
       .time = time,
       .period = period,
@@ -170,17 +170,52 @@ void SampleTree::AddSample(int pid, int tid, uint64_t ip, uint64_t time, uint64_
       .map = map,
       .symbol = symbol,
   };
-  auto it = sample_tree_.find(find_sample);
+  InsertSample(sample);
+}
+
+void SampleTree::AddBranchSample(int pid, int tid, uint64_t from_ip, uint64_t to_ip,
+                                 uint64_t branch_flags, uint64_t time, uint64_t period) {
+  const ThreadEntry* thread = FindThreadOrNew(pid, tid);
+  const MapEntry* from_map = FindMap(thread, from_ip, false);
+  if (from_map == &unknown_map_) {
+    from_map = FindMap(thread, from_ip, true);
+  }
+  const SymbolEntry* from_symbol = FindSymbol(from_map, from_ip);
+  const MapEntry* to_map = FindMap(thread, to_ip, false);
+  if (to_map == &unknown_map_) {
+    to_map = FindMap(thread, to_ip, true);
+  }
+  const SymbolEntry* to_symbol = FindSymbol(to_map, to_ip);
+
+  BranchFromEntry branch_from = {
+      .ip = from_ip, .map = from_map, .symbol = from_symbol, .flags = branch_flags,
+  };
+  SampleEntry sample = {
+      .ip = to_ip,
+      .time = time,
+      .period = period,
+      .sample_count = 1,
+      .thread = thread,
+      .thread_comm = thread->comm,
+      .map = to_map,
+      .symbol = to_symbol,
+      .branch_from = branch_from,
+  };
+  InsertSample(sample);
+}
+
+void SampleTree::InsertSample(const SampleEntry& sample) {
+  auto it = sample_tree_.find(sample);
   if (it == sample_tree_.end()) {
-    auto pair = sample_tree_.insert(find_sample);
+    auto pair = sample_tree_.insert(sample);
     CHECK(pair.second);
   } else {
-    SampleEntry* sample_entry = const_cast<SampleEntry*>(&*it);
-    sample_entry->period += period;
-    sample_entry->sample_count++;
+    SampleEntry* find_sample = const_cast<SampleEntry*>(&*it);
+    find_sample->period += sample.period;
+    find_sample->sample_count++;
   }
   total_samples_++;
-  total_period_ += period;
+  total_period_ += sample.period;
 }
 
 const SymbolEntry* SampleTree::FindSymbol(const MapEntry* map, uint64_t ip) {

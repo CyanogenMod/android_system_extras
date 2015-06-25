@@ -45,6 +45,13 @@ struct ThreadEntry {
   std::set<MapEntry*, MapComparator> maps;
 };
 
+struct BranchFromEntry {
+  uint64_t ip;
+  const MapEntry* map;
+  const SymbolEntry* symbol;
+  uint64_t flags;
+};
+
 struct SampleEntry {
   uint64_t ip;
   uint64_t time;
@@ -54,6 +61,7 @@ struct SampleEntry {
   const char* thread_comm;  // It refers to the thread comm when the sample happens.
   const MapEntry* map;
   const SymbolEntry* symbol;
+  BranchFromEntry branch_from;
 };
 
 typedef std::function<int(const SampleEntry&, const SampleEntry&)> compare_sample_func_t;
@@ -85,6 +93,8 @@ class SampleTree {
   void AddThreadMap(int pid, int tid, uint64_t start_addr, uint64_t len, uint64_t pgoff,
                     uint64_t time, const std::string& filename);
   void AddSample(int pid, int tid, uint64_t ip, uint64_t time, uint64_t period, bool in_kernel);
+  void AddBranchSample(int pid, int tid, uint64_t from_ip, uint64_t to_ip, uint64_t branch_flags,
+                       uint64_t time, uint64_t period);
   void VisitAllSamples(std::function<void(const SampleEntry&)> callback);
 
   uint64_t TotalSamples() const {
@@ -101,6 +111,7 @@ class SampleTree {
   DsoEntry* FindKernelDsoOrNew(const std::string& filename);
   DsoEntry* FindUserDsoOrNew(const std::string& filename);
   const SymbolEntry* FindSymbol(const MapEntry* map, uint64_t ip);
+  void InsertSample(const SampleEntry& sample);
 
   struct SampleComparator {
     bool operator()(const SampleEntry& sample1, const SampleEntry& sample2) const {
