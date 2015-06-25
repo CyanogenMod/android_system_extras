@@ -71,6 +71,8 @@ bool GetModuleBuildId(const std::string& module_name, BuildId* build_id);
 bool GetValidThreadsFromProcessString(const std::string& pid_str, std::set<pid_t>* tid_set);
 bool GetValidThreadsFromThreadString(const std::string& tid_str, std::set<pid_t>* tid_set);
 
+bool GetExecPath(std::string* exec_path);
+
 // Expose the following functions for unit tests.
 std::vector<int> GetOnlineCpusFromString(const std::string& s);
 

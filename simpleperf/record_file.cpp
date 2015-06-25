@@ -245,10 +245,8 @@ bool RecordFileWriter::WriteFeatureHeader(size_t feature_count) {
 }
 
 bool RecordFileWriter::WriteBuildIdFeature(const std::vector<BuildIdRecord>& build_id_records) {
-  CHECK_LT(current_feature_index_, feature_count_);
-  // Always write features at the end of the file.
   uint64_t start_offset;
-  if (!SeekFileEnd(&start_offset)) {
+  if (!WriteFeatureBegin(&start_offset)) {
     return false;
   }
   for (auto& record : build_id_records) {
@@ -257,48 +255,67 @@ bool RecordFileWriter::WriteBuildIdFeature(const std::vector<BuildIdRecord>& bui
       return false;
     }
   }
+  return WriteFeatureEnd(FEAT_BUILD_ID, start_offset);
+}
+
+bool RecordFileWriter::WriteCmdlineFeature(const std::vector<std::string>& cmdline) {
+  uint64_t start_offset;
+  if (!WriteFeatureBegin(&start_offset)) {
+    return false;
+  }
+  uint32_t arg_count = cmdline.size();
+  if (!Write(&arg_count, sizeof(arg_count))) {
+    return false;
+  }
+  for (auto& arg : cmdline) {
+    uint32_t len = static_cast<uint32_t>(ALIGN(arg.size() + 1, 64));
+    if (!Write(&len, sizeof(len))) {
+      return false;
+    }
+    std::vector<char> array(len, '\0');
+    std::copy(arg.begin(), arg.end(), array.begin());
+    if (!Write(array.data(), array.size())) {
+      return false;
+    }
+  }
+  return WriteFeatureEnd(FEAT_CMDLINE, start_offset);
+}
+
+bool RecordFileWriter::WriteBranchStackFeature() {
+  uint64_t start_offset;
+  if (!WriteFeatureBegin(&start_offset)) {
+    return false;
+  }
+  return WriteFeatureEnd(FEAT_BRANCH_STACK, start_offset);
+}
+
+bool RecordFileWriter::WriteFeatureBegin(uint64_t* start_offset) {
+  CHECK_LT(current_feature_index_, feature_count_);
+  if (!SeekFileEnd(start_offset)) {
+    return false;
+  }
+  return true;
+}
+
+bool RecordFileWriter::WriteFeatureEnd(int feature, uint64_t start_offset) {
   uint64_t end_offset;
   if (!SeekFileEnd(&end_offset)) {
     return false;
   }
-
-  if (!ModifyFeatureSectionDescriptor(current_feature_index_, start_offset,
-                                      end_offset - start_offset)) {
-    return false;
-  }
-  ++current_feature_index_;
-  features_.push_back(FEAT_BUILD_ID);
-  return true;
-}
-
-bool RecordFileWriter::WriteBranchStackFeature() {
-  CHECK_LT(current_feature_index_, feature_count_);
-  uint64_t start_offset;
-  if (!SeekFileEnd(&start_offset)) {
-    return false;
-  }
-  if (!ModifyFeatureSectionDescriptor(current_feature_index_, start_offset, 0)) {
-    return false;
-  }
-  ++current_feature_index_;
-  features_.push_back(FEAT_BRANCH_STACK);
-  return true;
-}
-
-bool RecordFileWriter::ModifyFeatureSectionDescriptor(size_t feature_index, uint64_t offset,
-                                                      uint64_t size) {
   SectionDesc desc;
-  desc.offset = offset;
-  desc.size = size;
+  desc.offset = start_offset;
+  desc.size = end_offset - start_offset;
   uint64_t feature_offset = data_section_offset_ + data_section_size_;
-  if (fseek(record_fp_, feature_offset + feature_index * sizeof(SectionDesc), SEEK_SET) == -1) {
+  if (fseek(record_fp_, feature_offset + current_feature_index_ * sizeof(SectionDesc), SEEK_SET) ==
+      -1) {
     PLOG(ERROR) << "fseek() failed";
     return false;
   }
-  if (fwrite(&desc, sizeof(SectionDesc), 1, record_fp_) != 1) {
-    PLOG(ERROR) << "fwrite() failed";
+  if (!Write(&desc, sizeof(SectionDesc))) {
     return false;
   }
+  ++current_feature_index_;
+  features_.push_back(feature);
   return true;
 }
 
@@ -467,21 +484,46 @@ std::vector<std::unique_ptr<const Record>> RecordFileReader::DataSection() {
   return result;
 }
 
-std::vector<SectionDesc> RecordFileReader::FeatureSectionDescriptors() {
-  std::vector<SectionDesc> result;
-  const struct FileHeader* header = FileHeader();
-  size_t feature_count = 0;
-  for (size_t i = 0; i < sizeof(header->features); ++i) {
-    for (size_t j = 0; j < 8; ++j) {
-      if (header->features[i] & (1 << j)) {
-        ++feature_count;
+const std::map<int, SectionDesc>& RecordFileReader::FeatureSectionDescriptors() {
+  if (feature_sections_.empty()) {
+    std::vector<int> features;
+    const struct FileHeader* header = FileHeader();
+    for (size_t i = 0; i < sizeof(header->features); ++i) {
+      for (size_t j = 0; j < 8; ++j) {
+        if (header->features[i] & (1 << j)) {
+          features.push_back(i * 8 + j);
+        }
       }
     }
+    uint64_t feature_section_offset = header->data.offset + header->data.size;
+    const SectionDesc* p = reinterpret_cast<const SectionDesc*>(mmap_addr_ + feature_section_offset);
+    for (auto& feature : features) {
+      feature_sections_.insert(std::make_pair(feature, *p));
+      ++p;
+    }
   }
-  uint64_t feature_section_offset = header->data.offset + header->data.size;
-  const SectionDesc* p = reinterpret_cast<const SectionDesc*>(mmap_addr_ + feature_section_offset);
-  for (size_t i = 0; i < feature_count; ++i) {
-    result.push_back(*p++);
+  return feature_sections_;
+}
+
+std::vector<std::string> RecordFileReader::ReadCmdlineFeature() {
+  const std::map<int, SectionDesc>& section_map = FeatureSectionDescriptors();
+  auto it = section_map.find(FEAT_CMDLINE);
+  if (it == section_map.end()) {
+    return std::vector<std::string>();
   }
-  return result;
+  SectionDesc section = it->second;
+  const char* p = DataAtOffset(section.offset);
+  const char* end = DataAtOffset(section.offset + section.size);
+  std::vector<std::string> cmdline;
+  uint32_t arg_count;
+  MoveFromBinaryFormat(arg_count, p);
+  CHECK_LE(p, end);
+  for (size_t i = 0; i < arg_count; ++i) {
+    uint32_t len;
+    MoveFromBinaryFormat(len, p);
+    CHECK_LE(p + len, end);
+    cmdline.push_back(p);
+    p += len;
+  }
+  return cmdline;
 }
