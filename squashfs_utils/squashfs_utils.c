@@ -16,6 +16,7 @@
 
 #include "squashfs_utils.h"
 
+#include <cutils/fs.h>
 #include <cutils/klog.h>
 #include <errno.h>
 #include <fcntl.h>
