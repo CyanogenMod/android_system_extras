@@ -168,3 +168,8 @@ void EventFd::PreparePollForMmapData(pollfd* poll_fd) {
   poll_fd->fd = perf_event_fd_;
   poll_fd->events = POLLIN;
 }
+
+bool IsEventAttrSupportedByKernel(perf_event_attr attr) {
+  auto event_fd = EventFd::OpenEventFile(attr, getpid(), -1, false);
+  return event_fd != nullptr;
+}

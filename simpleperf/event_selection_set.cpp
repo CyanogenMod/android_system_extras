@@ -24,18 +24,17 @@
 #include "event_type.h"
 
 bool IsBranchSamplingSupported() {
-  std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType("cpu-cycles", false);
-  if (event_type_modifier == nullptr) {
+  const EventType* type = FindEventTypeByName("cpu-cycles");
+  if (type == nullptr) {
     return false;
   }
-  perf_event_attr attr = CreateDefaultPerfEventAttr(event_type_modifier->event_type);
+  perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
   attr.sample_type |= PERF_SAMPLE_BRANCH_STACK;
   attr.branch_sample_type = PERF_SAMPLE_BRANCH_ANY;
-  auto event_fd = EventFd::OpenEventFile(attr, getpid(), -1, false);
-  return event_fd != nullptr;
+  return IsEventAttrSupportedByKernel(attr);
 }
 
-void EventSelectionSet::AddEventType(const EventTypeAndModifier& event_type_modifier) {
+bool EventSelectionSet::AddEventType(const EventTypeAndModifier& event_type_modifier) {
   EventSelection selection;
   selection.event_type = event_type_modifier.event_type;
   selection.event_attr = CreateDefaultPerfEventAttr(event_type_modifier.event_type);
@@ -45,7 +44,12 @@ void EventSelectionSet::AddEventType(const EventTypeAndModifier& event_type_modi
   selection.event_attr.exclude_host = event_type_modifier.exclude_host;
   selection.event_attr.exclude_guest = event_type_modifier.exclude_guest;
   selection.event_attr.precise_ip = event_type_modifier.precise_ip;
+  if (!IsEventAttrSupportedByKernel(selection.event_attr)) {
+    LOG(ERROR) << "Event type '" << selection.event_type.name << "' is not supported by the kernel";
+    return false;
+  }
   selections_.push_back(std::move(selection));
+  return true;
 }
 
 void EventSelectionSet::SetEnableOnExec(bool enable) {

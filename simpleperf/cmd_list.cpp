@@ -22,14 +22,16 @@
 #include <base/logging.h>
 
 #include "command.h"
+#include "event_attr.h"
+#include "event_fd.h"
 #include "event_type.h"
-#include "perf_event.h"
 
 static void PrintEventTypesOfType(uint32_t type, const std::string& type_name,
                                   const std::vector<EventType>& event_types) {
   printf("List of %s:\n", type_name.c_str());
   for (auto& event_type : event_types) {
-    if (event_type.type == type && event_type.IsSupportedByKernel()) {
+    if (event_type.type == type &&
+        IsEventAttrSupportedByKernel(CreateDefaultPerfEventAttr(event_type))) {
       printf("  %s\n", event_type.name.c_str());
     }
   }
