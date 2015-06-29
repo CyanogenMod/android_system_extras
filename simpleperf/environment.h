@@ -26,7 +26,7 @@
 
 std::vector<int> GetOnlineCpus();
 
-static const char* DEFAULT_KERNEL_MMAP_NAME = "[kernel.kallsyms]_text";
+constexpr char DEFAULT_KERNEL_MMAP_NAME[] = "[kernel.kallsyms]_text";
 
 struct KernelMmap {
   std::string name;
@@ -51,7 +51,7 @@ struct ThreadComm {
 
 bool GetThreadComms(std::vector<ThreadComm>* thread_comms);
 
-static const char* DEFAULT_EXECNAME_FOR_THREAD_MMAP = "//anon";
+constexpr char DEFAULT_EXECNAME_FOR_THREAD_MMAP[] = "//anon";
 
 struct ThreadMmap {
   uint64_t start_addr;
@@ -63,7 +63,7 @@ struct ThreadMmap {
 
 bool GetThreadMmapsInProcess(pid_t pid, std::vector<ThreadMmap>* thread_mmaps);
 
-static const char* DEFAULT_KERNEL_FILENAME_FOR_BUILD_ID = "[kernel.kallsyms]";
+constexpr char DEFAULT_KERNEL_FILENAME_FOR_BUILD_ID[] = "[kernel.kallsyms]";
 
 bool GetKernelBuildId(BuildId* build_id);
 bool GetModuleBuildId(const std::string& module_name, BuildId* build_id);
