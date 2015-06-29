@@ -46,7 +46,7 @@ class EventSelectionSet {
     return selections_.empty();
   }
 
-  void AddEventType(const EventTypeAndModifier& event_type_modifier);
+  bool AddEventType(const EventTypeAndModifier& event_type_modifier);
 
   void SetEnableOnExec(bool enable);
   bool GetEnableOnExec();

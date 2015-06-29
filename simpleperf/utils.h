@@ -57,7 +57,7 @@ class SignalHandlerRegister {
  public:
   SignalHandlerRegister(const std::vector<int>& signums, void (*handler)(int)) {
     for (auto& sig : signums) {
-      sighandler_t old_handler = signal(sig, handler);
+      sig_t old_handler = signal(sig, handler);
       saved_signal_handlers_.push_back(std::make_pair(sig, old_handler));
     }
   }
@@ -69,7 +69,7 @@ class SignalHandlerRegister {
   }
 
  private:
-  std::vector<std::pair<int, sighandler_t>> saved_signal_handlers_;
+  std::vector<std::pair<int, sig_t>> saved_signal_handlers_;
 };
 
 template <class T>

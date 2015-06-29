@@ -97,4 +97,6 @@ class EventFd {
   DISALLOW_COPY_AND_ASSIGN(EventFd);
 };
 
+bool IsEventAttrSupportedByKernel(perf_event_attr attr);
+
 #endif  // SIMPLE_PERF_EVENT_FD_H_

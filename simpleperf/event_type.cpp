@@ -36,16 +36,6 @@ static const std::vector<EventType> static_event_type_array = {
 #include "event_type_table.h"
 };
 
-static bool IsEventTypeSupportedByKernel(const EventType& event_type) {
-  auto event_fd =
-      EventFd::OpenEventFile(CreateDefaultPerfEventAttr(event_type), getpid(), -1, false);
-  return event_fd != nullptr;
-}
-
-bool EventType::IsSupportedByKernel() const {
-  return IsEventTypeSupportedByKernel(*this);
-}
-
 static const std::vector<EventType> GetTracepointEventTypes() {
   std::vector<EventType> result;
   const std::string tracepoint_dirname = "/sys/kernel/debug/tracing/events";
@@ -96,7 +86,7 @@ const EventType* FindEventTypeByConfig(uint32_t type, uint64_t config) {
   return nullptr;
 }
 
-static const EventType* FindEventTypeByName(const std::string& name, bool report_unsupported_type) {
+const EventType* FindEventTypeByName(const std::string& name) {
   const EventType* result = nullptr;
   for (auto& event_type : GetAllEventTypes()) {
     if (event_type.name == name) {
@@ -109,16 +99,10 @@ static const EventType* FindEventTypeByName(const std::string& name, bool report
                << "', try `simpleperf list` to list all possible event type names";
     return nullptr;
   }
-  if (!result->IsSupportedByKernel()) {
-    (report_unsupported_type ? PLOG(ERROR) : PLOG(DEBUG)) << "Event type '" << result->name
-                                                          << "' is not supported by the kernel";
-    return nullptr;
-  }
   return result;
 }
 
-std::unique_ptr<EventTypeAndModifier> ParseEventType(const std::string& event_type_str,
-                                                     bool report_unsupported_type) {
+std::unique_ptr<EventTypeAndModifier> ParseEventType(const std::string& event_type_str) {
   static std::string modifier_characters = "ukhGHp";
   std::unique_ptr<EventTypeAndModifier> event_type_modifier(new EventTypeAndModifier);
   std::string name = event_type_str;
@@ -138,13 +122,13 @@ std::unique_ptr<EventTypeAndModifier> ParseEventType(const std::string& event_ty
       modifier = event_type_str.substr(comm_pos + 1);
     }
   }
-  const EventType* event_type = FindEventTypeByName(name, report_unsupported_type);
+  const EventType* event_type = FindEventTypeByName(name);
   if (event_type == nullptr) {
     // Try if the modifier belongs to the event type name, like some tracepoint events.
     if (!modifier.empty()) {
       name = event_type_str;
       modifier.clear();
-      event_type = FindEventTypeByName(name, report_unsupported_type);
+      event_type = FindEventTypeByName(name);
     }
     if (event_type == nullptr) {
       return nullptr;

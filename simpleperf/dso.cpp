@@ -29,7 +29,9 @@ bool SymbolComparator::operator()(const std::unique_ptr<SymbolEntry>& symbol1,
 
 const SymbolEntry* DsoEntry::FindSymbol(uint64_t offset_in_dso) {
   std::unique_ptr<SymbolEntry> symbol(new SymbolEntry{
-      .name = "", .addr = offset_in_dso, .len = 0,
+      "",             // name
+      offset_in_dso,  // addr
+      0,              // len
   });
 
   auto it = symbols.upper_bound(symbol);
@@ -73,7 +75,9 @@ static bool IsKernelFunctionSymbol(const KernelSymbol& symbol) {
 static bool KernelSymbolCallback(const KernelSymbol& kernel_symbol, DsoEntry* dso) {
   if (IsKernelFunctionSymbol(kernel_symbol)) {
     SymbolEntry* symbol = new SymbolEntry{
-        .name = kernel_symbol.name, .addr = kernel_symbol.addr, .len = 0,
+        kernel_symbol.name,  // name
+        kernel_symbol.addr,  // addr
+        0,                   // len
     };
     dso->symbols.insert(std::unique_ptr<SymbolEntry>(symbol));
   }
@@ -93,6 +97,7 @@ static void FixupSymbolLength(DsoEntry* dso) {
   }
 }
 
+// TODO: Fix the way to get kernel symbols. See b/22179177.
 std::unique_ptr<DsoEntry> DsoFactory::LoadKernel() {
   std::unique_ptr<DsoEntry> dso(new DsoEntry);
   dso->path = "[kernel.kallsyms]";
@@ -107,7 +112,9 @@ static void ParseSymbolCallback(const ElfFileSymbol& elf_symbol, DsoEntry* dso,
                                 bool (*filter)(const ElfFileSymbol&)) {
   if (filter(elf_symbol)) {
     SymbolEntry* symbol = new SymbolEntry{
-        .name = elf_symbol.name, .addr = elf_symbol.start_in_file, .len = elf_symbol.len,
+        elf_symbol.name,           // name
+        elf_symbol.start_in_file,  // addr
+        elf_symbol.len,            // len
     };
     dso->symbols.insert(std::unique_ptr<SymbolEntry>(symbol));
   }
