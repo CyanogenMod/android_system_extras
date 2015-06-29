@@ -339,7 +339,9 @@ bool RecordCommand::SetMeasuredEventType(const std::string& event_type_name) {
 }
 
 bool RecordCommand::SetEventSelection() {
-  event_selection_set_.AddEventType(*measured_event_type_modifier_);
+  if (!event_selection_set_.AddEventType(*measured_event_type_modifier_)) {
+    return false;
+  }
   if (use_sample_freq_) {
     event_selection_set_.SetSampleFreq(sample_freq_);
   } else {

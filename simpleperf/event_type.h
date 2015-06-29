@@ -35,8 +35,6 @@ struct EventType {
   EventType() : type(0), config(0) {
   }
 
-  bool IsSupportedByKernel() const;
-
   std::string name;
   uint32_t type;
   uint64_t config;
@@ -44,6 +42,7 @@ struct EventType {
 
 const std::vector<EventType>& GetAllEventTypes();
 const EventType* FindEventTypeByConfig(uint32_t type, uint64_t config);
+const EventType* FindEventTypeByName(const std::string& name);
 
 struct EventTypeAndModifier {
   EventType event_type;
@@ -64,7 +63,6 @@ struct EventTypeAndModifier {
   }
 };
 
-std::unique_ptr<EventTypeAndModifier> ParseEventType(const std::string& event_type_str,
-                                                     bool report_unsupported_type = true);
+std::unique_ptr<EventTypeAndModifier> ParseEventType(const std::string& event_type_str);
 
 #endif  // SIMPLE_PERF_EVENT_H_
