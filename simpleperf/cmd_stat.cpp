@@ -27,9 +27,10 @@
 
 #include "command.h"
 #include "environment.h"
+#include "event_attr.h"
+#include "event_fd.h"
 #include "event_selection_set.h"
 #include "event_type.h"
-#include "perf_event.h"
 #include "utils.h"
 #include "workload.h"
 
@@ -76,9 +77,9 @@ class StatCommand : public Command {
 
  private:
   bool ParseOptions(const std::vector<std::string>& args, std::vector<std::string>* non_option_args);
-  bool AddMeasuredEventType(const std::string& event_type_name, bool report_unsupported_type = true);
+  bool AddMeasuredEventType(const std::string& event_type_name);
   bool AddDefaultMeasuredEventTypes();
-  void SetEventSelection();
+  bool SetEventSelection();
   bool ShowCounters(const std::map<const EventType*, std::vector<PerfCounter>>& counters_map,
                     std::chrono::steady_clock::duration counting_duration);
 
@@ -103,7 +104,9 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
       return false;
     }
   }
-  SetEventSelection();
+  if (!SetEventSelection()) {
+    return false;
+  }
 
   // 2. Create workload.
   std::unique_ptr<Workload> workload;
@@ -216,10 +219,8 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
   return true;
 }
 
-bool StatCommand::AddMeasuredEventType(const std::string& event_type_name,
-                                       bool report_unsupported_type) {
-  std::unique_ptr<EventTypeAndModifier> event_type_modifier =
-      ParseEventType(event_type_name, report_unsupported_type);
+bool StatCommand::AddMeasuredEventType(const std::string& event_type_name) {
+  std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType(event_type_name);
   if (event_type_modifier == nullptr) {
     return false;
   }
@@ -230,7 +231,10 @@ bool StatCommand::AddMeasuredEventType(const std::string& event_type_name,
 bool StatCommand::AddDefaultMeasuredEventTypes() {
   for (auto& name : default_measured_event_types) {
     // It is not an error when some event types in the default list are not supported by the kernel.
-    AddMeasuredEventType(name, false);
+    const EventType* type = FindEventTypeByName(name);
+    if (type != nullptr && IsEventAttrSupportedByKernel(CreateDefaultPerfEventAttr(*type))) {
+      AddMeasuredEventType(name);
+    }
   }
   if (measured_event_types_.empty()) {
     LOG(ERROR) << "Failed to add any supported default measured types";
@@ -239,11 +243,14 @@ bool StatCommand::AddDefaultMeasuredEventTypes() {
   return true;
 }
 
-void StatCommand::SetEventSelection() {
+bool StatCommand::SetEventSelection() {
   for (auto& pair : measured_event_types_) {
-    event_selection_set_.AddEventType(pair.second);
+    if (!event_selection_set_.AddEventType(pair.second)) {
+      return false;
+    }
   }
   event_selection_set_.SetInherit(child_inherit_);
+  return true;
 }
 
 bool StatCommand::ShowCounters(
