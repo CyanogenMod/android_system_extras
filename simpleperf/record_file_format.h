@@ -63,7 +63,7 @@ struct SectionDesc {
   uint64_t size;
 };
 
-static const char* PERF_MAGIC = "PERFILE2";
+constexpr char PERF_MAGIC[] = "PERFILE2";
 
 struct FileHeader {
   char magic[8];
