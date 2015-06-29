@@ -75,14 +75,18 @@ class SampleTree {
         sorted_sample_tree_(sorted_sample_comparator_),
         total_samples_(0),
         total_period_(0) {
-    unknown_map_ = {
-        .start_addr = 0, .len = ULLONG_MAX, .pgoff = 0, .time = 0, .dso = &unknown_dso_,
+    unknown_map_ = MapEntry{
+        0,              // start_addr
+        ULLONG_MAX,     // len
+        0,              // pgoff
+        0,              // time
+        &unknown_dso_,  // dso
     };
-    unknown_dso_ = {
-        .path = "unknown",
-    };
-    unknown_symbol_ = {
-        .name = "unknown", .addr = 0, .len = ULLONG_MAX,
+    unknown_dso_.path = "unknown";
+    unknown_symbol_ = SymbolEntry{
+        "unknown",   // name
+        0,           // addr
+        ULLONG_MAX,  // len
     };
   }
 

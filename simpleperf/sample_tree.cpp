@@ -37,7 +37,9 @@ void SampleTree::AddThread(int pid, int tid, const std::string& comm) {
   auto it = thread_tree_.find(tid);
   if (it == thread_tree_.end()) {
     ThreadEntry* thread = new ThreadEntry{
-        .pid = pid, .tid = tid,
+        pid, tid,
+        "unknown",                             // comm
+        std::set<MapEntry*, MapComparator>(),  // maps
     };
     auto pair = thread_tree_.insert(std::make_pair(tid, std::unique_ptr<ThreadEntry>(thread)));
     CHECK(pair.second);
@@ -75,7 +77,7 @@ void SampleTree::AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff,
   }
   DsoEntry* dso = FindKernelDsoOrNew(filename);
   MapEntry* map = new MapEntry{
-      .start_addr = start_addr, .len = len, .pgoff = pgoff, .time = time, .dso = dso,
+      start_addr, len, pgoff, time, dso,
   };
   map_storage_.push_back(std::unique_ptr<MapEntry>(map));
   RemoveOverlappedMap(&kernel_map_tree_, map);
@@ -103,7 +105,7 @@ void SampleTree::AddThreadMap(int pid, int tid, uint64_t start_addr, uint64_t le
   ThreadEntry* thread = FindThreadOrNew(pid, tid);
   DsoEntry* dso = FindUserDsoOrNew(filename);
   MapEntry* map = new MapEntry{
-      .start_addr = start_addr, .len = len, .pgoff = pgoff, .time = time, .dso = dso,
+      start_addr, len, pgoff, time, dso,
   };
   map_storage_.push_back(std::unique_ptr<MapEntry>(map));
   RemoveOverlappedMap(&thread->maps, map);
@@ -138,7 +140,11 @@ static bool IsIpInMap(uint64_t ip, const MapEntry* map) {
 const MapEntry* SampleTree::FindMap(const ThreadEntry* thread, uint64_t ip, bool in_kernel) {
   // Construct a map_entry which is strictly after the searched map_entry, based on MapComparator.
   MapEntry find_map = {
-      .start_addr = ip, .len = static_cast<uint64_t>(-1), .time = static_cast<uint64_t>(-1),
+      ip,          // start_addr
+      ULLONG_MAX,  // len
+      0,           // pgoff
+      ULLONG_MAX,  // time
+      nullptr,     // dso
   };
   if (!in_kernel) {
     auto it = thread->maps.upper_bound(&find_map);
@@ -161,14 +167,17 @@ void SampleTree::AddSample(int pid, int tid, uint64_t ip, uint64_t time, uint64_
   const SymbolEntry* symbol = FindSymbol(map, ip);
 
   SampleEntry sample = {
-      .ip = ip,
-      .time = time,
-      .period = period,
-      .sample_count = 1,
-      .thread = thread,
-      .thread_comm = thread->comm,
-      .map = map,
-      .symbol = symbol,
+      ip, time, period,
+      1,  // sample_count
+      thread,
+      thread->comm,  // thead_comm
+      map, symbol,
+      BranchFromEntry{
+          0,        // ip
+          nullptr,  // map
+          nullptr,  // symbol
+          0,        // flags
+      },
   };
   InsertSample(sample);
 }
@@ -187,20 +196,19 @@ void SampleTree::AddBranchSample(int pid, int tid, uint64_t from_ip, uint64_t to
   }
   const SymbolEntry* to_symbol = FindSymbol(to_map, to_ip);
 
-  BranchFromEntry branch_from = {
-      .ip = from_ip, .map = from_map, .symbol = from_symbol, .flags = branch_flags,
-  };
-  SampleEntry sample = {
-      .ip = to_ip,
-      .time = time,
-      .period = period,
-      .sample_count = 1,
-      .thread = thread,
-      .thread_comm = thread->comm,
-      .map = to_map,
-      .symbol = to_symbol,
-      .branch_from = branch_from,
-  };
+  SampleEntry sample = {to_ip,  // ip
+                        time, period,
+                        1,  // sample_count
+                        thread,
+                        thread->comm,  // thread_comm
+                        to_map,        // map
+                        to_symbol,     // symbol
+                        BranchFromEntry{
+                            from_ip,       // ip
+                            from_map,      // map
+                            from_symbol,   // symbol
+                            branch_flags,  // flags
+                        }};
   InsertSample(sample);
 }
 
