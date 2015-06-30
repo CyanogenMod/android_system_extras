@@ -190,6 +190,10 @@ class MultiNetworkBaseTest(net_test.NetworkTest):
     return {4: cls._MyIPv4Address(netid),
             6: cls._MyIPv6Address(netid)}[version]
 
+  @classmethod
+  def MyLinkLocalAddress(cls, netid):
+    return net_test.GetLinkAddress(cls.GetInterfaceName(netid), True)
+
   @staticmethod
   def IPv6Prefix(netid):
     return "2001:db8:%02x::" % netid
@@ -221,7 +225,7 @@ class MultiNetworkBaseTest(net_test.NetworkTest):
     return f
 
   @classmethod
-  def SendRA(cls, netid, retranstimer=None):
+  def SendRA(cls, netid, retranstimer=None, reachabletime=0):
     validity = 300                 # seconds
     macaddr = cls.RouterMacAddress(netid)
     lladdr = cls._RouterAddress(netid, 6)
@@ -238,7 +242,8 @@ class MultiNetworkBaseTest(net_test.NetworkTest):
 
     ra = (scapy.Ether(src=macaddr, dst="33:33:00:00:00:01") /
           scapy.IPv6(src=lladdr, hlim=255) /
-          scapy.ICMPv6ND_RA(retranstimer=retranstimer,
+          scapy.ICMPv6ND_RA(reachabletime=reachabletime,
+                            retranstimer=retranstimer,
                             routerlifetime=routerlifetime) /
           scapy.ICMPv6NDOptSrcLLAddr(lladdr=macaddr) /
           scapy.ICMPv6NDOptPrefixInfo(prefix=cls.IPv6Prefix(netid),
