@@ -62,3 +62,8 @@ TEST(report_cmd, use_branch_address) {
         << "This test does nothing as branch stack sampling is not supported on this device.";
   }
 }
+
+TEST(report_cmd, children_option) {
+  ASSERT_TRUE(RecordCmd()->Run({"-g", "sleep", "1"}));
+  ASSERT_TRUE(ReportCmd()->Run({"--children"}));
+}
