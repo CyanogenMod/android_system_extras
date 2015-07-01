@@ -497,7 +497,7 @@ class IPRoute(object):
 
     if nlmsghdr.type == NLMSG_ERROR or nlmsghdr.type == NLMSG_DONE:
       print "done"
-      return None, data
+      return (None, None), data
 
     nlmsg, data = cstruct.Read(data, msgtype)
     self._Debug("    %s" % nlmsg)
@@ -684,6 +684,10 @@ class IPRoute(object):
   def DumpNeighbours(self, version):
     ndmsg = NdMsg((self._AddressFamily(version), 0, 0, 0, 0))
     return self._Dump(RTM_GETNEIGH, ndmsg, NdMsg)
+
+  def ParseNeighbourMessage(self, msg):
+    msg, _ = self._ParseNLMsg(msg, NdMsg)
+    return msg
 
 
 if __name__ == "__main__":
