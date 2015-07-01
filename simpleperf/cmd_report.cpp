@@ -34,192 +34,195 @@
 #include "record_file.h"
 #include "sample_tree.h"
 
-typedef int (*compare_sample_entry_t)(const SampleEntry& sample1, const SampleEntry& sample2);
-typedef std::string (*print_sample_entry_header_t)();
-typedef std::string (*print_sample_entry_t)(const SampleEntry& sample);
-
-struct ReportItem {
-  size_t width;
-  compare_sample_entry_t compare_function;
-  print_sample_entry_header_t print_header_function;
-  print_sample_entry_t print_function;
-};
-
-static int ComparePid(const SampleEntry& sample1, const SampleEntry& sample2) {
-  return sample1.thread->pid - sample2.thread->pid;
-}
-
-static std::string PrintHeaderPid() {
-  return "Pid";
-}
-
-static std::string PrintPid(const SampleEntry& sample) {
-  return android::base::StringPrintf("%d", sample.thread->pid);
-}
-
-static ReportItem report_pid = {
-    .compare_function = ComparePid,
-    .print_header_function = PrintHeaderPid,
-    .print_function = PrintPid,
-};
-
-static int CompareTid(const SampleEntry& sample1, const SampleEntry& sample2) {
-  return sample1.thread->tid - sample2.thread->tid;
-}
-
-static std::string PrintHeaderTid() {
-  return "Tid";
-}
-
-static std::string PrintTid(const SampleEntry& sample) {
-  return android::base::StringPrintf("%d", sample.thread->tid);
-}
-
-static ReportItem report_tid = {
-    .compare_function = CompareTid,
-    .print_header_function = PrintHeaderTid,
-    .print_function = PrintTid,
-};
-
-static int CompareComm(const SampleEntry& sample1, const SampleEntry& sample2) {
-  return strcmp(sample1.thread_comm, sample2.thread_comm);
-}
-
-static std::string PrintHeaderComm() {
-  return "Command";
-}
-
-static std::string PrintComm(const SampleEntry& sample) {
-  return sample.thread_comm;
-}
-
-static ReportItem report_comm = {
-    .compare_function = CompareComm,
-    .print_header_function = PrintHeaderComm,
-    .print_function = PrintComm,
-};
-
-static int CompareDso(const SampleEntry& sample1, const SampleEntry& sample2) {
-  return strcmp(sample1.map->dso->path.c_str(), sample2.map->dso->path.c_str());
-}
-
-static std::string PrintHeaderDso() {
-  return "Shared Object";
-}
-
-static std::string PrintDso(const SampleEntry& sample) {
-  std::string filename = sample.map->dso->path;
-  if (filename == DEFAULT_EXECNAME_FOR_THREAD_MMAP) {
-    filename = "[unknown]";
+class Displayable {
+ public:
+  Displayable(const std::string& name) : name_(name), width_(name.size()) {
   }
-  return filename;
-}
 
-static ReportItem report_dso = {
-    .compare_function = CompareDso,
-    .print_header_function = PrintHeaderDso,
-    .print_function = PrintDso,
+  virtual ~Displayable() {
+  }
+
+  const std::string& Name() const {
+    return name_;
+  }
+  size_t Width() const {
+    return width_;
+  }
+
+  virtual std::string Show(const SampleEntry& sample) const = 0;
+  void AdjustWidth(const SampleEntry& sample) {
+    size_t size = Show(sample).size();
+    width_ = std::max(width_, size);
+  }
+
+ private:
+  const std::string name_;
+  size_t width_;
 };
 
-static int CompareSymbol(const SampleEntry& sample1, const SampleEntry& sample2) {
-  return strcmp(sample1.symbol->name.c_str(), sample2.symbol->name.c_str());
-}
+class AccumulatedOverheadItem : public Displayable {
+ public:
+  AccumulatedOverheadItem(const SampleTree& sample_tree)
+      : Displayable("Children"), sample_tree_(sample_tree) {
+  }
 
-static std::string PrintHeaderSymbol() {
-  return "Symbol";
-}
+  std::string Show(const SampleEntry& sample) const override {
+    uint64_t period = sample.period + sample.accumulated_period;
+    uint64_t total_period = sample_tree_.TotalPeriod();
+    double percentage = (total_period != 0) ? 100.0 * period / total_period : 0.0;
+    return android::base::StringPrintf("%.2lf%%", percentage);
+  }
 
-static std::string PrintSymbol(const SampleEntry& sample) {
-  return sample.symbol->name;
-}
-
-static ReportItem report_symbol = {
-    .compare_function = CompareSymbol,
-    .print_header_function = PrintHeaderSymbol,
-    .print_function = PrintSymbol,
+ private:
+  const SampleTree& sample_tree_;
 };
 
-static int CompareDsoFrom(const SampleEntry& sample1, const SampleEntry& sample2) {
-  return strcmp(sample1.branch_from.map->dso->path.c_str(),
-                sample2.branch_from.map->dso->path.c_str());
-}
+class SelfOverheadItem : public Displayable {
+ public:
+  SelfOverheadItem(const SampleTree& sample_tree, const std::string& name = "Self")
+      : Displayable(name), sample_tree_(sample_tree) {
+  }
 
-static std::string PrintHeaderDsoFrom() {
-  return "Source Shared Object";
-}
+  std::string Show(const SampleEntry& sample) const override {
+    uint64_t period = sample.period;
+    uint64_t total_period = sample_tree_.TotalPeriod();
+    double percentage = (total_period != 0) ? 100.0 * period / total_period : 0.0;
+    return android::base::StringPrintf("%.2lf%%", percentage);
+  }
 
-static std::string PrintDsoFrom(const SampleEntry& sample) {
-  return sample.branch_from.map->dso->path;
-}
-
-static ReportItem report_dso_from = {
-    .compare_function = CompareDsoFrom,
-    .print_header_function = PrintHeaderDsoFrom,
-    .print_function = PrintDsoFrom,
+ private:
+  const SampleTree& sample_tree_;
 };
 
-static std::string PrintHeaderDsoTo() {
-  return "Target Shared Object";
-}
+class SampleCountItem : public Displayable {
+ public:
+  SampleCountItem() : Displayable("Sample") {
+  }
 
-static ReportItem report_dso_to = {
-    .compare_function = CompareDso,
-    .print_header_function = PrintHeaderDsoTo,
-    .print_function = PrintDso,
+  std::string Show(const SampleEntry& sample) const override {
+    return android::base::StringPrintf("%" PRId64, sample.sample_count);
+  }
 };
 
-static int CompareSymbolFrom(const SampleEntry& sample1, const SampleEntry& sample2) {
-  return strcmp(sample1.branch_from.symbol->name.c_str(), sample2.branch_from.symbol->name.c_str());
-}
+class Comparable {
+ public:
+  virtual ~Comparable() {
+  }
 
-static std::string PrintHeaderSymbolFrom() {
-  return "Source Symbol";
-}
-
-static std::string PrintSymbolFrom(const SampleEntry& sample) {
-  return sample.branch_from.symbol->name;
-}
-
-static ReportItem report_symbol_from = {
-    .compare_function = CompareSymbolFrom,
-    .print_header_function = PrintHeaderSymbolFrom,
-    .print_function = PrintSymbolFrom,
+  virtual int Compare(const SampleEntry& sample1, const SampleEntry& sample2) const = 0;
 };
 
-static std::string PrintHeaderSymbolTo() {
-  return "Target Symbol";
-}
+class PidItem : public Displayable, public Comparable {
+ public:
+  PidItem() : Displayable("Pid") {
+  }
 
-static ReportItem report_symbol_to = {
-    .compare_function = CompareSymbol,
-    .print_header_function = PrintHeaderSymbolTo,
-    .print_function = PrintSymbol,
+  int Compare(const SampleEntry& sample1, const SampleEntry& sample2) const override {
+    return sample1.thread->pid - sample2.thread->pid;
+  }
+
+  std::string Show(const SampleEntry& sample) const override {
+    return android::base::StringPrintf("%d", sample.thread->pid);
+  }
 };
 
-static std::string PrintHeaderSampleCount() {
-  return "Sample";
-}
+class TidItem : public Displayable, public Comparable {
+ public:
+  TidItem() : Displayable("Tid") {
+  }
 
-static std::string PrintSampleCount(const SampleEntry& sample) {
-  return android::base::StringPrintf("%" PRId64, sample.sample_count);
-}
+  int Compare(const SampleEntry& sample1, const SampleEntry& sample2) const override {
+    return sample1.thread->tid - sample2.thread->tid;
+  }
 
-static ReportItem report_sample_count = {
-    .compare_function = nullptr,
-    .print_header_function = PrintHeaderSampleCount,
-    .print_function = PrintSampleCount,
+  std::string Show(const SampleEntry& sample) const override {
+    return android::base::StringPrintf("%d", sample.thread->tid);
+  }
 };
 
-static std::unordered_map<std::string, ReportItem*> report_item_map = {
-    {"comm", &report_comm},
-    {"pid", &report_pid},
-    {"tid", &report_tid},
-    {"dso", &report_dso},
-    {"symbol", &report_symbol},
-    {"dso_from", &report_dso_from},
-    {"dso_to", &report_dso_to},
-    {"symbol_from", &report_symbol_from},
-    {"symbol_to", &report_symbol_to}};
+class CommItem : public Displayable, public Comparable {
+ public:
+  CommItem() : Displayable("Command") {
+  }
+
+  int Compare(const SampleEntry& sample1, const SampleEntry& sample2) const override {
+    return strcmp(sample1.thread_comm, sample2.thread_comm);
+  }
+
+  std::string Show(const SampleEntry& sample) const override {
+    return sample.thread_comm;
+  }
+};
+
+class DsoItem : public Displayable, public Comparable {
+ public:
+  DsoItem(const std::string& name = "Shared Object") : Displayable(name) {
+  }
+
+  int Compare(const SampleEntry& sample1, const SampleEntry& sample2) const override {
+    return strcmp(sample1.map->dso->path.c_str(), sample2.map->dso->path.c_str());
+  }
+
+  std::string Show(const SampleEntry& sample) const override {
+    return sample.map->dso->path;
+  }
+};
+
+class SymbolItem : public Displayable, public Comparable {
+ public:
+  SymbolItem(const std::string& name = "Symbol") : Displayable(name) {
+  }
+
+  int Compare(const SampleEntry& sample1, const SampleEntry& sample2) const override {
+    return strcmp(sample1.symbol->name.c_str(), sample2.symbol->name.c_str());
+  }
+
+  std::string Show(const SampleEntry& sample) const override {
+    return sample.symbol->name;
+  }
+};
+
+class DsoFromItem : public Displayable, public Comparable {
+ public:
+  DsoFromItem() : Displayable("Source Shared Object") {
+  }
+
+  int Compare(const SampleEntry& sample1, const SampleEntry& sample2) const override {
+    return strcmp(sample1.branch_from.map->dso->path.c_str(),
+                  sample2.branch_from.map->dso->path.c_str());
+  }
+
+  std::string Show(const SampleEntry& sample) const override {
+    return sample.branch_from.map->dso->path;
+  }
+};
+
+class DsoToItem : public DsoItem {
+ public:
+  DsoToItem() : DsoItem("Target Shared Object") {
+  }
+};
+
+class SymbolFromItem : public Displayable, public Comparable {
+ public:
+  SymbolFromItem() : Displayable("Source Symbol") {
+  }
+
+  int Compare(const SampleEntry& sample1, const SampleEntry& sample2) const override {
+    return strcmp(sample1.branch_from.symbol->name.c_str(),
+                  sample2.branch_from.symbol->name.c_str());
+  }
+
+  std::string Show(const SampleEntry& sample) const override {
+    return sample.branch_from.symbol->name;
+  }
+};
+
+class SymbolToItem : public SymbolItem {
+ public:
+  SymbolToItem() : SymbolItem("Target Symbol") {
+  }
+};
 
 static std::set<std::string> branch_sort_keys = {
     "dso_from", "dso_to", "symbol_from", "symbol_to",
@@ -233,7 +236,8 @@ class ReportCommand : public Command {
             "Usage: simpleperf report [options]\n"
             "    -b            Use the branch-to addresses in sampled take branches instead of\n"
             "                  the instruction addresses. Only valid for perf.data recorded with\n"
-            "                  -b/-j option."
+            "                  -b/-j option.\n"
+            "    --children    Print the overhead accumulated by appearing in the callchain.\n"
             "    -i <file>     Specify path of record file, default is perf.data.\n"
             "    -n            Print the sample count for each item.\n"
             "    --no-demangle        Don't demangle symbol names.\n"
@@ -244,7 +248,11 @@ class ReportCommand : public Command {
             "                  used with -b option. Default keys are \"comm,pid,tid,dso,symbol\"\n"
             "    --symfs <dir>  Look for files with symbols relative to this directory.\n"),
         record_filename_("perf.data"),
-        use_branch_address_(false) {
+        use_branch_address_(false),
+        accumulate_callchain_(false) {
+    compare_sample_func_t compare_sample_callback = std::bind(
+        &ReportCommand::CompareSampleEntry, this, std::placeholders::_1, std::placeholders::_2);
+    sample_tree_ = std::unique_ptr<SampleTree>(new SampleTree(compare_sample_callback));
   }
 
   bool Run(const std::vector<std::string>& args);
@@ -253,6 +261,7 @@ class ReportCommand : public Command {
   bool ParseOptions(const std::vector<std::string>& args);
   bool ReadEventAttrFromRecordFile();
   void ReadSampleTreeFromRecordFile();
+  void ProcessSampleRecord(const SampleRecord& r);
   void ReadFeaturesFromRecordFile();
   int CompareSampleEntry(const SampleEntry& sample1, const SampleEntry& sample2);
   void PrintReport();
@@ -265,10 +274,12 @@ class ReportCommand : public Command {
   std::string record_filename_;
   std::unique_ptr<RecordFileReader> record_file_reader_;
   perf_event_attr event_attr_;
-  std::vector<ReportItem*> report_items_;
+  std::vector<std::unique_ptr<Displayable>> displayable_items_;
+  std::vector<Comparable*> comparable_items_;
   std::unique_ptr<SampleTree> sample_tree_;
   bool use_branch_address_;
   std::string record_cmdline_;
+  bool accumulate_callchain_;
 };
 
 bool ReportCommand::Run(const std::vector<std::string>& args) {
@@ -286,6 +297,7 @@ bool ReportCommand::Run(const std::vector<std::string>& args) {
     return false;
   }
   ReadSampleTreeFromRecordFile();
+  ReadFeaturesFromRecordFile();
 
   // 3. Show collected information.
   PrintReport();
@@ -299,6 +311,8 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
   for (size_t i = 0; i < args.size(); ++i) {
     if (args[i] == "-b") {
       use_branch_address_ = true;
+    } else if (args[i] == "--children") {
+      accumulate_callchain_ = true;
     } else if (args[i] == "-i") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -329,17 +343,58 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
     }
   }
 
+  if (!accumulate_callchain_) {
+    displayable_items_.push_back(
+        std::unique_ptr<Displayable>(new SelfOverheadItem(*sample_tree_, "Overhead")));
+  } else {
+    displayable_items_.push_back(
+        std::unique_ptr<Displayable>(new AccumulatedOverheadItem(*sample_tree_)));
+    displayable_items_.push_back(std::unique_ptr<Displayable>(new SelfOverheadItem(*sample_tree_)));
+  }
   if (print_sample_count) {
-    report_items_.push_back(&report_sample_count);
+    displayable_items_.push_back(std::unique_ptr<Displayable>(new SampleCountItem));
   }
   for (auto& key : sort_keys) {
     if (!use_branch_address_ && branch_sort_keys.find(key) != branch_sort_keys.end()) {
       LOG(ERROR) << "sort key '" << key << "' can only be used with -b option.";
       return false;
     }
-    auto it = report_item_map.find(key);
-    if (it != report_item_map.end()) {
-      report_items_.push_back(it->second);
+    if (key == "pid") {
+      PidItem* item = new PidItem;
+      displayable_items_.push_back(std::unique_ptr<Displayable>(item));
+      comparable_items_.push_back(item);
+    } else if (key == "tid") {
+      TidItem* item = new TidItem;
+      displayable_items_.push_back(std::unique_ptr<Displayable>(item));
+      comparable_items_.push_back(item);
+    } else if (key == "comm") {
+      CommItem* item = new CommItem;
+      displayable_items_.push_back(std::unique_ptr<Displayable>(item));
+      comparable_items_.push_back(item);
+    } else if (key == "dso") {
+      DsoItem* item = new DsoItem;
+      displayable_items_.push_back(std::unique_ptr<Displayable>(item));
+      comparable_items_.push_back(item);
+    } else if (key == "symbol") {
+      SymbolItem* item = new SymbolItem;
+      displayable_items_.push_back(std::unique_ptr<Displayable>(item));
+      comparable_items_.push_back(item);
+    } else if (key == "dso_from") {
+      DsoFromItem* item = new DsoFromItem;
+      displayable_items_.push_back(std::unique_ptr<Displayable>(item));
+      comparable_items_.push_back(item);
+    } else if (key == "dso_to") {
+      DsoToItem* item = new DsoToItem;
+      displayable_items_.push_back(std::unique_ptr<Displayable>(item));
+      comparable_items_.push_back(item);
+    } else if (key == "symbol_from") {
+      SymbolFromItem* item = new SymbolFromItem;
+      displayable_items_.push_back(std::unique_ptr<Displayable>(item));
+      comparable_items_.push_back(item);
+    } else if (key == "symbol_to") {
+      SymbolToItem* item = new SymbolToItem;
+      displayable_items_.push_back(std::unique_ptr<Displayable>(item));
+      comparable_items_.push_back(item);
     } else {
       LOG(ERROR) << "Unknown sort key: " << key;
       return false;
@@ -363,9 +418,6 @@ bool ReportCommand::ReadEventAttrFromRecordFile() {
 }
 
 void ReportCommand::ReadSampleTreeFromRecordFile() {
-  compare_sample_func_t compare_sample_callback = std::bind(
-      &ReportCommand::CompareSampleEntry, this, std::placeholders::_1, std::placeholders::_2);
-  sample_tree_ = std::unique_ptr<SampleTree>(new SampleTree(compare_sample_callback));
   sample_tree_->AddThread(0, 0, "swapper");
 
   std::vector<std::unique_ptr<const Record>> records = record_file_reader_->DataSection();
@@ -385,29 +437,59 @@ void ReportCommand::ReadSampleTreeFromRecordFile() {
         sample_tree_->AddKernelMap(r.data.addr, r.data.len, r.data.pgoff,
                                    r.sample_id.time_data.time, r.filename);
       } else {
+        std::string filename =
+            (r.filename == DEFAULT_EXECNAME_FOR_THREAD_MMAP) ? "[unknown]" : r.filename;
         sample_tree_->AddThreadMap(r.data.pid, r.data.tid, r.data.addr, r.data.len, r.data.pgoff,
-                                   r.sample_id.time_data.time, r.filename);
+                                   r.sample_id.time_data.time, filename);
       }
     } else if (record->header.type == PERF_RECORD_SAMPLE) {
-      const SampleRecord& r = *static_cast<const SampleRecord*>(record.get());
-      if (use_branch_address_ == false) {
-        bool in_kernel = (r.header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL;
-        sample_tree_->AddSample(r.tid_data.pid, r.tid_data.tid, r.ip_data.ip, r.time_data.time,
-                                r.period_data.period, in_kernel);
-      } else {
-        for (auto& item : r.branch_stack_data.stack) {
-          if (item.from != 0 && item.to != 0) {
-            sample_tree_->AddBranchSample(r.tid_data.pid, r.tid_data.tid, item.from, item.to,
-                                          item.flags, r.time_data.time, r.period_data.period);
-          }
-        }
-      }
+      ProcessSampleRecord(*static_cast<const SampleRecord*>(record.get()));
     } else if (record->header.type == PERF_RECORD_COMM) {
       const CommRecord& r = *static_cast<const CommRecord*>(record.get());
       sample_tree_->AddThread(r.data.pid, r.data.tid, r.comm);
     } else if (record->header.type == PERF_RECORD_FORK) {
       const ForkRecord& r = *static_cast<const ForkRecord*>(record.get());
       sample_tree_->ForkThread(r.data.pid, r.data.tid, r.data.ppid, r.data.ptid);
+    }
+  }
+}
+
+void ReportCommand::ProcessSampleRecord(const SampleRecord& r) {
+  if (use_branch_address_ && (r.sample_type & PERF_SAMPLE_BRANCH_STACK)) {
+    for (auto& item : r.branch_stack_data.stack) {
+      if (item.from != 0 && item.to != 0) {
+        sample_tree_->AddBranchSample(r.tid_data.pid, r.tid_data.tid, item.from, item.to,
+                                      item.flags, r.time_data.time, r.period_data.period);
+      }
+    }
+  } else {
+    bool in_kernel = (r.header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL;
+    SampleEntry* sample = sample_tree_->AddSample(r.tid_data.pid, r.tid_data.tid, r.ip_data.ip,
+                                                  r.time_data.time, r.period_data.period, in_kernel);
+    CHECK(sample != nullptr);
+    if (accumulate_callchain_ && (r.sample_type & PERF_SAMPLE_CALLCHAIN) != 0) {
+      std::vector<SampleEntry*> callchain;
+      callchain.push_back(sample);
+      const std::vector<uint64_t>& ips = r.callchain_data.ips;
+      for (auto& ip : ips) {
+        if (ip >= PERF_CONTEXT_MAX) {
+          switch (ip) {
+            case PERF_CONTEXT_KERNEL:
+              in_kernel = true;
+              break;
+            case PERF_CONTEXT_USER:
+              in_kernel = false;
+              break;
+            default:
+              LOG(ERROR) << "Unexpected perf_context in callchain: " << ip;
+          }
+        } else {
+          sample =
+              sample_tree_->AddCallChainSample(r.tid_data.pid, r.tid_data.tid, ip, r.time_data.time,
+                                               r.period_data.period, in_kernel, callchain);
+          callchain.push_back(sample);
+        }
+      }
     }
   }
 }
@@ -420,12 +502,10 @@ void ReportCommand::ReadFeaturesFromRecordFile() {
 }
 
 int ReportCommand::CompareSampleEntry(const SampleEntry& sample1, const SampleEntry& sample2) {
-  for (auto& item : report_items_) {
-    if (item->compare_function != nullptr) {
-      int result = item->compare_function(sample1, sample2);
-      if (result != 0) {
-        return result;
-      }
+  for (auto& item : comparable_items_) {
+    int result = item->Compare(sample1, sample2);
+    if (result != 0) {
+      return result;
     }
   }
   return 0;
@@ -458,45 +538,36 @@ void ReportCommand::PrintReportContext() {
 }
 
 void ReportCommand::CollectReportWidth() {
-  for (auto& item : report_items_) {
-    std::string s = item->print_header_function();
-    item->width = s.size();
-  }
   sample_tree_->VisitAllSamples(
       std::bind(&ReportCommand::CollectReportEntryWidth, this, std::placeholders::_1));
 }
 
 void ReportCommand::CollectReportEntryWidth(const SampleEntry& sample) {
-  for (auto& item : report_items_) {
-    std::string s = item->print_function(sample);
-    item->width = std::max(item->width, s.size());
+  for (auto& item : displayable_items_) {
+    item->AdjustWidth(sample);
   }
 }
 
 void ReportCommand::PrintReportHeader() {
-  printf("%8s", "Overhead");
-  for (size_t i = 0; i < report_items_.size(); ++i) {
-    auto& item = report_items_[i];
-    printf("  ");
-    std::string s = item->print_header_function();
-    printf("%-*s", (i + 1 == report_items_.size()) ? 0 : static_cast<int>(item->width), s.c_str());
+  for (size_t i = 0; i < displayable_items_.size(); ++i) {
+    auto& item = displayable_items_[i];
+    if (i != displayable_items_.size() - 1) {
+      printf("%-*s  ", static_cast<int>(item->Width()), item->Name().c_str());
+    } else {
+      printf("%s\n", item->Name().c_str());
+    }
   }
-  printf("\n");
 }
 
 void ReportCommand::PrintReportEntry(const SampleEntry& sample) {
-  double percentage = 0.0;
-  if (sample_tree_->TotalPeriod() != 0) {
-    percentage = 100.0 * sample.period / sample_tree_->TotalPeriod();
+  for (size_t i = 0; i < displayable_items_.size(); ++i) {
+    auto& item = displayable_items_[i];
+    if (i != displayable_items_.size() - 1) {
+      printf("%-*s  ", static_cast<int>(item->Width()), item->Show(sample).c_str());
+    } else {
+      printf("%s\n", item->Show(sample).c_str());
+    }
   }
-  printf("%7.2lf%%", percentage);
-  for (size_t i = 0; i < report_items_.size(); ++i) {
-    auto& item = report_items_[i];
-    printf("  ");
-    std::string s = item->print_function(sample);
-    printf("%-*s", (i + 1 == report_items_.size()) ? 0 : static_cast<int>(item->width), s.c_str());
-  }
-  printf("\n");
 }
 
 __attribute__((constructor)) static void RegisterReportCommand() {
