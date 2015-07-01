@@ -33,6 +33,7 @@ NETLINK_ROUTE = 0
 # Request constants.
 NLM_F_REQUEST = 1
 NLM_F_ACK = 4
+NLM_F_REPLACE = 0x100
 NLM_F_EXCL = 0x200
 NLM_F_CREATE = 0x400
 NLM_F_DUMP = 0x300
@@ -407,13 +408,14 @@ class IPRoute(object):
   def _AddressFamily(self, version):
     return {4: socket.AF_INET, 6: socket.AF_INET6}[version]
 
-  def _SendNlRequest(self, command, data):
+  def _SendNlRequest(self, command, data, flags=0):
     """Sends a netlink request and expects an ack."""
-    flags = NLM_F_REQUEST
+    flags |= NLM_F_REQUEST
     if CommandVerb(command) != "GET":
       flags |= NLM_F_ACK
     if CommandVerb(command) == "NEW":
-      flags |= (NLM_F_EXCL | NLM_F_CREATE)
+      if not flags & NLM_F_REPLACE:
+        flags |= (NLM_F_EXCL | NLM_F_CREATE)
 
     length = len(NLMsgHdr) + len(data)
     nlmsg = NLMsgHdr((length, command, flags, self.seq, self.pid)).Pack()
@@ -657,12 +659,12 @@ class IPRoute(object):
     routes = self._GetMsgList(RTMsg, data, False)
     return routes
 
-  def _Neighbour(self, version, is_add, addr, lladdr, dev, state):
+  def _Neighbour(self, version, is_add, addr, lladdr, dev, state, flags=0):
     """Adds or deletes a neighbour cache entry."""
     family = self._AddressFamily(version)
 
     # Convert the link-layer address to a raw byte string.
-    if is_add:
+    if is_add and lladdr:
       lladdr = lladdr.split(":")
       if len(lladdr) != 6:
         raise ValueError("Invalid lladdr %s" % ":".join(lladdr))
@@ -670,16 +672,20 @@ class IPRoute(object):
 
     ndmsg = NdMsg((family, dev, state, 0, RTN_UNICAST)).Pack()
     ndmsg += self._NlAttrIPAddress(NDA_DST, family, addr)
-    if is_add:
+    if is_add and lladdr:
       ndmsg += self._NlAttr(NDA_LLADDR, lladdr)
     command = RTM_NEWNEIGH if is_add else RTM_DELNEIGH
-    self._SendNlRequest(command, ndmsg)
+    self._SendNlRequest(command, ndmsg, flags)
 
   def AddNeighbour(self, version, addr, lladdr, dev):
     self._Neighbour(version, True, addr, lladdr, dev, NUD_PERMANENT)
 
   def DelNeighbour(self, version, addr, lladdr, dev):
     self._Neighbour(version, False, addr, lladdr, dev, 0)
+
+  def UpdateNeighbour(self, version, addr, lladdr, dev, state):
+    self._Neighbour(version, True, addr, lladdr, dev, state,
+                    flags=NLM_F_REPLACE)
 
   def DumpNeighbours(self, version):
     ndmsg = NdMsg((self._AddressFamily(version), 0, 0, 0, 0))
