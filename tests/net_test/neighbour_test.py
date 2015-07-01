@@ -76,6 +76,7 @@ class NeighbourTest(multinetwork_base.MultiNetworkBaseTest):
                   reachabletime=self.REACHABLE_TIME_MS)
 
     self.netid = random.choice(self.tuns.keys())
+    self.ifindex = self.ifindices[self.netid]
 
   def GetNeighbour(self, addr):
     version = 6 if ":" in addr else 4
@@ -190,6 +191,25 @@ class NeighbourTest(multinetwork_base.MultiNetworkBaseTest):
     self.SleepMs(self.RETRANS_TIME_MS)
     self.assertNeighbourState(NUD_FAILED, router6)
     self.ExpectNeighbourNotification(router6, NUD_FAILED, {"NDA_PROBES": 3})
+
+  def testRepeatedProbes(self):
+    router4 = self._RouterAddress(self.netid, 4)
+    router6 = self._RouterAddress(self.netid, 6)
+    routermac = self.RouterMacAddress(self.netid)
+    self.assertNeighbourState(NUD_PERMANENT, router4)
+    self.assertNeighbourState(NUD_STALE, router6)
+
+    def ForceProbe(addr, mac):
+      self.iproute.UpdateNeighbour(6, addr, None, self.ifindex, NUD_PROBE)
+      self.assertNeighbourState(NUD_PROBE, addr)
+      self.SleepMs(1)  # TODO: Why is this necessary?
+      self.assertNeighbourState(NUD_PROBE, addr)
+      self.ExpectUnicastProbe(addr)
+      self.ReceiveUnicastAdvertisement(addr, mac)
+      self.assertNeighbourState(NUD_REACHABLE, addr)
+
+    for i in xrange(5):
+      ForceProbe(router6, routermac)
 
 
 if __name__ == "__main__":
