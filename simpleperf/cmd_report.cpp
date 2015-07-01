@@ -296,8 +296,9 @@ bool ReportCommand::Run(const std::vector<std::string>& args) {
   if (!ReadEventAttrFromRecordFile()) {
     return false;
   }
-  ReadSampleTreeFromRecordFile();
+  // Read features first to prepare build ids used when building SampleTree.
   ReadFeaturesFromRecordFile();
+  ReadSampleTreeFromRecordFile();
 
   // 3. Show collected information.
   PrintReport();
@@ -306,6 +307,8 @@ bool ReportCommand::Run(const std::vector<std::string>& args) {
 }
 
 bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
+  bool demangle = true;
+  std::string symfs_dir;
   bool print_sample_count = false;
   std::vector<std::string> sort_keys = {"comm", "pid", "tid", "dso", "symbol"};
   for (size_t i = 0; i < args.size(); ++i) {
@@ -323,7 +326,7 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
       print_sample_count = true;
 
     } else if (args[i] == "--no-demangle") {
-      DsoFactory::SetDemangle(false);
+      demangle = false;
 
     } else if (args[i] == "--sort") {
       if (!NextArgumentOrError(args, &i)) {
@@ -334,13 +337,16 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
       if (!NextArgumentOrError(args, &i)) {
         return false;
       }
-      if (!DsoFactory::SetSymFsDir(args[i])) {
-        return false;
-      }
+      symfs_dir = args[i];
     } else {
       ReportUnknownOption(args, i);
       return false;
     }
+  }
+
+  DsoFactory::SetDemangle(demangle);
+  if (!DsoFactory::SetSymFsDir(symfs_dir)) {
+    return false;
   }
 
   if (!accumulate_callchain_) {
@@ -495,6 +501,12 @@ void ReportCommand::ProcessSampleRecord(const SampleRecord& r) {
 }
 
 void ReportCommand::ReadFeaturesFromRecordFile() {
+  std::vector<BuildIdRecord> records = record_file_reader_->ReadBuildIdFeature();
+  std::vector<std::pair<std::string, BuildId>> build_ids;
+  for (auto& r : records) {
+    build_ids.push_back(std::make_pair(r.filename, r.build_id));
+  }
+  DsoFactory::SetBuildIds(build_ids);
   std::vector<std::string> cmdline = record_file_reader_->ReadCmdlineFeature();
   if (!cmdline.empty()) {
     record_cmdline_ = android::base::Join(cmdline, ' ');

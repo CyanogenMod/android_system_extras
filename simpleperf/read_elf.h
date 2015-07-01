@@ -36,7 +36,7 @@ struct ElfFileSymbol {
   std::string name;
 };
 
-bool ParseSymbolsFromElfFile(const std::string& filename,
+bool ParseSymbolsFromElfFile(const std::string& filename, const BuildId& expected_build_id,
                              std::function<void(const ElfFileSymbol&)> callback);
 
 // Expose the following functions for unit tests.
