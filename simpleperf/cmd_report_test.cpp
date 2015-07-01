@@ -31,6 +31,7 @@ class ReportCommandTest : public ::testing::Test {
   static void SetUpTestCase() {
     ASSERT_TRUE(RecordCmd()->Run({"-a", "sleep", "1"}));
     ASSERT_TRUE(RecordCmd()->Run({"-a", "-o", "perf2.data", "sleep", "1"}));
+    ASSERT_TRUE(RecordCmd()->Run({"-g", "-o", "perf_g.data", "sleep", "1"}));
   }
 };
 
@@ -50,6 +51,14 @@ TEST_F(ReportCommandTest, sort_option_all) {
   ASSERT_TRUE(ReportCmd()->Run({"--sort", "comm,pid,dso,symbol"}));
 }
 
+TEST_F(ReportCommandTest, children_option) {
+  ASSERT_TRUE(ReportCmd()->Run({"--children", "-i", "perf_g.data"}));
+}
+
+TEST_F(ReportCommandTest, callgraph_option) {
+  ASSERT_TRUE(ReportCmd()->Run({"-g", "-i", "perf_g.data"}));
+}
+
 extern bool IsBranchSamplingSupported();
 
 TEST(report_cmd, use_branch_address) {
@@ -61,9 +70,4 @@ TEST(report_cmd, use_branch_address) {
     GTEST_LOG_(INFO)
         << "This test does nothing as branch stack sampling is not supported on this device.";
   }
-}
-
-TEST(report_cmd, children_option) {
-  ASSERT_TRUE(RecordCmd()->Run({"-g", "sleep", "1"}));
-  ASSERT_TRUE(ReportCmd()->Run({"--children"}));
 }

@@ -238,6 +238,7 @@ class ReportCommand : public Command {
             "                  the instruction addresses. Only valid for perf.data recorded with\n"
             "                  -b/-j option.\n"
             "    --children    Print the overhead accumulated by appearing in the callchain.\n"
+            "    -g            Print call graph.\n"
             "    -i <file>     Specify path of record file, default is perf.data.\n"
             "    -n            Print the sample count for each item.\n"
             "    --no-demangle        Don't demangle symbol names.\n"
@@ -249,7 +250,8 @@ class ReportCommand : public Command {
             "    --symfs <dir>  Look for files with symbols relative to this directory.\n"),
         record_filename_("perf.data"),
         use_branch_address_(false),
-        accumulate_callchain_(false) {
+        accumulate_callchain_(false),
+        print_callgraph_(false) {
     compare_sample_func_t compare_sample_callback = std::bind(
         &ReportCommand::CompareSampleEntry, this, std::placeholders::_1, std::placeholders::_2);
     sample_tree_ = std::unique_ptr<SampleTree>(new SampleTree(compare_sample_callback));
@@ -270,6 +272,7 @@ class ReportCommand : public Command {
   void CollectReportEntryWidth(const SampleEntry& sample);
   void PrintReportHeader();
   void PrintReportEntry(const SampleEntry& sample);
+  void PrintCallGraph(const SampleEntry& sample);
 
   std::string record_filename_;
   std::unique_ptr<RecordFileReader> record_file_reader_;
@@ -280,6 +283,7 @@ class ReportCommand : public Command {
   bool use_branch_address_;
   std::string record_cmdline_;
   bool accumulate_callchain_;
+  bool print_callgraph_;
 };
 
 bool ReportCommand::Run(const std::vector<std::string>& args) {
@@ -312,6 +316,9 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
     if (args[i] == "-b") {
       use_branch_address_ = true;
     } else if (args[i] == "--children") {
+      accumulate_callchain_ = true;
+    } else if (args[i] == "-g") {
+      print_callgraph_ = true;
       accumulate_callchain_ = true;
     } else if (args[i] == "-i") {
       if (!NextArgumentOrError(args, &i)) {
@@ -471,6 +478,7 @@ void ReportCommand::ProcessSampleRecord(const SampleRecord& r) {
       std::vector<SampleEntry*> callchain;
       callchain.push_back(sample);
       const std::vector<uint64_t>& ips = r.callchain_data.ips;
+      bool first_ip = true;
       for (auto& ip : ips) {
         if (ip >= PERF_CONTEXT_MAX) {
           switch (ip) {
@@ -484,10 +492,30 @@ void ReportCommand::ProcessSampleRecord(const SampleRecord& r) {
               LOG(ERROR) << "Unexpected perf_context in callchain: " << ip;
           }
         } else {
-          sample =
+          if (first_ip) {
+            // Remove duplication with sampled ip.
+            if (ip == r.ip_data.ip) {
+              continue;
+            }
+            first_ip = false;
+          }
+          SampleEntry* sample =
               sample_tree_->AddCallChainSample(r.tid_data.pid, r.tid_data.tid, ip, r.time_data.time,
                                                r.period_data.period, in_kernel, callchain);
           callchain.push_back(sample);
+        }
+      }
+      if (print_callgraph_) {
+        std::set<SampleEntry*> added_set;
+        while (callchain.size() >= 2) {
+          SampleEntry* sample = callchain[0];
+          callchain.erase(callchain.begin());
+          // Add only once for recursive calls on callchain.
+          if (added_set.find(sample) != added_set.end()) {
+            continue;
+          }
+          added_set.insert(sample);
+          sample_tree_->InsertCallChainForSample(sample, callchain, r.period_data.period);
         }
       }
     }
@@ -567,6 +595,49 @@ void ReportCommand::PrintReportEntry(const SampleEntry& sample) {
     } else {
       printf("%s\n", item->Show(sample).c_str());
     }
+  }
+  if (print_callgraph_) {
+    PrintCallGraph(sample);
+  }
+}
+
+static void PrintCallGraphEntry(size_t depth, std::string prefix,
+                                const std::unique_ptr<CallChainNode>& node, uint64_t parent_period,
+                                bool last) {
+  if (depth > 20) {
+    LOG(WARNING) << "truncated callgraph at depth " << depth;
+    return;
+  }
+  prefix += "|";
+  printf("%s\n", prefix.c_str());
+  if (last) {
+    prefix.back() = ' ';
+  }
+  std::string percentage_s = "-- ";
+  if (node->period + node->children_period != parent_period) {
+    double percentage = 100.0 * (node->period + node->children_period) / parent_period;
+    percentage_s = android::base::StringPrintf("--%.2lf%%-- ", percentage);
+  }
+  printf("%s%s%s\n", prefix.c_str(), percentage_s.c_str(), node->chain[0]->symbol->name.c_str());
+  prefix.append(percentage_s.size(), ' ');
+  for (size_t i = 1; i < node->chain.size(); ++i) {
+    printf("%s%s\n", prefix.c_str(), node->chain[i]->symbol->name.c_str());
+  }
+
+  for (size_t i = 0; i < node->children.size(); ++i) {
+    PrintCallGraphEntry(depth + 1, prefix, node->children[i], node->children_period,
+                        (i + 1 == node->children.size()));
+  }
+}
+
+void ReportCommand::PrintCallGraph(const SampleEntry& sample) {
+  std::string prefix = "       ";
+  printf("%s|\n", prefix.c_str());
+  printf("%s-- %s\n", prefix.c_str(), sample.symbol->name.c_str());
+  prefix.append(3, ' ');
+  for (size_t i = 0; i < sample.callchain.children.size(); ++i) {
+    PrintCallGraphEntry(1, prefix, sample.callchain.children[i], sample.callchain.children_period,
+                        (i + 1 == sample.callchain.children.size()));
   }
 }
 
