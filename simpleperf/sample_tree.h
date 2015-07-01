@@ -56,6 +56,7 @@ struct SampleEntry {
   uint64_t ip;
   uint64_t time;
   uint64_t period;
+  uint64_t accumulated_period;  // Accumulated when appearing in other samples' callchain.
   uint64_t sample_count;
   const ThreadEntry* thread;
   const char* thread_comm;  // It refers to the thread comm when the sample happens.
@@ -96,9 +97,12 @@ class SampleTree {
                     const std::string& filename);
   void AddThreadMap(int pid, int tid, uint64_t start_addr, uint64_t len, uint64_t pgoff,
                     uint64_t time, const std::string& filename);
-  void AddSample(int pid, int tid, uint64_t ip, uint64_t time, uint64_t period, bool in_kernel);
+  SampleEntry* AddSample(int pid, int tid, uint64_t ip, uint64_t time, uint64_t period,
+                         bool in_kernel);
   void AddBranchSample(int pid, int tid, uint64_t from_ip, uint64_t to_ip, uint64_t branch_flags,
                        uint64_t time, uint64_t period);
+  SampleEntry* AddCallChainSample(int pid, int tid, uint64_t ip, uint64_t time, uint64_t period,
+                                  bool in_kernel, const std::vector<SampleEntry*>& callchain);
   void VisitAllSamples(std::function<void(const SampleEntry&)> callback);
 
   uint64_t TotalSamples() const {
@@ -115,11 +119,12 @@ class SampleTree {
   DsoEntry* FindKernelDsoOrNew(const std::string& filename);
   DsoEntry* FindUserDsoOrNew(const std::string& filename);
   const SymbolEntry* FindSymbol(const MapEntry* map, uint64_t ip);
-  void InsertSample(const SampleEntry& sample);
+  SampleEntry* InsertSample(SampleEntry& value);
+  SampleEntry* AllocateSample(const SampleEntry& value);
 
   struct SampleComparator {
-    bool operator()(const SampleEntry& sample1, const SampleEntry& sample2) const {
-      return compare_function(sample1, sample2) < 0;
+    bool operator()(SampleEntry* sample1, SampleEntry* sample2) const {
+      return compare_function(*sample1, *sample2) < 0;
     }
     SampleComparator(compare_sample_func_t compare_function) : compare_function(compare_function) {
     }
@@ -128,11 +133,13 @@ class SampleTree {
   };
 
   struct SortedSampleComparator {
-    bool operator()(const SampleEntry& sample1, const SampleEntry& sample2) const {
-      if (sample1.period != sample2.period) {
-        return sample1.period > sample2.period;
+    bool operator()(SampleEntry* sample1, SampleEntry* sample2) const {
+      uint64_t period1 = sample1->period + sample1->accumulated_period;
+      uint64_t period2 = sample2->period + sample2->accumulated_period;
+      if (period1 != period2) {
+        return period1 > period2;
       }
-      return compare_function(sample1, sample2) < 0;
+      return compare_function(*sample1, *sample2) < 0;
     }
     SortedSampleComparator(compare_sample_func_t compare_function)
         : compare_function(compare_function) {
@@ -155,9 +162,10 @@ class SampleTree {
   SymbolEntry unknown_symbol_;
 
   SampleComparator sample_comparator_;
-  std::set<SampleEntry, SampleComparator> sample_tree_;
+  std::set<SampleEntry*, SampleComparator> sample_tree_;
   SortedSampleComparator sorted_sample_comparator_;
-  std::set<SampleEntry, SortedSampleComparator> sorted_sample_tree_;
+  std::set<SampleEntry*, SortedSampleComparator> sorted_sample_tree_;
+  std::vector<std::unique_ptr<SampleEntry>> sample_storage_;
 
   uint64_t total_samples_;
   uint64_t total_period_;
