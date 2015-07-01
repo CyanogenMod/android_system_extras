@@ -93,7 +93,7 @@ EOF
 fi
 
 # Compile the kernel.
-make -j12 linux ARCH=um SUBARCH=x86_64 CROSS_COMPILE=
+make -j32 linux ARCH=um SUBARCH=x86_64 CROSS_COMPILE=
 
 # Get the absolute path to the test file that's being run.
 dir=/host$(dirname $(readlink -f $0))

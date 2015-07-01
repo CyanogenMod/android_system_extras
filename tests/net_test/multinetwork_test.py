@@ -33,14 +33,10 @@ PING_PAYLOAD = "foobarbaz"
 PING_SEQ = 3
 PING_TOS = 0x83
 
+# For brevity.
+UDP_PAYLOAD = net_test.UDP_PAYLOAD
+
 IPV6_FLOWINFO = 11
-
-
-UDP_PAYLOAD = str(scapy.DNS(rd=1,
-                            id=random.randint(0, 65535),
-                            qd=scapy.DNSQR(qname="wWW.GoOGle.CoM",
-                                           qtype="AAAA")))
-
 
 IPV4_MARK_REFLECT_SYSCTL = "/proc/sys/net/ipv4/fwmark_reflect"
 IPV6_MARK_REFLECT_SYSCTL = "/proc/sys/net/ipv6/fwmark_reflect"
