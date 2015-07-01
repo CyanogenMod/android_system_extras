@@ -16,6 +16,7 @@
 
 import fcntl
 import os
+import random
 from socket import *  # pylint: disable=wildcard-import
 import struct
 import unittest
@@ -62,6 +63,12 @@ IPV6_SEQ_DGRAM_HEADER = ("  sl  "
                          "remote_address                        "
                          "st tx_queue rx_queue tr tm->when retrnsmt"
                          "   uid  timeout inode ref pointer drops\n")
+
+# Arbitrary packet payload.
+UDP_PAYLOAD = str(scapy.DNS(rd=1,
+                            id=random.randint(0, 65535),
+                            qd=scapy.DNSQR(qname="wWW.GoOGle.CoM",
+                                           qtype="AAAA")))
 
 # Unix group to use if we want to open sockets as non-root.
 AID_INET = 3003
