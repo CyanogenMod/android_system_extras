@@ -55,10 +55,16 @@ bool HelpCommand::Run(const std::vector<std::string>& args) {
 }
 
 void HelpCommand::PrintShortHelp() {
-  printf("Usage: simpleperf [--help] subcommand [args_for_subcommand]\n\n");
+  printf(
+      "Usage: simpleperf [common options] subcommand [args_for_subcommand]\n"
+      "common options:\n"
+      "    -h/--help     Print this help information.\n"
+      "    --log <severity> Set the minimum severity of logging. Possible severities\n"
+      "                     include debug, warning, error, fatal. Default is error.\n"
+      "subcommands:\n");
   for (auto& cmd_name : GetAllCommandNames()) {
     std::unique_ptr<Command> cmd = CreateCommandInstance(cmd_name);
-    printf("%-20s%s\n", cmd_name.c_str(), cmd->ShortHelpString().c_str());
+    printf("    %-20s%s\n", cmd_name.c_str(), cmd->ShortHelpString().c_str());
   }
 }
 
