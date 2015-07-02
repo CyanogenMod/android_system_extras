@@ -34,11 +34,6 @@ IPV6_ADDR_PREFERENCES = 72
 IPV6_PREFER_SRC_PUBLIC = 0x0002
 
 
-USE_OPTIMISTIC_SYSCTL = "/proc/sys/net/ipv6/conf/default/use_optimistic"
-
-HAVE_USE_OPTIMISTIC = os.path.isfile(USE_OPTIMISTIC_SYSCTL)
-
-
 class IPv6SourceAddressSelectionTest(multinetwork_base.MultiNetworkBaseTest):
 
   def SetDAD(self, ifname, value):
@@ -123,20 +118,22 @@ class MultiInterfaceSourceAddressSelectionTest(IPv6SourceAddressSelectionTest):
       self.SetDAD(self.GetInterfaceName(netid), 0)
       self.SetOptimisticDAD(self.GetInterfaceName(netid), 0)
       self.SetUseTempaddrs(self.GetInterfaceName(netid), 0)
-      if HAVE_USE_OPTIMISTIC:
-        self.SetUseOptimistic(self.GetInterfaceName(netid), 0)
+      self.SetUseOptimistic(self.GetInterfaceName(netid), 0)
 
     # [1]  Pick an interface on which to test.
     self.test_netid = random.choice(self.tuns.keys())
     self.test_ip = self.MyAddress(6, self.test_netid)
     self.test_ifindex = self.ifindices[self.test_netid]
     self.test_ifname = self.GetInterfaceName(self.test_netid)
+    self.test_lladdr = net_test.GetLinkAddress(self.test_ifname, True)
 
     # [2]  Delete the test interface's IPv6 address.
     self.iproute.DelAddress(self.test_ip, 64, self.test_ifindex)
     self.assertAddressNotPresent(self.test_ip)
 
     self.assertAddressNotUsable(self.test_ip, self.test_netid)
+    # Verify that the link-local address is not tentative.
+    self.assertFalse(self.AddressIsTentative(self.test_lladdr));
 
 
 class TentativeAddressTest(MultiInterfaceSourceAddressSelectionTest):
@@ -194,7 +191,6 @@ class OptimisticAddressTest(MultiInterfaceSourceAddressSelectionTest):
 
 class OptimisticAddressOkayTest(MultiInterfaceSourceAddressSelectionTest):
 
-  @unittest.skipUnless(HAVE_USE_OPTIMISTIC, "use_optimistic not supported")
   def testModifiedRfc6724Behaviour(self):
     # [3]  Get an IPv6 address back, in optimistic DAD start-up.
     self.SetDAD(self.test_ifname, 1)  # Enable DAD
@@ -214,7 +210,6 @@ class OptimisticAddressOkayTest(MultiInterfaceSourceAddressSelectionTest):
 
 class ValidBeforeOptimisticTest(MultiInterfaceSourceAddressSelectionTest):
 
-  @unittest.skipUnless(HAVE_USE_OPTIMISTIC, "use_optimistic not supported")
   def testModifiedRfc6724Behaviour(self):
     # [3]  Add a valid IPv6 address to this interface and verify it is
     # selected as the source address.
@@ -243,7 +238,6 @@ class ValidBeforeOptimisticTest(MultiInterfaceSourceAddressSelectionTest):
 
 class DadFailureTest(MultiInterfaceSourceAddressSelectionTest):
 
-  @unittest.skipUnless(HAVE_USE_OPTIMISTIC, "use_optimistic not supported")
   def testDadFailure(self):
     # [3]  Get an IPv6 address back, in optimistic DAD start-up.
     self.SetDAD(self.test_ifname, 1)  # Enable DAD
@@ -275,9 +269,6 @@ class DadFailureTest(MultiInterfaceSourceAddressSelectionTest):
 
 class NoNsFromOptimisticTest(MultiInterfaceSourceAddressSelectionTest):
 
-  @unittest.skipUnless(HAVE_USE_OPTIMISTIC, "use_optimistic not supported")
-  @unittest.skipUnless(net_test.LinuxVersion() >= (3, 18, 0),
-                       "correct optimistic bind() not supported")
   def testSendToOnlinkDestination(self):
     # [3]  Get an IPv6 address back, in optimistic DAD start-up.
     self.SetDAD(self.test_ifname, 1)  # Enable DAD
@@ -297,11 +288,14 @@ class NoNsFromOptimisticTest(MultiInterfaceSourceAddressSelectionTest):
     onlink_dest = self.GetRandomDestination(self.IPv6Prefix(self.test_netid))
     self.SendWithSourceAddress(self.test_ip, self.test_netid, onlink_dest)
 
-    expected_ns = multinetwork_test.Packets.NS(
-        net_test.GetLinkAddress(self.test_ifname, True),
-        onlink_dest,
-        self.MyMacAddress(self.test_netid))[1]
-    self.ExpectPacketOn(self.test_netid, "link-local NS", expected_ns)
+    if net_test.LinuxVersion() >= (3, 18, 0):
+      # Older versions will actually choose the optimistic address to
+      # originate Neighbor Solications (RFC violation).
+      expected_ns = multinetwork_test.Packets.NS(
+          self.test_lladdr,
+          onlink_dest,
+          self.MyMacAddress(self.test_netid))[1]
+      self.ExpectPacketOn(self.test_netid, "link-local NS", expected_ns)
 
 
 # TODO(ek): add tests listening for netlink events.
