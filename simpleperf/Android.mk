@@ -32,6 +32,7 @@ LLVM_ROOT_PATH := external/llvm
 # libsimpleperf
 # =========================================================
 libsimpleperf_common_src_files := \
+  callchain.cpp \
   cmd_dumprecord.cpp \
   cmd_help.cpp \
   cmd_report.cpp \

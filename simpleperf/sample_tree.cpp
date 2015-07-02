@@ -166,20 +166,8 @@ SampleEntry* SampleTree::AddSample(int pid, int tid, uint64_t ip, uint64_t time,
   const MapEntry* map = FindMap(thread, ip, in_kernel);
   const SymbolEntry* symbol = FindSymbol(map, ip);
 
-  SampleEntry value = {
-      ip, time, period,
-      0,  // accumulated_period
-      1,  // sample_count
-      thread,
-      thread->comm,  // thead_comm
-      map, symbol,
-      BranchFromEntry{
-          0,        // ip
-          nullptr,  // map
-          nullptr,  // symbol
-          0,        // flags
-      },
-  };
+  SampleEntry value(ip, time, period, 0, 1, thread, map, symbol);
+
   return InsertSample(value);
 }
 
@@ -197,20 +185,12 @@ void SampleTree::AddBranchSample(int pid, int tid, uint64_t from_ip, uint64_t to
   }
   const SymbolEntry* to_symbol = FindSymbol(to_map, to_ip);
 
-  SampleEntry value = {to_ip,  // ip
-                       time, period,
-                       0,  // accumulated_period
-                       1,  // sample_count
-                       thread,
-                       thread->comm,  // thread_comm
-                       to_map,        // map
-                       to_symbol,     // symbol
-                       BranchFromEntry{
-                           from_ip,       // ip
-                           from_map,      // map
-                           from_symbol,   // symbol
-                           branch_flags,  // flags
-                       }};
+  SampleEntry value(to_ip, time, period, 0, 1, thread, to_map, to_symbol);
+  value.branch_from.ip = from_ip;
+  value.branch_from.map = from_map;
+  value.branch_from.symbol = from_symbol;
+  value.branch_from.flags = branch_flags;
+
   InsertSample(value);
 }
 
@@ -221,21 +201,8 @@ SampleEntry* SampleTree::AddCallChainSample(int pid, int tid, uint64_t ip, uint6
   const MapEntry* map = FindMap(thread, ip, in_kernel);
   const SymbolEntry* symbol = FindSymbol(map, ip);
 
-  SampleEntry value = {
-      ip, time,
-      0,       // period
-      period,  // accumulated_period
-      0,       // sample_count
-      thread,
-      thread->comm,  // thread_comm
-      map, symbol,
-      BranchFromEntry{
-          0,        // ip
-          nullptr,  // map
-          nullptr,  // symbol
-          0,        // flags
-      },
-  };
+  SampleEntry value(ip, time, 0, period, 0, thread, map, symbol);
+
   auto it = sample_tree_.find(&value);
   if (it != sample_tree_.end()) {
     SampleEntry* sample = *it;
@@ -265,8 +232,8 @@ SampleEntry* SampleTree::InsertSample(SampleEntry& value) {
   return result;
 }
 
-SampleEntry* SampleTree::AllocateSample(const SampleEntry& value) {
-  SampleEntry* sample = new SampleEntry(value);
+SampleEntry* SampleTree::AllocateSample(SampleEntry& value) {
+  SampleEntry* sample = new SampleEntry(std::move(value));
   sample_storage_.push_back(std::unique_ptr<SampleEntry>(sample));
   return sample;
 }
@@ -285,10 +252,17 @@ const SymbolEntry* SampleTree::FindSymbol(const MapEntry* map, uint64_t ip) {
   return symbol;
 }
 
+void SampleTree::InsertCallChainForSample(SampleEntry* sample,
+                                          const std::vector<SampleEntry*>& callchain,
+                                          uint64_t period) {
+  sample->callchain.AddCallChain(callchain, period);
+}
+
 void SampleTree::VisitAllSamples(std::function<void(const SampleEntry&)> callback) {
   if (sorted_sample_tree_.size() != sample_tree_.size()) {
     sorted_sample_tree_.clear();
     for (auto& sample : sample_tree_) {
+      sample->callchain.SortByPeriod();
       sorted_sample_tree_.insert(sample);
     }
   }

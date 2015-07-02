@@ -24,6 +24,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "callchain.h"
 #include "dso.h"
 
 struct MapEntry {
@@ -50,6 +51,9 @@ struct BranchFromEntry {
   const MapEntry* map;
   const SymbolEntry* symbol;
   uint64_t flags;
+
+  BranchFromEntry() : ip(0), map(nullptr), symbol(nullptr), flags(0) {
+  }
 };
 
 struct SampleEntry {
@@ -63,6 +67,25 @@ struct SampleEntry {
   const MapEntry* map;
   const SymbolEntry* symbol;
   BranchFromEntry branch_from;
+  CallChainRoot callchain;  // A callchain tree representing all callchains in the sample records.
+
+  SampleEntry(uint64_t ip, uint64_t time, uint64_t period, uint64_t accumulated_period,
+              uint64_t sample_count, const ThreadEntry* thread, const MapEntry* map,
+              const SymbolEntry* symbol)
+      : ip(ip),
+        time(time),
+        period(period),
+        accumulated_period(accumulated_period),
+        sample_count(sample_count),
+        thread(thread),
+        thread_comm(thread->comm),
+        map(map),
+        symbol(symbol) {
+  }
+
+  // The data member 'callchain' can only move, not copy.
+  SampleEntry(SampleEntry&&) = default;
+  SampleEntry(SampleEntry&) = delete;
 };
 
 typedef std::function<int(const SampleEntry&, const SampleEntry&)> compare_sample_func_t;
@@ -103,6 +126,8 @@ class SampleTree {
                        uint64_t time, uint64_t period);
   SampleEntry* AddCallChainSample(int pid, int tid, uint64_t ip, uint64_t time, uint64_t period,
                                   bool in_kernel, const std::vector<SampleEntry*>& callchain);
+  void InsertCallChainForSample(SampleEntry* sample, const std::vector<SampleEntry*>& callchain,
+                                uint64_t period);
   void VisitAllSamples(std::function<void(const SampleEntry&)> callback);
 
   uint64_t TotalSamples() const {
@@ -120,7 +145,7 @@ class SampleTree {
   DsoEntry* FindUserDsoOrNew(const std::string& filename);
   const SymbolEntry* FindSymbol(const MapEntry* map, uint64_t ip);
   SampleEntry* InsertSample(SampleEntry& value);
-  SampleEntry* AllocateSample(const SampleEntry& value);
+  SampleEntry* AllocateSample(SampleEntry& value);
 
   struct SampleComparator {
     bool operator()(SampleEntry* sample1, SampleEntry* sample2) const {
