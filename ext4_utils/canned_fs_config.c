@@ -80,7 +80,7 @@ int load_canned_fs_config(const char* fn) {
 	return 0;
 }
 
-void canned_fs_config(const char* path, int dir,
+void canned_fs_config(const char* path, int dir, const char* target_out_path,
 					  unsigned* uid, unsigned* gid, unsigned* mode, uint64_t* capabilities) {
 	Path key;
 	key.path = path+1;   // canned paths lack the leading '/'
@@ -99,7 +99,7 @@ void canned_fs_config(const char* path, int dir,
 
 	unsigned c_uid, c_gid, c_mode;
 	uint64_t c_capabilities;
-	fs_config(path, dir, &c_uid, &c_gid, &c_mode, &c_capabilities);
+	fs_config(path, dir, target_out_path, &c_uid, &c_gid, &c_mode, &c_capabilities);
 
 	if (c_uid != *uid) printf("%s uid %d %d\n", path, *uid, c_uid);
 	if (c_gid != *gid) printf("%s gid %d %d\n", path, *gid, c_gid);
