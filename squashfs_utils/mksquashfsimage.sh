@@ -5,7 +5,7 @@
 function usage() {
 cat<<EOT
 Usage:
-${0##*/} SRC_DIR OUTPUT_FILE [-s] [-m MOUNT_POINT] [-c FILE_CONTEXTS] [-b BLOCK_SIZE] [-z COMPRESSOR] [-zo COMPRESSOR_OPT]
+${0##*/} SRC_DIR OUTPUT_FILE [-s] [-m MOUNT_POINT] [-d PRODUCT_OUT] [-c FILE_CONTEXTS] [-b BLOCK_SIZE] [-z COMPRESSOR] [-zo COMPRESSOR_OPT]
 EOT
 }
 
@@ -33,6 +33,12 @@ fi
 MOUNT_POINT=
 if [[ "$1" == "-m" ]]; then
     MOUNT_POINT=$2
+    shift; shift
+fi
+
+PRODUCT_OUT=
+if [[ "$1" == "-d" ]]; then
+    PRODUCT_OUT=$2
     shift; shift
 fi
 
@@ -64,6 +70,9 @@ fi
 OPT=""
 if [ -n "$MOUNT_POINT" ]; then
   OPT="$OPT -mount-point $MOUNT_POINT"
+fi
+if [ -n "$PRODUCT_OUT" ]; then
+  OPT="$OPT -product-out $PRODUCT_OUT"
 fi
 if [ -n "$FILE_CONTEXTS" ]; then
   OPT="$OPT -context-file $FILE_CONTEXTS"
