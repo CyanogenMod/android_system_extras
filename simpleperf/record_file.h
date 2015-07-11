@@ -106,6 +106,7 @@ class RecordFileReader {
     return mmap_addr_ + offset;
   }
   std::vector<std::string> ReadCmdlineFeature();
+  std::vector<BuildIdRecord> ReadBuildIdFeature();
   bool Close();
 
  private:

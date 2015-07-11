@@ -60,10 +60,11 @@ TEST_F(RecordFileTest, smoke) {
 
   // Write feature section.
   ASSERT_TRUE(writer->WriteFeatureHeader(1));
-  BuildId build_id;
-  for (size_t i = 0; i < build_id.size(); ++i) {
-    build_id[i] = i;
+  char p[BuildId::Size()];
+  for (size_t i = 0; i < BuildId::Size(); ++i) {
+    p[i] = i;
   }
+  BuildId build_id(p);
   BuildIdRecord build_id_record = CreateBuildIdRecord(false, getpid(), build_id, "init");
   ASSERT_TRUE(writer->WriteBuildIdFeature({build_id_record}));
   ASSERT_TRUE(writer->Close());

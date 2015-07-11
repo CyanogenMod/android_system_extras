@@ -196,3 +196,25 @@ std::vector<std::string> RecordFileReader::ReadCmdlineFeature() {
   }
   return cmdline;
 }
+
+std::vector<BuildIdRecord> RecordFileReader::ReadBuildIdFeature() {
+  const std::map<int, SectionDesc>& section_map = FeatureSectionDescriptors();
+  auto it = section_map.find(FEAT_BUILD_ID);
+  if (it == section_map.end()) {
+    return std::vector<BuildIdRecord>();
+  }
+  SectionDesc section = it->second;
+  const char* p = DataAtOffset(section.offset);
+  const char* end = DataAtOffset(section.offset + section.size);
+  std::vector<BuildIdRecord> result;
+  while (p < end) {
+    const perf_event_header* header = reinterpret_cast<const perf_event_header*>(p);
+    CHECK_LE(p + header->size, end);
+    BuildIdRecord record(header);
+    // Set type explicitly as the perf.data produced by perf doesn't set it.
+    record.header.type = PERF_RECORD_BUILD_ID;
+    result.push_back(record);
+    p += header->size;
+  }
+  return result;
+}

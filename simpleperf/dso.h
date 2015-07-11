@@ -20,6 +20,10 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
+#include <vector>
+
+#include "build_id.h"
 
 struct SymbolEntry {
   std::string name;
@@ -43,13 +47,17 @@ class DsoFactory {
  public:
   static void SetDemangle(bool demangle);
   static bool SetSymFsDir(const std::string& symfs_dir);
+  static void SetBuildIds(const std::vector<std::pair<std::string, BuildId>>& build_ids);
   static std::unique_ptr<DsoEntry> LoadKernel();
   static std::unique_ptr<DsoEntry> LoadKernelModule(const std::string& dso_path);
   static std::unique_ptr<DsoEntry> LoadDso(const std::string& dso_path);
 
  private:
+  static BuildId GetExpectedBuildId(const std::string& filename);
+
   static bool demangle;
   static std::string symfs_dir;
+  static std::unordered_map<std::string, BuildId> build_id_map;
 };
 
 #endif  // SIMPLE_PERF_DSO_H_
