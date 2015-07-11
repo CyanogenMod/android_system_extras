@@ -31,9 +31,11 @@ TEST(read_elf, parse_symbols_from_elf_file) {
   ASSERT_LT(static_cast<size_t>(elf_file_len), sizeof(elf_file));
   elf_file[elf_file_len] = '\0';
 
+  BuildId build_id;
+  GetBuildIdFromElfFile(elf_file, &build_id);
   bool result = false;
-  ASSERT_TRUE(
-      ParseSymbolsFromElfFile(elf_file, std::bind(ParseSymbol, std::placeholders::_1, &result)));
+  ASSERT_TRUE(ParseSymbolsFromElfFile(elf_file, build_id,
+                                      std::bind(ParseSymbol, std::placeholders::_1, &result)));
   ASSERT_TRUE(result);
 }
 
