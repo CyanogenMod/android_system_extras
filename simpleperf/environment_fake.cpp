@@ -21,6 +21,6 @@ bool ProcessKernelSymbols(const std::string&, std::function<bool(const KernelSym
   return false;
 }
 
-bool GetKernelBuildId(BuildId* build_id) {
+bool GetKernelBuildId(BuildId*) {
   return false;
 }
