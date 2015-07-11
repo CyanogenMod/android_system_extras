@@ -54,18 +54,31 @@ std::string DsoFactory::symfs_dir;
 
 bool DsoFactory::SetSymFsDir(const std::string& symfs_dir) {
   std::string dirname = symfs_dir;
-  if (!dirname.empty() && dirname.back() != '/') {
-    dirname.push_back('/');
-  }
-  std::vector<std::string> files;
-  std::vector<std::string> subdirs;
-  GetEntriesInDir(symfs_dir, &files, &subdirs);
-  if (files.empty() && subdirs.empty()) {
-    LOG(ERROR) << "Invalid symfs_dir '" << symfs_dir << "'";
-    return false;
+  if (!dirname.empty()) {
+    if (dirname.back() != '/') {
+      dirname.push_back('/');
+    }
+    std::vector<std::string> files;
+    std::vector<std::string> subdirs;
+    GetEntriesInDir(symfs_dir, &files, &subdirs);
+    if (files.empty() && subdirs.empty()) {
+      LOG(ERROR) << "Invalid symfs_dir '" << symfs_dir << "'";
+      return false;
+    }
   }
   DsoFactory::symfs_dir = dirname;
   return true;
+}
+
+std::unordered_map<std::string, BuildId> DsoFactory::build_id_map;
+
+void DsoFactory::SetBuildIds(const std::vector<std::pair<std::string, BuildId>>& build_ids) {
+  std::unordered_map<std::string, BuildId> map;
+  for (auto& pair : build_ids) {
+    LOG(DEBUG) << "build_id_map: " << pair.first << ", " << pair.second.ToString();
+    map.insert(pair);
+  }
+  build_id_map = std::move(map);
 }
 
 static bool IsKernelFunctionSymbol(const KernelSymbol& symbol) {
@@ -101,9 +114,16 @@ static void FixupSymbolLength(DsoEntry* dso) {
 std::unique_ptr<DsoEntry> DsoFactory::LoadKernel() {
   std::unique_ptr<DsoEntry> dso(new DsoEntry);
   dso->path = "[kernel.kallsyms]";
-
-  ProcessKernelSymbols("/proc/kallsyms",
-                       std::bind(&KernelSymbolCallback, std::placeholders::_1, dso.get()));
+  BuildId build_id = GetExpectedBuildId(DEFAULT_KERNEL_FILENAME_FOR_BUILD_ID);
+  BuildId real_build_id;
+  GetKernelBuildId(&real_build_id);
+  bool match = (build_id == real_build_id);
+  LOG(DEBUG) << "check kernel build id (" << (match ? "match" : "mismatch") << "): expected "
+             << build_id.ToString() << ", real " << real_build_id.ToString();
+  if (match) {
+    ProcessKernelSymbols("/proc/kallsyms",
+                         std::bind(&KernelSymbolCallback, std::placeholders::_1, dso.get()));
+  }
   FixupSymbolLength(dso.get());
   return dso;
 }
@@ -128,8 +148,10 @@ static bool SymbolFilterForKernelModule(const ElfFileSymbol& elf_symbol) {
 std::unique_ptr<DsoEntry> DsoFactory::LoadKernelModule(const std::string& dso_path) {
   std::unique_ptr<DsoEntry> dso(new DsoEntry);
   dso->path = dso_path;
-  ParseSymbolsFromElfFile(symfs_dir + dso_path, std::bind(ParseSymbolCallback, std::placeholders::_1,
-                                                          dso.get(), SymbolFilterForKernelModule));
+  BuildId build_id = GetExpectedBuildId(dso_path);
+  ParseSymbolsFromElfFile(symfs_dir + dso_path, build_id,
+                          std::bind(ParseSymbolCallback, std::placeholders::_1, dso.get(),
+                                    SymbolFilterForKernelModule));
   FixupSymbolLength(dso.get());
   return dso;
 }
@@ -164,8 +186,10 @@ static void DemangleInPlace(std::string* name) {
 std::unique_ptr<DsoEntry> DsoFactory::LoadDso(const std::string& dso_path) {
   std::unique_ptr<DsoEntry> dso(new DsoEntry);
   dso->path = dso_path;
-  ParseSymbolsFromElfFile(symfs_dir + dso_path, std::bind(ParseSymbolCallback, std::placeholders::_1,
-                                                          dso.get(), SymbolFilterForDso));
+  BuildId build_id = GetExpectedBuildId(dso_path);
+  ParseSymbolsFromElfFile(
+      symfs_dir + dso_path, build_id,
+      std::bind(ParseSymbolCallback, std::placeholders::_1, dso.get(), SymbolFilterForDso));
   if (demangle) {
     for (auto& symbol : dso->symbols) {
       DemangleInPlace(&symbol->name);
@@ -173,4 +197,12 @@ std::unique_ptr<DsoEntry> DsoFactory::LoadDso(const std::string& dso_path) {
   }
   FixupSymbolLength(dso.get());
   return dso;
+}
+
+BuildId DsoFactory::GetExpectedBuildId(const std::string& filename) {
+  auto it = build_id_map.find(filename);
+  if (it != build_id_map.end()) {
+    return it->second;
+  }
+  return BuildId();
 }

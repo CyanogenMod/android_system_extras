@@ -179,15 +179,9 @@ void DumpRecordCommand::DumpFeatureSection() {
     printf("feature section for %s: offset %" PRId64 ", size %" PRId64 "\n",
            GetFeatureName(feature).c_str(), section.offset, section.size);
     if (feature == FEAT_BUILD_ID) {
-      const char* p = record_file_reader_->DataAtOffset(section.offset);
-      const char* end = p + section.size;
-      while (p < end) {
-        const perf_event_header* header = reinterpret_cast<const perf_event_header*>(p);
-        CHECK_LE(p + header->size, end);
-        BuildIdRecord record(header);
-        record.header.type = PERF_RECORD_BUILD_ID;  // Set type explicitly as perf doesn't set it.
-        record.Dump(1);
-        p += header->size;
+      std::vector<BuildIdRecord> records = record_file_reader_->ReadBuildIdFeature();
+      for (auto& r : records) {
+        r.Dump(1);
       }
     } else if (feature == FEAT_CMDLINE) {
       std::vector<std::string> cmdline = record_file_reader_->ReadCmdlineFeature();
