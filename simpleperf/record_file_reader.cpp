@@ -143,7 +143,7 @@ std::vector<std::unique_ptr<const Record>> RecordFileReader::DataSection() {
   while (p < end) {
     const perf_event_header* header = reinterpret_cast<const perf_event_header*>(p);
     if (p + header->size <= end) {
-      result.push_back(std::move(ReadRecordFromBuffer(attr, header)));
+      result.push_back(ReadRecordFromBuffer(attr, header));
     }
     p += header->size;
   }
