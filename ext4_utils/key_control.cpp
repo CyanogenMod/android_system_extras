@@ -5,8 +5,8 @@
 #include <sys/syscall.h>
 
 /* keyring keyctl commands */
+#define KEYCTL_REVOKE         3 /* revoke a key */
 #define KEYCTL_SETPERM        5 /* set permissions for a key in a keyring */
-#define KEYCTL_UNLINK         9 /* unlink a key from a keyring */
 #define KEYCTL_SEARCH        10 /* search for a key in a keyring */
 
 static long keyctl(int cmd, ...)
@@ -30,6 +30,11 @@ key_serial_t add_key(const char *type,
                      key_serial_t ringid)
 {
     return syscall(__NR_add_key, type, description, payload, plen, ringid);
+}
+
+long keyctl_revoke(key_serial_t id)
+{
+    return keyctl(KEYCTL_REVOKE, id);
 }
 
 long keyctl_setperm(key_serial_t id, int permissions)
