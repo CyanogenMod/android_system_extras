@@ -167,7 +167,7 @@ void ParseSymbolsFromELFFile(const llvm::object::ELFFile<ELFT>* elf,
     if (symbol.name.empty()) {
       continue;
     }
-
+    symbol.vaddr = elf_symbol.st_value;
     symbol.start_in_file = elf_symbol.st_value - shdr->sh_addr + shdr->sh_offset;
     if ((symbol.start_in_file & 1) != 0 && is_arm) {
       // Arm sets bit 0 to mark it as thumb code, remove the flag.
