@@ -84,6 +84,7 @@ UnencryptedProperties UnencryptedProperties::GetChild(const char* name) const
 
 bool UnencryptedProperties::Remove(const char* name)
 {
+    if (!OK()) return false;
     if (remove((folder_ + "/" + name).c_str())
         && errno != ENOENT) {
         return false;
