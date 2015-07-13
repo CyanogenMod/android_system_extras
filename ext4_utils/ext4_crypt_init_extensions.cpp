@@ -36,7 +36,7 @@ static std::string vold_command(std::string const& command)
     }
 
     if (sock < 0) {
-        KLOG_INFO(TAG, "Cannot open vold, failing command\n");
+        KLOG_INFO(TAG, "Cannot open vold, failing command (%s)\n", strerror(errno));
         return "";
     }
 
@@ -54,7 +54,7 @@ static std::string vold_command(std::string const& command)
     // framework is down, so this is (mostly) OK.
     std::string actual_command = arbitrary_sequence_number + " " + command;
     if (write(sock, actual_command.c_str(), actual_command.size() + 1) < 0) {
-        KLOG_ERROR(TAG, "Cannot write command\n");
+        KLOG_ERROR(TAG, "Cannot write command (%s)\n", strerror(errno));
         return "";
     }
 
@@ -62,7 +62,7 @@ static std::string vold_command(std::string const& command)
 
     int rc = TEMP_FAILURE_RETRY(poll(&poll_sock, 1, vold_command_timeout_ms));
     if (rc < 0) {
-        KLOG_ERROR(TAG, "Error in poll %s\n", strerror(errno));
+        KLOG_ERROR(TAG, "Error in poll (%s)\n", strerror(errno));
         return "";
     }
 
@@ -103,7 +103,7 @@ int e4crypt_create_device_key(const char* dir,
 
     // Make sure folder exists. Use make_dir to set selinux permissions.
     if (ensure_dir_exists(UnencryptedProperties::GetPath(dir).c_str())) {
-        KLOG_ERROR(TAG, "Failed to create %s with error %s\n",
+        KLOG_ERROR(TAG, "Failed to create %s (%s)\n",
                    UnencryptedProperties::GetPath(dir).c_str(),
                    strerror(errno));
         return -1;
@@ -123,7 +123,7 @@ int e4crypt_install_keyring()
                                           KEY_SPEC_SESSION_KEYRING);
 
     if (device_keyring == -1) {
-        KLOG_ERROR(TAG, "Failed to create keyring\n");
+        KLOG_ERROR(TAG, "Failed to create keyring (%s)\n", strerror(errno));
         return -1;
     }
 
