@@ -164,3 +164,13 @@ int e4crypt_set_directory_policy(const char* dir)
 
     return 0;
 }
+
+int e4crypt_set_user_crypto_policies(const char* dir)
+{
+    auto command = std::string() + "cryptfs setusercryptopolicies " + dir;
+    auto result = vold_command(command);
+    // ext4enc:TODO proper error handling
+    KLOG_INFO(TAG, "setusercryptopolicies returned with result %s\n",
+              result.c_str());
+    return 0;
+}
