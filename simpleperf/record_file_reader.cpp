@@ -174,15 +174,24 @@ const std::map<int, SectionDesc>& RecordFileReader::FeatureSectionDescriptors() 
   return feature_sections_;
 }
 
-std::vector<std::string> RecordFileReader::ReadCmdlineFeature() {
+bool RecordFileReader::GetFeatureSection(int feature, const char** pstart, const char** pend) {
   const std::map<int, SectionDesc>& section_map = FeatureSectionDescriptors();
-  auto it = section_map.find(FEAT_CMDLINE);
+  auto it = section_map.find(feature);
   if (it == section_map.end()) {
-    return std::vector<std::string>();
+    return false;
   }
   SectionDesc section = it->second;
-  const char* p = DataAtOffset(section.offset);
-  const char* end = DataAtOffset(section.offset + section.size);
+  *pstart = DataAtOffset(section.offset);
+  *pend = DataAtOffset(section.offset + section.size);
+  return true;
+}
+
+std::vector<std::string> RecordFileReader::ReadCmdlineFeature() {
+  const char* p;
+  const char* end;
+  if (!GetFeatureSection(FEAT_CMDLINE, &p, &end)) {
+    return std::vector<std::string>();
+  }
   std::vector<std::string> cmdline;
   uint32_t arg_count;
   MoveFromBinaryFormat(arg_count, p);
@@ -198,14 +207,11 @@ std::vector<std::string> RecordFileReader::ReadCmdlineFeature() {
 }
 
 std::vector<BuildIdRecord> RecordFileReader::ReadBuildIdFeature() {
-  const std::map<int, SectionDesc>& section_map = FeatureSectionDescriptors();
-  auto it = section_map.find(FEAT_BUILD_ID);
-  if (it == section_map.end()) {
+  const char* p;
+  const char* end;
+  if (!GetFeatureSection(FEAT_BUILD_ID, &p, &end)) {
     return std::vector<BuildIdRecord>();
   }
-  SectionDesc section = it->second;
-  const char* p = DataAtOffset(section.offset);
-  const char* end = DataAtOffset(section.offset + section.size);
   std::vector<BuildIdRecord> result;
   while (p < end) {
     const perf_event_header* header = reinterpret_cast<const perf_event_header*>(p);
@@ -217,4 +223,16 @@ std::vector<BuildIdRecord> RecordFileReader::ReadBuildIdFeature() {
     p += header->size;
   }
   return result;
+}
+
+std::string RecordFileReader::ReadFeatureString(int feature) {
+  const char* p;
+  const char* end;
+  if (!GetFeatureSection(feature, &p, &end)) {
+    return std::string();
+  }
+  uint32_t len;
+  MoveFromBinaryFormat(len, p);
+  CHECK_LE(p + len, end);
+  return p;
 }

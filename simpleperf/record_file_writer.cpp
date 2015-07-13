@@ -258,6 +258,23 @@ bool RecordFileWriter::WriteBuildIdFeature(const std::vector<BuildIdRecord>& bui
   return WriteFeatureEnd(FEAT_BUILD_ID, start_offset);
 }
 
+bool RecordFileWriter::WriteFeatureString(int feature, const std::string& s) {
+  uint64_t start_offset;
+  if (!WriteFeatureBegin(&start_offset)) {
+    return false;
+  }
+  uint32_t len = static_cast<uint32_t>(ALIGN(s.size() + 1, 64));
+  if (!Write(&len, sizeof(len))) {
+    return false;
+  }
+  std::vector<char> v(len, '\0');
+  std::copy(s.begin(), s.end(), v.begin());
+  if (!Write(v.data(), v.size())) {
+    return false;
+  }
+  return WriteFeatureEnd(feature, start_offset);
+}
+
 bool RecordFileWriter::WriteCmdlineFeature(const std::vector<std::string>& cmdline) {
   uint64_t start_offset;
   if (!WriteFeatureBegin(&start_offset)) {

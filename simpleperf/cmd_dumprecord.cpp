@@ -26,6 +26,7 @@
 
 #include "command.h"
 #include "event_attr.h"
+#include "perf_regs.h"
 #include "record.h"
 #include "record_file.h"
 #include "utils.h"
@@ -61,6 +62,12 @@ bool DumpRecordCommand::Run(const std::vector<std::string>& args) {
   record_file_reader_ = RecordFileReader::CreateInstance(record_filename_);
   if (record_file_reader_ == nullptr) {
     return false;
+  }
+  std::string arch = record_file_reader_->ReadFeatureString(FEAT_ARCH);
+  if (!arch.empty()) {
+    if (!SetCurrentArch(arch)) {
+      return false;
+    }
   }
   DumpFileHeader();
   DumpAttrSection();
@@ -183,6 +190,12 @@ void DumpRecordCommand::DumpFeatureSection() {
       for (auto& r : records) {
         r.Dump(1);
       }
+    } else if (feature == FEAT_OSRELEASE) {
+      std::string s = record_file_reader_->ReadFeatureString(feature);
+      PrintIndented(1, "osrelease: %s\n", s.c_str());
+    } else if (feature == FEAT_ARCH) {
+      std::string s = record_file_reader_->ReadFeatureString(feature);
+      PrintIndented(1, "arch: %s\n", s.c_str());
     } else if (feature == FEAT_CMDLINE) {
       std::vector<std::string> cmdline = record_file_reader_->ReadCmdlineFeature();
       PrintIndented(1, "cmdline: %s\n", android::base::Join(cmdline, ' ').c_str());
