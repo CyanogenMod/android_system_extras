@@ -93,10 +93,11 @@ static void ChildProcessFn(std::vector<std::string>& args, int start_signal_fd, 
     TEMP_FAILURE_RETRY(write(exec_child_fd, &exec_child_failed, 1));
     close(exec_child_fd);
     errno = saved_errno;
-    PLOG(FATAL) << "execvp(" << argv[0] << ") failed";
+    PLOG(ERROR) << "execvp(" << argv[0] << ") failed";
   } else {
-    PLOG(FATAL) << "child process failed to receive start_signal, nread = " << nread;
+    PLOG(DEBUG) << "child process failed to receive start_signal, nread = " << nread;
   }
+  exit(1);
 }
 
 bool Workload::Start() {
