@@ -28,6 +28,7 @@ bool GetBuildIdFromElfFile(const std::string& filename, BuildId* build_id);
 static const std::string linker_prefix = "__dl_";
 
 struct ElfFileSymbol {
+  uint64_t vaddr;
   uint64_t start_in_file;
   uint64_t len;
   bool is_func;
