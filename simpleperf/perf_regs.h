@@ -29,6 +29,7 @@ enum ArchType {
   ARCH_X86_64,
   ARCH_ARM,
   ARCH_ARM64,
+  ARCH_UNSUPPORTED,
 };
 
 ArchType GetCurrentArch();
