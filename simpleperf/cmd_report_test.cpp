@@ -31,7 +31,7 @@ class ReportCommandTest : public ::testing::Test {
   static void SetUpTestCase() {
     ASSERT_TRUE(RecordCmd()->Run({"-a", "sleep", "1"}));
     ASSERT_TRUE(RecordCmd()->Run({"-a", "-o", "perf2.data", "sleep", "1"}));
-    ASSERT_TRUE(RecordCmd()->Run({"-g", "-o", "perf_g.data", "sleep", "1"}));
+    ASSERT_TRUE(RecordCmd()->Run({"--call-graph", "fp", "-o", "perf_g.data", "sleep", "1"}));
   }
 };
 

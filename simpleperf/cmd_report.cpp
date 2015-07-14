@@ -30,6 +30,7 @@
 #include "environment.h"
 #include "event_attr.h"
 #include "event_type.h"
+#include "perf_regs.h"
 #include "record.h"
 #include "record_file.h"
 #include "sample_tree.h"
@@ -264,7 +265,7 @@ class ReportCommand : public Command {
   bool ReadEventAttrFromRecordFile();
   void ReadSampleTreeFromRecordFile();
   void ProcessSampleRecord(const SampleRecord& r);
-  void ReadFeaturesFromRecordFile();
+  bool ReadFeaturesFromRecordFile();
   int CompareSampleEntry(const SampleEntry& sample1, const SampleEntry& sample2);
   void PrintReport();
   void PrintReportContext();
@@ -301,7 +302,9 @@ bool ReportCommand::Run(const std::vector<std::string>& args) {
     return false;
   }
   // Read features first to prepare build ids used when building SampleTree.
-  ReadFeaturesFromRecordFile();
+  if (!ReadFeaturesFromRecordFile()) {
+    return false;
+  }
   ReadSampleTreeFromRecordFile();
 
   // 3. Show collected information.
@@ -528,17 +531,26 @@ void ReportCommand::ProcessSampleRecord(const SampleRecord& r) {
   }
 }
 
-void ReportCommand::ReadFeaturesFromRecordFile() {
+bool ReportCommand::ReadFeaturesFromRecordFile() {
   std::vector<BuildIdRecord> records = record_file_reader_->ReadBuildIdFeature();
   std::vector<std::pair<std::string, BuildId>> build_ids;
   for (auto& r : records) {
     build_ids.push_back(std::make_pair(r.filename, r.build_id));
   }
   DsoFactory::SetBuildIds(build_ids);
+
+  std::string arch = record_file_reader_->ReadFeatureString(PerfFileFormat::FEAT_ARCH);
+  if (!arch.empty()) {
+    if (!SetCurrentArch(arch)) {
+      return false;
+    }
+  }
+
   std::vector<std::string> cmdline = record_file_reader_->ReadCmdlineFeature();
   if (!cmdline.empty()) {
     record_cmdline_ = android::base::Join(cmdline, ' ');
   }
+  return true;
 }
 
 int ReportCommand::CompareSampleEntry(const SampleEntry& sample1, const SampleEntry& sample2) {

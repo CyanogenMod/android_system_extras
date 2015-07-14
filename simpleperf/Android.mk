@@ -17,8 +17,9 @@
 LOCAL_PATH := $(call my-dir)
 
 simpleperf_common_cppflags := -std=c++11 -Wall -Wextra -Werror -Wunused
+
 simpleperf_host_common_cppflags := $(simpleperf_common_cppflags) \
-                                   -DUSE_BIONIC_PERF_EVENT_H -I bionic \
+                                   -I bionic/libc/kernel/uapi \
 
 simpleperf_host_darwin_cppflags := $(simpleperf_host_common_cppflags) \
                                    -I $(LOCAL_PATH)/darwin_support \
@@ -40,6 +41,7 @@ libsimpleperf_common_src_files := \
   dso.cpp \
   event_attr.cpp \
   event_type.cpp \
+  perf_regs.cpp \
   read_elf.cpp \
   record.cpp \
   record_file_reader.cpp \
