@@ -31,7 +31,7 @@ constexpr ArchType GetBuildArch() {
 #elif defined(__arm__)
   return ARCH_ARM;
 #else
-  return ARCH_INVALID;
+  return ARCH_UNSUPPORTED;
 #endif
 }
 
@@ -51,7 +51,7 @@ bool SetCurrentArch(const std::string& arch) {
   } else if (android::base::StartsWith(arch, "arm")) {
     current_arch = ARCH_ARM;
   } else {
-    LOG(ERROR) << "unknown arch: " << arch;
+    LOG(ERROR) << "unsupported arch: " << arch;
     return false;
   }
   return true;
@@ -68,6 +68,8 @@ uint64_t GetSupportedRegMask() {
       return ((1ULL << PERF_REG_ARM_MAX) - 1);
     case ARCH_ARM64:
       return ((1ULL << PERF_REG_ARM64_MAX) - 1);
+    default:
+      return 0;
   }
   return 0;
 }
@@ -118,6 +120,7 @@ std::string GetRegName(size_t reg) {
       CHECK(it != arm64_reg_map.end()) << "unknown reg " << reg;
       return it->second;
     }
+    case ARCH_UNSUPPORTED:
+      return "unknown";
   }
-  return std::string();
 }
