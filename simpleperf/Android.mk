@@ -19,7 +19,7 @@ LOCAL_PATH := $(call my-dir)
 simpleperf_common_cppflags := -std=c++11 -Wall -Wextra -Werror -Wunused
 
 simpleperf_host_common_cppflags := $(simpleperf_common_cppflags) \
-                                   -I bionic/libc/kernel/uapi \
+                                   -DUSE_BIONIC_UAPI_HEADERS -I bionic/libc/kernel \
 
 simpleperf_host_darwin_cppflags := $(simpleperf_host_common_cppflags) \
                                    -I $(LOCAL_PATH)/darwin_support \
