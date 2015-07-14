@@ -47,6 +47,7 @@ static std::string BitsToString(const std::string& name, uint64_t bits,
 static std::string SampleTypeToString(uint64_t sample_type) {
   static std::vector<std::pair<int, std::string>> sample_type_names = {
       {PERF_SAMPLE_ADDR, "addr"},
+      {PERF_SAMPLE_BRANCH_STACK, "branch_stack"},
       {PERF_SAMPLE_CALLCHAIN, "callchain"},
       {PERF_SAMPLE_CPU, "cpu"},
       {PERF_SAMPLE_ID, "id"},
@@ -54,6 +55,8 @@ static std::string SampleTypeToString(uint64_t sample_type) {
       {PERF_SAMPLE_PERIOD, "period"},
       {PERF_SAMPLE_RAW, "raw"},
       {PERF_SAMPLE_READ, "read"},
+      {PERF_SAMPLE_REGS_USER, "regs_user"},
+      {PERF_SAMPLE_STACK_USER, "stack_user"},
       {PERF_SAMPLE_STREAM_ID, "stream_id"},
       {PERF_SAMPLE_TID, "tid"},
       {PERF_SAMPLE_TIME, "time"},
@@ -133,4 +136,7 @@ void DumpPerfEventAttr(const perf_event_attr& attr, size_t indent) {
 
   PrintIndented(indent + 1, "sample_id_all %u, exclude_host %u, exclude_guest %u\n",
                 attr.sample_id_all, attr.exclude_host, attr.exclude_guest);
+  PrintIndented(indent + 1, "branch_sample_type 0x%" PRIx64 "\n", attr.branch_sample_type);
+  PrintIndented(indent + 1, "sample_regs_user 0x%" PRIx64 "\n", attr.sample_regs_user);
+  PrintIndented(indent + 1, "sample_stack_user 0x%" PRIx64 "\n", attr.sample_stack_user);
 }

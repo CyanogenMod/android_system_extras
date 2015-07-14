@@ -20,6 +20,7 @@
 
 #include "command.h"
 #include "environment.h"
+#include "event_selection_set.h"
 #include "record.h"
 #include "record_file.h"
 #include "test_util.h"
@@ -88,8 +89,6 @@ TEST(record_cmd, tracepoint_event) {
   ASSERT_TRUE(RecordCmd()->Run({"-a", "-e", "sched:sched_switch", "sleep", "1"}));
 }
 
-extern bool IsBranchSamplingSupported();
-
 TEST(record_cmd, branch_sampling) {
   if (IsBranchSamplingSupported()) {
     ASSERT_TRUE(RecordCmd()->Run({"-a", "-b", "sleep", "1"}));
@@ -107,8 +106,19 @@ TEST(record_cmd, event_modifier) {
   ASSERT_TRUE(RecordCmd()->Run({"-e", "cpu-cycles:u", "sleep", "1"}));
 }
 
-TEST(record_cmd, callchain_sampling) {
-  ASSERT_TRUE(RecordCmd()->Run({"-g", "sleep", "1"}));
+TEST(record_cmd, fp_callchain_sampling) {
+  ASSERT_TRUE(RecordCmd()->Run({"--call-graph", "fp", "sleep", "1"}));
+}
+
+TEST(record_cmd, dwarf_callchain_sampling) {
+  if (IsDwarfCallChainSamplingSupported()) {
+    ASSERT_TRUE(RecordCmd()->Run({"--call-graph", "dwarf", "sleep", "1"}));
+    ASSERT_TRUE(RecordCmd()->Run({"--call-graph", "dwarf,16384", "sleep", "1"}));
+    ASSERT_TRUE(RecordCmd()->Run({"-g", "sleep", "1"}));
+  } else {
+    GTEST_LOG_(INFO)
+        << "This test does nothing as dwarf callchain sampling is not supported on this device.";
+  }
 }
 
 TEST(record_cmd, existing_processes) {
