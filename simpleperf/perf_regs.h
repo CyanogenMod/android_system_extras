@@ -14,9 +14,28 @@
  * limitations under the License.
  */
 
-#ifndef SIMPLE_PERF_PERF_EVENT_H_
-#define SIMPLE_PERF_PERF_EVENT_H_
+#ifndef SIMPLE_PERF_PERF_REGS_H_
+#define SIMPLE_PERF_PERF_REGS_H_
 
-#include <linux/perf_event.h>
+#include <asm-x86/asm/perf_regs.h>
+#include <asm-arm/asm/perf_regs.h>
+#define perf_event_arm_regs perf_event_arm64_regs
+#include <asm-arm64/asm/perf_regs.h>
+#include <stdint.h>
+#include <string>
 
-#endif  // SIMPLE_PERF_PERF_EVENT_H_
+enum ArchType {
+  ARCH_X86_32,
+  ARCH_X86_64,
+  ARCH_ARM,
+  ARCH_ARM64,
+};
+
+ArchType GetCurrentArch();
+bool SetCurrentArch(const std::string& arch);
+
+uint64_t GetSupportedRegMask();
+
+std::string GetRegName(size_t reg);
+
+#endif  // SIMPLE_PERF_PERF_REGS_H_

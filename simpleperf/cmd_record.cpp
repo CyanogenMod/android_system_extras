@@ -17,6 +17,8 @@
 #include <libgen.h>
 #include <poll.h>
 #include <signal.h>
+#include <sys/utsname.h>
+#include <unistd.h>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -61,6 +63,9 @@ class RecordCommand : public Command {
             "    -a           System-wide collection.\n"
             "    -b           Enable take branch stack sampling. Same as '-j any'\n"
             "    -c count     Set event sample period.\n"
+            "    --call-graph fp | dwarf[,<dump_stack_size>]\n"
+            "                 Enable call graph recording. Use frame pointer or dwarf as the\n"
+            "                 method to parse call graph in stack. Default is dwarf,8192.\n"
             "    -e event[:modifier]\n"
             "                 Select the event to sample. Use `simpleperf list` to find\n"
             "                 all possible event names. Modifiers can be added to define\n"
@@ -69,7 +74,7 @@ class RecordCommand : public Command {
             "                   k - monitor kernel space events only\n"
             "    -f freq      Set event sample frequency.\n"
             "    -F freq      Same as '-f freq'.\n"
-            "    -g           Enables call-graph recording.\n"
+            "    -g           Same as '--call-graph dwarf'.\n"
             "    -j branch_filter1,branch_filter2,...\n"
             "                 Enable taken branch stack sampling. Each sample\n"
             "                 captures a series of consecutive taken branches.\n"
@@ -93,7 +98,9 @@ class RecordCommand : public Command {
         sample_freq_(4000),
         system_wide_collection_(false),
         branch_sampling_(0),
-        callchain_sampling_(false),
+        fp_callchain_sampling_(false),
+        dwarf_callchain_sampling_(false),
+        dump_stack_size_in_dwarf_sampling_(8192),
         child_inherit_(true),
         perf_mmap_pages_(256),
         record_filename_("perf.data") {
@@ -122,7 +129,9 @@ class RecordCommand : public Command {
 
   bool system_wide_collection_;
   uint64_t branch_sampling_;
-  bool callchain_sampling_;
+  bool fp_callchain_sampling_;
+  bool dwarf_callchain_sampling_;
+  uint32_t dump_stack_size_in_dwarf_sampling_;
   bool child_inherit_;
   std::vector<pid_t> monitored_threads_;
   std::unique_ptr<EventTypeAndModifier> measured_event_type_modifier_;
@@ -253,6 +262,34 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         return false;
       }
       use_sample_freq_ = false;
+    } else if (args[i] == "--call-graph") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      std::vector<std::string> strs = android::base::Split(args[i], ",");
+      if (strs[0] == "fp") {
+        fp_callchain_sampling_ = true;
+        dwarf_callchain_sampling_ = false;
+      } else if (strs[0] == "dwarf") {
+        fp_callchain_sampling_ = false;
+        dwarf_callchain_sampling_ = true;
+        if (strs.size() > 1) {
+          char* endptr;
+          uint64_t size = strtoull(strs[1].c_str(), &endptr, 0);
+          if (*endptr != '\0' || size > UINT_MAX) {
+            LOG(ERROR) << "invalid dump stack size in --call-graph option: " << strs[1];
+            return false;
+          }
+          if ((size & 7) != 0) {
+            LOG(ERROR) << "dump stack size " << size << " is not 8-byte aligned.";
+            return false;
+          }
+          dump_stack_size_in_dwarf_sampling_ = static_cast<uint32_t>(size);
+        }
+      } else {
+        LOG(ERROR) << "unexpected argument for --call-graph option: " << args[i];
+        return false;
+      }
     } else if (args[i] == "-e") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -272,7 +309,8 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       }
       use_sample_freq_ = true;
     } else if (args[i] == "-g") {
-      callchain_sampling_ = true;
+      fp_callchain_sampling_ = false;
+      dwarf_callchain_sampling_ = true;
     } else if (args[i] == "-j") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -351,8 +389,12 @@ bool RecordCommand::SetEventSelection() {
   if (!event_selection_set_.SetBranchSampling(branch_sampling_)) {
     return false;
   }
-  if (callchain_sampling_) {
-    event_selection_set_.EnableCallChainSampling();
+  if (fp_callchain_sampling_) {
+    event_selection_set_.EnableFpCallChainSampling();
+  } else if (dwarf_callchain_sampling_) {
+    if (!event_selection_set_.EnableDwarfCallChainSampling(dump_stack_size_in_dwarf_sampling_)) {
+      return false;
+    }
   }
   event_selection_set_.SetInherit(child_inherit_);
   return true;
@@ -442,13 +484,25 @@ bool RecordCommand::DumpThreadCommAndMmaps() {
 }
 
 bool RecordCommand::DumpAdditionalFeatures(const std::vector<std::string>& args) {
-  size_t feature_count = (branch_sampling_ != 0 ? 3 : 2);
+  size_t feature_count = (branch_sampling_ != 0 ? 5 : 4);
   if (!record_file_writer_->WriteFeatureHeader(feature_count)) {
     return false;
   }
   if (!DumpBuildIdFeature()) {
     return false;
   }
+  utsname uname_buf;
+  if (TEMP_FAILURE_RETRY(uname(&uname_buf)) != 0) {
+    PLOG(ERROR) << "uname() failed";
+    return false;
+  }
+  if (!record_file_writer_->WriteFeatureString(PerfFileFormat::FEAT_OSRELEASE, uname_buf.release)) {
+    return false;
+  }
+  if (!record_file_writer_->WriteFeatureString(PerfFileFormat::FEAT_ARCH, uname_buf.machine)) {
+    return false;
+  }
+
   std::string exec_path = "simpleperf";
   GetExecPath(&exec_path);
   std::vector<std::string> cmdline;

@@ -53,6 +53,7 @@ class RecordFileWriter {
 
   bool WriteFeatureHeader(size_t feature_count);
   bool WriteBuildIdFeature(const std::vector<BuildIdRecord>& build_id_records);
+  bool WriteFeatureString(int feature, const std::string& s);
   bool WriteCmdlineFeature(const std::vector<std::string>& cmdline);
   bool WriteBranchStackFeature();
 
@@ -107,11 +108,13 @@ class RecordFileReader {
   }
   std::vector<std::string> ReadCmdlineFeature();
   std::vector<BuildIdRecord> ReadBuildIdFeature();
+  std::string ReadFeatureString(int feature);
   bool Close();
 
  private:
   RecordFileReader(const std::string& filename, int fd);
   bool MmapFile();
+  bool GetFeatureSection(int feature, const char** pstart, const char** pend);
 
   const std::string filename_;
   int record_fd_;

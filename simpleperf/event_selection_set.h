@@ -54,7 +54,8 @@ class EventSelectionSet {
   void SetSampleFreq(uint64_t sample_freq);
   void SetSamplePeriod(uint64_t sample_period);
   bool SetBranchSampling(uint64_t branch_sample_type);
-  void EnableCallChainSampling();
+  void EnableFpCallChainSampling();
+  bool EnableDwarfCallChainSampling(uint32_t dump_stack_size);
   void SetInherit(bool enable);
 
   bool OpenEventFilesForAllCpus();
@@ -84,5 +85,8 @@ class EventSelectionSet {
 
   DISALLOW_COPY_AND_ASSIGN(EventSelectionSet);
 };
+
+bool IsBranchSamplingSupported();
+bool IsDwarfCallChainSamplingSupported();
 
 #endif  // SIMPLE_PERF_EVENT_SELECTION_SET_H_
