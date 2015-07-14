@@ -44,13 +44,17 @@ const SymbolEntry* DsoEntry::FindSymbol(uint64_t offset_in_dso) {
   return nullptr;
 }
 
-bool DsoFactory::demangle = true;
-
-void DsoFactory::SetDemangle(bool demangle) {
-  DsoFactory::demangle = demangle;
+DsoFactory* DsoFactory::GetInstance() {
+  static DsoFactory dso_factory;
+  return &dso_factory;
 }
 
-std::string DsoFactory::symfs_dir;
+DsoFactory::DsoFactory() : demangle_(true) {
+}
+
+void DsoFactory::SetDemangle(bool demangle) {
+  demangle_ = demangle;
+}
 
 bool DsoFactory::SetSymFsDir(const std::string& symfs_dir) {
   std::string dirname = symfs_dir;
@@ -66,11 +70,13 @@ bool DsoFactory::SetSymFsDir(const std::string& symfs_dir) {
       return false;
     }
   }
-  DsoFactory::symfs_dir = dirname;
+  symfs_dir_ = dirname;
   return true;
 }
 
-std::unordered_map<std::string, BuildId> DsoFactory::build_id_map;
+void DsoFactory::SetVmlinux(const std::string& vmlinux) {
+  vmlinux_ = vmlinux;
+}
 
 void DsoFactory::SetBuildIds(const std::vector<std::pair<std::string, BuildId>>& build_ids) {
   std::unordered_map<std::string, BuildId> map;
@@ -78,7 +84,7 @@ void DsoFactory::SetBuildIds(const std::vector<std::pair<std::string, BuildId>>&
     LOG(DEBUG) << "build_id_map: " << pair.first << ", " << pair.second.ToString();
     map.insert(pair);
   }
-  build_id_map = std::move(map);
+  build_id_map_ = std::move(map);
 }
 
 static bool IsKernelFunctionSymbol(const KernelSymbol& symbol) {
@@ -97,6 +103,17 @@ static bool KernelSymbolCallback(const KernelSymbol& kernel_symbol, DsoEntry* ds
   return false;
 }
 
+static void VmlinuxSymbolCallback(const ElfFileSymbol& elf_symbol, DsoEntry* dso) {
+  if (elf_symbol.is_func) {
+    SymbolEntry* symbol = new SymbolEntry{
+        elf_symbol.name,   // name
+        elf_symbol.vaddr,  // addr
+        elf_symbol.len,    // len
+    };
+    dso->symbols.insert(std::unique_ptr<SymbolEntry>(symbol));
+  }
+}
+
 static void FixupSymbolLength(DsoEntry* dso) {
   SymbolEntry* prev_symbol = nullptr;
   for (auto& symbol : dso->symbols) {
@@ -110,19 +127,23 @@ static void FixupSymbolLength(DsoEntry* dso) {
   }
 }
 
-// TODO: Fix the way to get kernel symbols. See b/22179177.
 std::unique_ptr<DsoEntry> DsoFactory::LoadKernel() {
   std::unique_ptr<DsoEntry> dso(new DsoEntry);
   dso->path = "[kernel.kallsyms]";
   BuildId build_id = GetExpectedBuildId(DEFAULT_KERNEL_FILENAME_FOR_BUILD_ID);
-  BuildId real_build_id;
-  GetKernelBuildId(&real_build_id);
-  bool match = (build_id == real_build_id);
-  LOG(DEBUG) << "check kernel build id (" << (match ? "match" : "mismatch") << "): expected "
-             << build_id.ToString() << ", real " << real_build_id.ToString();
-  if (match) {
-    ProcessKernelSymbols("/proc/kallsyms",
-                         std::bind(&KernelSymbolCallback, std::placeholders::_1, dso.get()));
+  if (!vmlinux_.empty()) {
+    ParseSymbolsFromElfFile(vmlinux_, build_id,
+                            std::bind(VmlinuxSymbolCallback, std::placeholders::_1, dso.get()));
+  } else {
+    BuildId real_build_id;
+    GetKernelBuildId(&real_build_id);
+    bool match = (build_id == real_build_id);
+    LOG(DEBUG) << "check kernel build id (" << (match ? "match" : "mismatch") << "): expected "
+               << build_id.ToString() << ", real " << real_build_id.ToString();
+    if (match) {
+      ProcessKernelSymbols("/proc/kallsyms",
+                           std::bind(&KernelSymbolCallback, std::placeholders::_1, dso.get()));
+    }
   }
   FixupSymbolLength(dso.get());
   return dso;
@@ -149,7 +170,7 @@ std::unique_ptr<DsoEntry> DsoFactory::LoadKernelModule(const std::string& dso_pa
   std::unique_ptr<DsoEntry> dso(new DsoEntry);
   dso->path = dso_path;
   BuildId build_id = GetExpectedBuildId(dso_path);
-  ParseSymbolsFromElfFile(symfs_dir + dso_path, build_id,
+  ParseSymbolsFromElfFile(symfs_dir_ + dso_path, build_id,
                           std::bind(ParseSymbolCallback, std::placeholders::_1, dso.get(),
                                     SymbolFilterForKernelModule));
   FixupSymbolLength(dso.get());
@@ -188,9 +209,9 @@ std::unique_ptr<DsoEntry> DsoFactory::LoadDso(const std::string& dso_path) {
   dso->path = dso_path;
   BuildId build_id = GetExpectedBuildId(dso_path);
   ParseSymbolsFromElfFile(
-      symfs_dir + dso_path, build_id,
+      symfs_dir_ + dso_path, build_id,
       std::bind(ParseSymbolCallback, std::placeholders::_1, dso.get(), SymbolFilterForDso));
-  if (demangle) {
+  if (demangle_) {
     for (auto& symbol : dso->symbols) {
       DemangleInPlace(&symbol->name);
     }
@@ -200,8 +221,8 @@ std::unique_ptr<DsoEntry> DsoFactory::LoadDso(const std::string& dso_path) {
 }
 
 BuildId DsoFactory::GetExpectedBuildId(const std::string& filename) {
-  auto it = build_id_map.find(filename);
-  if (it != build_id_map.end()) {
+  auto it = build_id_map_.find(filename);
+  if (it != build_id_map_.end()) {
     return it->second;
   }
   return BuildId();
