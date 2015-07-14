@@ -22,6 +22,7 @@
 #include "environment.h"
 #include "event_attr.h"
 #include "event_type.h"
+#include "perf_regs.h"
 
 bool IsBranchSamplingSupported() {
   const EventType* type = FindEventTypeByName("cpu-cycles");
@@ -31,6 +32,19 @@ bool IsBranchSamplingSupported() {
   perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
   attr.sample_type |= PERF_SAMPLE_BRANCH_STACK;
   attr.branch_sample_type = PERF_SAMPLE_BRANCH_ANY;
+  return IsEventAttrSupportedByKernel(attr);
+}
+
+bool IsDwarfCallChainSamplingSupported() {
+  const EventType* type = FindEventTypeByName("cpu-cycles");
+  if (type == nullptr) {
+    return false;
+  }
+  perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
+  attr.sample_type |= PERF_SAMPLE_CALLCHAIN | PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER;
+  attr.exclude_callchain_user = 1;
+  attr.sample_regs_user = GetSupportedRegMask();
+  attr.sample_stack_user = 8192;
   return IsEventAttrSupportedByKernel(attr);
 }
 
@@ -112,10 +126,25 @@ bool EventSelectionSet::SetBranchSampling(uint64_t branch_sample_type) {
   return true;
 }
 
-void EventSelectionSet::EnableCallChainSampling() {
+void EventSelectionSet::EnableFpCallChainSampling() {
   for (auto& selection : selections_) {
     selection.event_attr.sample_type |= PERF_SAMPLE_CALLCHAIN;
   }
+}
+
+bool EventSelectionSet::EnableDwarfCallChainSampling(uint32_t dump_stack_size) {
+  if (!IsDwarfCallChainSamplingSupported()) {
+    LOG(ERROR) << "dwarf callchain sampling is not supported on this device.";
+    return false;
+  }
+  for (auto& selection : selections_) {
+    selection.event_attr.sample_type |=
+        PERF_SAMPLE_CALLCHAIN | PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER;
+    selection.event_attr.exclude_callchain_user = 1;
+    selection.event_attr.sample_regs_user = GetSupportedRegMask();
+    selection.event_attr.sample_stack_user = dump_stack_size;
+  }
+  return true;
 }
 
 void EventSelectionSet::SetInherit(bool enable) {

@@ -81,6 +81,17 @@ struct PerfSampleBranchStackType {
   std::vector<BranchStackItemType> stack;
 };
 
+struct PerfSampleRegsUserType {
+  uint64_t abi;
+  uint64_t reg_mask;
+  std::vector<uint64_t> regs;
+};
+
+struct PerfSampleStackUserType {
+  std::vector<char> data;
+  uint64_t dyn_size;
+};
+
 // SampleId is optional at the end of a record in binary format. Its content is determined by
 // sample_id_all and sample_type in perf_event_attr. To avoid the complexity of referring to
 // perf_event_attr each time, we copy sample_id_all and sample_type inside the SampleId structure.
@@ -232,6 +243,8 @@ struct SampleRecord : public Record {
 
   PerfSampleCallChainType callchain_data;       // Valid if PERF_SAMPLE_CALLCHAIN.
   PerfSampleBranchStackType branch_stack_data;  // Valid if PERF_SAMPLE_BRANCH_STACK.
+  PerfSampleRegsUserType regs_user_data;        // Valid if PERF_SAMPLE_REGS_USER.
+  PerfSampleStackUserType stack_user_data;      // Valid if PERF_SAMPLE_STACK_USER.
 
   SampleRecord(const perf_event_attr& attr, const perf_event_header* pheader);
 

@@ -23,6 +23,7 @@
 #include <base/stringprintf.h>
 
 #include "environment.h"
+#include "perf_regs.h"
 #include "utils.h"
 
 static std::string RecordTypeToString(int record_type) {
@@ -307,6 +308,33 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, const perf_event_header*
     branch_stack_data.stack.resize(nr);
     MoveFromBinaryFormat(branch_stack_data.stack.data(), nr, p);
   }
+  if (sample_type & PERF_SAMPLE_REGS_USER) {
+    MoveFromBinaryFormat(regs_user_data.abi, p);
+    if (regs_user_data.abi == 0) {
+      regs_user_data.reg_mask = 0;
+    } else {
+      regs_user_data.reg_mask = attr.sample_regs_user;
+      size_t bit_nr = 0;
+      for (size_t i = 0; i < 64; ++i) {
+        if ((regs_user_data.reg_mask >> i) & 1) {
+          bit_nr++;
+        }
+      }
+      regs_user_data.regs.resize(bit_nr);
+      MoveFromBinaryFormat(regs_user_data.regs.data(), bit_nr, p);
+    }
+  }
+  if (sample_type & PERF_SAMPLE_STACK_USER) {
+    uint64_t size;
+    MoveFromBinaryFormat(size, p);
+    if (size == 0) {
+      stack_user_data.dyn_size = 0;
+    } else {
+      stack_user_data.data.resize(size);
+      MoveFromBinaryFormat(stack_user_data.data.data(), size, p);
+      MoveFromBinaryFormat(stack_user_data.dyn_size, p);
+    }
+  }
   // TODO: Add parsing of other PERF_SAMPLE_*.
   CHECK_LE(p, end);
   if (p < end) {
@@ -352,6 +380,29 @@ void SampleRecord::DumpData(size_t indent) const {
       PrintIndented(indent + 1, "from 0x%" PRIx64 ", to 0x%" PRIx64 ", flags 0x%" PRIx64 "\n",
                     item.from, item.to, item.flags);
     }
+  }
+  if (sample_type & PERF_SAMPLE_REGS_USER) {
+    PrintIndented(indent, "user regs: abi=%" PRId64 "\n", regs_user_data.abi);
+    for (size_t i = 0, pos = 0; i < 64; ++i) {
+      if ((regs_user_data.reg_mask >> i) & 1) {
+        PrintIndented(indent + 1, "reg (%s) 0x%016" PRIx64 "\n", GetRegName(i).c_str(),
+                      regs_user_data.regs[pos++]);
+      }
+    }
+  }
+  if (sample_type & PERF_SAMPLE_STACK_USER) {
+    PrintIndented(indent, "user stack: size %zu dyn_size %" PRIu64 "\n",
+                  stack_user_data.data.size(), stack_user_data.dyn_size);
+    const uint64_t* p = reinterpret_cast<const uint64_t*>(stack_user_data.data.data());
+    const uint64_t* end = p + (stack_user_data.data.size() / sizeof(uint64_t));
+    while (p < end) {
+      PrintIndented(indent + 1, "");
+      for (size_t i = 0; i < 4 && p < end; ++i, ++p) {
+        printf(" %016" PRIx64, *p);
+      }
+      printf("\n");
+    }
+    printf("\n");
   }
 }
 
