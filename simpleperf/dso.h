@@ -45,19 +45,23 @@ struct DsoEntry {
 
 class DsoFactory {
  public:
-  static void SetDemangle(bool demangle);
-  static bool SetSymFsDir(const std::string& symfs_dir);
-  static void SetBuildIds(const std::vector<std::pair<std::string, BuildId>>& build_ids);
-  static std::unique_ptr<DsoEntry> LoadKernel();
-  static std::unique_ptr<DsoEntry> LoadKernelModule(const std::string& dso_path);
-  static std::unique_ptr<DsoEntry> LoadDso(const std::string& dso_path);
+  static DsoFactory* GetInstance();
+  void SetDemangle(bool demangle);
+  bool SetSymFsDir(const std::string& symfs_dir);
+  void SetVmlinux(const std::string& vmlinux);
+  void SetBuildIds(const std::vector<std::pair<std::string, BuildId>>& build_ids);
+  std::unique_ptr<DsoEntry> LoadKernel();
+  std::unique_ptr<DsoEntry> LoadKernelModule(const std::string& dso_path);
+  std::unique_ptr<DsoEntry> LoadDso(const std::string& dso_path);
 
  private:
-  static BuildId GetExpectedBuildId(const std::string& filename);
+  DsoFactory();
+  BuildId GetExpectedBuildId(const std::string& filename);
 
-  static bool demangle;
-  static std::string symfs_dir;
-  static std::unordered_map<std::string, BuildId> build_id_map;
+  bool demangle_;
+  std::string symfs_dir_;
+  std::string vmlinux_;
+  std::unordered_map<std::string, BuildId> build_id_map_;
 };
 
 #endif  // SIMPLE_PERF_DSO_H_

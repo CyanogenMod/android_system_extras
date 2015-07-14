@@ -88,13 +88,13 @@ void SampleTree::AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff,
 DsoEntry* SampleTree::FindKernelDsoOrNew(const std::string& filename) {
   if (filename == DEFAULT_KERNEL_MMAP_NAME) {
     if (kernel_dso_ == nullptr) {
-      kernel_dso_ = DsoFactory::LoadKernel();
+      kernel_dso_ = DsoFactory::GetInstance()->LoadKernel();
     }
     return kernel_dso_.get();
   }
   auto it = module_dso_tree_.find(filename);
   if (it == module_dso_tree_.end()) {
-    module_dso_tree_[filename] = DsoFactory::LoadKernelModule(filename);
+    module_dso_tree_[filename] = DsoFactory::GetInstance()->LoadKernelModule(filename);
     it = module_dso_tree_.find(filename);
   }
   return it->second.get();
@@ -127,7 +127,7 @@ ThreadEntry* SampleTree::FindThreadOrNew(int pid, int tid) {
 DsoEntry* SampleTree::FindUserDsoOrNew(const std::string& filename) {
   auto it = user_dso_tree_.find(filename);
   if (it == user_dso_tree_.end()) {
-    user_dso_tree_[filename] = DsoFactory::LoadDso(filename);
+    user_dso_tree_[filename] = DsoFactory::GetInstance()->LoadDso(filename);
     it = user_dso_tree_.find(filename);
   }
   return it->second.get();

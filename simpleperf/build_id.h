@@ -44,7 +44,7 @@ class BuildId {
   std::string ToString() const {
     std::string s = "0x";
     for (size_t i = 0; i < BUILD_ID_SIZE; ++i) {
-      s += android::base::StringPrintf("0x%02x", data_[i]);
+      s += android::base::StringPrintf("%02x", data_[i]);
     }
     return s;
   }
