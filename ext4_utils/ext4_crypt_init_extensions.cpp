@@ -142,6 +142,12 @@ int e4crypt_set_directory_policy(const char* dir)
     if (!dir || strncmp(dir, "/data/", 6) || strchr(dir + 6, '/')) {
         return 0;
     }
+
+    // Don't encrypt lost+found - ext4 doesn't like it
+    if (strcmp(dir, "/data/lost+found")) {
+        return 0;
+    }
+
     // ext4enc:TODO exclude /data/user with a horrible special case.
     if (!strcmp(dir, "/data/user")) {
         return 0;
@@ -157,8 +163,8 @@ int e4crypt_set_directory_policy(const char* dir)
     KLOG_INFO(TAG, "Setting policy on %s\n", dir);
     int result = do_policy_set(dir, policy.c_str(), policy.size());
     if (result) {
-        KLOG_ERROR(TAG, "Setting %s policy on %s failed!\n",
-                   policy.c_str(), dir);
+        KLOG_ERROR(TAG, "Setting %02x%02x%02x%02x policy on %s failed!\n",
+                   policy[0], policy[1], policy[2], policy[3], dir);
         return -1;
     }
 
