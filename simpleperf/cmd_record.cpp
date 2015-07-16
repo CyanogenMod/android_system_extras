@@ -119,7 +119,7 @@ class RecordCommand : public Command {
   bool SetEventSelection();
   bool WriteData(const char* data, size_t size);
   bool DumpKernelAndModuleMmaps();
-  bool DumpThreadCommAndMmaps();
+  bool DumpThreadCommAndMmaps(bool all_threads, const std::vector<pid_t>& selected_threads);
   bool DumpAdditionalFeatures(const std::vector<std::string>& args);
   bool DumpBuildIdFeature();
 
@@ -207,7 +207,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   if (!DumpKernelAndModuleMmaps()) {
     return false;
   }
-  if (system_wide_collection_ && !DumpThreadCommAndMmaps()) {
+  if (!DumpThreadCommAndMmaps(system_wide_collection_, monitored_threads_)) {
     return false;
   }
 
@@ -431,17 +431,33 @@ bool RecordCommand::DumpKernelAndModuleMmaps() {
   return true;
 }
 
-bool RecordCommand::DumpThreadCommAndMmaps() {
+bool RecordCommand::DumpThreadCommAndMmaps(bool all_threads,
+                                           const std::vector<pid_t>& selected_threads) {
   std::vector<ThreadComm> thread_comms;
   if (!GetThreadComms(&thread_comms)) {
     return false;
   }
+  // Decide which processes and threads to dump.
+  std::set<pid_t> dump_processes;
+  std::set<pid_t> dump_threads;
+  for (auto& tid : selected_threads) {
+    dump_threads.insert(tid);
+  }
+  for (auto& thread : thread_comms) {
+    if (dump_threads.find(thread.tid) != dump_threads.end()) {
+      dump_processes.insert(thread.pid);
+    }
+  }
+
   const perf_event_attr& attr =
       event_selection_set_.FindEventAttrByType(measured_event_type_modifier_->event_type);
 
   // Dump processes.
   for (auto& thread : thread_comms) {
     if (thread.pid != thread.tid) {
+      continue;
+    }
+    if (!all_threads && dump_processes.find(thread.pid) == dump_processes.end()) {
       continue;
     }
     CommRecord record = CreateCommRecord(attr, thread.pid, thread.tid, thread.comm);
@@ -469,6 +485,9 @@ bool RecordCommand::DumpThreadCommAndMmaps() {
   // Dump threads.
   for (auto& thread : thread_comms) {
     if (thread.pid == thread.tid) {
+      continue;
+    }
+    if (!all_threads && dump_threads.find(thread.tid) == dump_threads.end()) {
       continue;
     }
     ForkRecord fork_record = CreateForkRecord(attr, thread.pid, thread.tid, thread.pid, thread.pid);
