@@ -144,7 +144,7 @@ int e4crypt_set_directory_policy(const char* dir)
     }
 
     // Don't encrypt lost+found - ext4 doesn't like it
-    if (strcmp(dir, "/data/lost+found")) {
+    if (!strcmp(dir, "/data/lost+found")) {
         return 0;
     }
 
