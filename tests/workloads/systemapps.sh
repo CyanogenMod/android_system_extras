@@ -23,12 +23,13 @@
 # Other options are described below.
 #
 iterations=1
-tracecategories="gfx view am input memreclaim"
+tracecategories="gfx am memreclaim"
 totaltimetest=0
 forcecoldstart=0
 waitTime=3.0
+memstats=0
 
-appList="gmail hangouts chrome youtube play home"
+appList="gmail maps chrome youtube play home"
 
 function processLocalOption {
 	ret=0
@@ -38,6 +39,7 @@ function processLocalOption {
 	(-L) appList=$2; shift; ret=1;;
 	(-T) totaltimetest=1;;
 	(-W) waitTime=$2; shift; ret=1;;
+	(-M) memstats=1;;
 	(*)
 		echo "$0: unrecognized option: $1"
 		echo; echo "Usage: $0 [options]"
@@ -141,6 +143,7 @@ do
 	if [ $iterations -gt 1 ]; then
 		echo =========================================
 		echo Iteration $cur of $iterations
+		date
 		echo =========================================
 	fi
 	if [ $iterations -gt 1 -o $cur -eq 1 ]; then
@@ -160,8 +163,11 @@ do
 		if [ $totaltimetest -eq 0 ]; then
 			tmpTraceOut="$tmpTraceOutBase-$app.out"
 			>$tmpTraceOut
-			startInstramentation
+			startInstramentation $cur
 		else
+			if [ "$memstats" -gt 0 ]; then
+				startInstramentation $cur 0
+			fi
 			if [ $appnum -eq 0 ]; then
 				printf "%-8s %5s(ms) %3s(ms) %s      %s\n" App Start Iter Jank Latency
 			fi
@@ -239,6 +245,8 @@ if [ $totaltimetest -gt 0 ]; then
 	printf "%-10s %5.0f   %5.0f\n" TOTAL $totaltime $diffTime
 fi
 
+overallSum=0
+appCount=0
 if [ $iterations -gt 1 -a $totaltimetest -eq 0 ]; then
 	echo
 	echo =========================================
@@ -258,7 +266,14 @@ if [ $iterations -gt 1 -a $totaltimetest -eq 0 ]; then
 		((ave90=l90/iterations))
 		((ave95=l95/iterations))
 		((ave99=l99/iterations))
-		((jankPct=100*janks/frames))
+		if [ $frames -gt 0 ]; then
+			((jankPct=100*janks/frames))
+		fi
 		printf "%-12s %5d      %5d      %5d      %5d      %5d     %5d(%d%%) %d/%d/%d\n" $app $1 $ave $2 $4 $5 $janks $jankPct $ave90 $ave95 $ave99
+		((overallSum=overallSum+ave))
+		((appCount=appCount+1))
 	done
+	if [ $appCount -gt 0 ]; then
+		printf "Average Start Time: %.2f\n", $(echo $overallSum $appCount | awk '{ printf "%.2f\n", $1/$2 }')
+	fi
 fi
