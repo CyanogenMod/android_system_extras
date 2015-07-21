@@ -36,11 +36,22 @@ struct SymbolComparator {
                   const std::unique_ptr<SymbolEntry>& symbol2);
 };
 
+enum DsoType {
+  DSO_KERNEL,
+  DSO_KERNEL_MODULE,
+  DSO_ELF_FILE,
+};
+
 struct DsoEntry {
+  DsoType type;
   std::string path;
   std::set<std::unique_ptr<SymbolEntry>, SymbolComparator> symbols;
 
+  DsoEntry(DsoType type, const std::string& path);
   const SymbolEntry* FindSymbol(uint64_t offset_in_dso);
+
+ private:
+  bool is_loaded;
 };
 
 class DsoFactory {
@@ -50,12 +61,14 @@ class DsoFactory {
   bool SetSymFsDir(const std::string& symfs_dir);
   void SetVmlinux(const std::string& vmlinux);
   void SetBuildIds(const std::vector<std::pair<std::string, BuildId>>& build_ids);
-  std::unique_ptr<DsoEntry> LoadKernel();
-  std::unique_ptr<DsoEntry> LoadKernelModule(const std::string& dso_path);
-  std::unique_ptr<DsoEntry> LoadDso(const std::string& dso_path);
+  std::unique_ptr<DsoEntry> CreateDso(DsoType dso_type, const std::string& dso_path = "");
+  bool LoadDso(DsoEntry* dso);
 
  private:
   DsoFactory();
+  bool LoadKernel(DsoEntry* dso);
+  bool LoadKernelModule(DsoEntry* dso);
+  bool LoadElfFile(DsoEntry* dso);
   BuildId GetExpectedBuildId(const std::string& filename);
 
   bool demangle_;
