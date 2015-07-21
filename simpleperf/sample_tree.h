@@ -93,7 +93,8 @@ typedef std::function<int(const SampleEntry&, const SampleEntry&)> compare_sampl
 class SampleTree {
  public:
   SampleTree(compare_sample_func_t sample_compare_function)
-      : sample_comparator_(sample_compare_function),
+      : unknown_dso_(DSO_ELF_FILE, "unknown"),
+        sample_comparator_(sample_compare_function),
         sample_tree_(sample_comparator_),
         sorted_sample_comparator_(sample_compare_function),
         sorted_sample_tree_(sorted_sample_comparator_),
@@ -106,7 +107,6 @@ class SampleTree {
         0,              // time
         &unknown_dso_,  // dso
     };
-    unknown_dso_.path = "unknown";
     unknown_symbol_ = SymbolEntry{
         "unknown",   // name
         0,           // addr
