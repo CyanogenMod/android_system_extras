@@ -27,7 +27,15 @@ bool SymbolComparator::operator()(const std::unique_ptr<SymbolEntry>& symbol1,
   return symbol1->addr < symbol2->addr;
 }
 
+DsoEntry::DsoEntry(DsoType type, const std::string& path)
+    : type(type), path(path), is_loaded(false) {
+}
+
 const SymbolEntry* DsoEntry::FindSymbol(uint64_t offset_in_dso) {
+  if (!is_loaded) {
+    DsoFactory::GetInstance()->LoadDso(this);
+    is_loaded = true;
+  }
   std::unique_ptr<SymbolEntry> symbol(new SymbolEntry{
       "",             // name
       offset_in_dso,  // addr
@@ -87,6 +95,27 @@ void DsoFactory::SetBuildIds(const std::vector<std::pair<std::string, BuildId>>&
   build_id_map_ = std::move(map);
 }
 
+std::unique_ptr<DsoEntry> DsoFactory::CreateDso(DsoType dso_type, const std::string& dso_path) {
+  std::string path = dso_path;
+  if (dso_type == DSO_KERNEL) {
+    path = "[kernel.kallsyms]";
+  }
+  return std::unique_ptr<DsoEntry>(new DsoEntry(dso_type, path));
+}
+
+bool DsoFactory::LoadDso(DsoEntry* dso) {
+  switch (dso->type) {
+    case DSO_KERNEL:
+      return LoadKernel(dso);
+    case DSO_KERNEL_MODULE:
+      return LoadKernelModule(dso);
+    case DSO_ELF_FILE:
+      return LoadElfFile(dso);
+    default:
+      return false;
+  }
+}
+
 static bool IsKernelFunctionSymbol(const KernelSymbol& symbol) {
   return (symbol.type == 'T' || symbol.type == 't' || symbol.type == 'W' || symbol.type == 'w');
 }
@@ -127,13 +156,11 @@ static void FixupSymbolLength(DsoEntry* dso) {
   }
 }
 
-std::unique_ptr<DsoEntry> DsoFactory::LoadKernel() {
-  std::unique_ptr<DsoEntry> dso(new DsoEntry);
-  dso->path = "[kernel.kallsyms]";
+bool DsoFactory::LoadKernel(DsoEntry* dso) {
   BuildId build_id = GetExpectedBuildId(DEFAULT_KERNEL_FILENAME_FOR_BUILD_ID);
   if (!vmlinux_.empty()) {
     ParseSymbolsFromElfFile(vmlinux_, build_id,
-                            std::bind(VmlinuxSymbolCallback, std::placeholders::_1, dso.get()));
+                            std::bind(VmlinuxSymbolCallback, std::placeholders::_1, dso));
   } else {
     BuildId real_build_id;
     GetKernelBuildId(&real_build_id);
@@ -142,10 +169,10 @@ std::unique_ptr<DsoEntry> DsoFactory::LoadKernel() {
                << build_id.ToString() << ", real " << real_build_id.ToString();
     if (match) {
       ProcessKernelSymbols("/proc/kallsyms",
-                           std::bind(&KernelSymbolCallback, std::placeholders::_1, dso.get()));
+                           std::bind(&KernelSymbolCallback, std::placeholders::_1, dso));
     }
   }
-  FixupSymbolLength(dso.get());
+  FixupSymbolLength(dso);
   return dso;
 }
 
@@ -166,14 +193,12 @@ static bool SymbolFilterForKernelModule(const ElfFileSymbol& elf_symbol) {
   return (elf_symbol.is_func && elf_symbol.is_in_text_section);
 }
 
-std::unique_ptr<DsoEntry> DsoFactory::LoadKernelModule(const std::string& dso_path) {
-  std::unique_ptr<DsoEntry> dso(new DsoEntry);
-  dso->path = dso_path;
-  BuildId build_id = GetExpectedBuildId(dso_path);
-  ParseSymbolsFromElfFile(symfs_dir_ + dso_path, build_id,
-                          std::bind(ParseSymbolCallback, std::placeholders::_1, dso.get(),
-                                    SymbolFilterForKernelModule));
-  FixupSymbolLength(dso.get());
+bool DsoFactory::LoadKernelModule(DsoEntry* dso) {
+  BuildId build_id = GetExpectedBuildId(dso->path);
+  ParseSymbolsFromElfFile(
+      symfs_dir_ + dso->path, build_id,
+      std::bind(ParseSymbolCallback, std::placeholders::_1, dso, SymbolFilterForKernelModule));
+  FixupSymbolLength(dso);
   return dso;
 }
 
@@ -204,19 +229,17 @@ static void DemangleInPlace(std::string* name) {
   }
 }
 
-std::unique_ptr<DsoEntry> DsoFactory::LoadDso(const std::string& dso_path) {
-  std::unique_ptr<DsoEntry> dso(new DsoEntry);
-  dso->path = dso_path;
-  BuildId build_id = GetExpectedBuildId(dso_path);
+bool DsoFactory::LoadElfFile(DsoEntry* dso) {
+  BuildId build_id = GetExpectedBuildId(dso->path);
   ParseSymbolsFromElfFile(
-      symfs_dir_ + dso_path, build_id,
-      std::bind(ParseSymbolCallback, std::placeholders::_1, dso.get(), SymbolFilterForDso));
+      symfs_dir_ + dso->path, build_id,
+      std::bind(ParseSymbolCallback, std::placeholders::_1, dso, SymbolFilterForDso));
   if (demangle_) {
     for (auto& symbol : dso->symbols) {
       DemangleInPlace(&symbol->name);
     }
   }
-  FixupSymbolLength(dso.get());
+  FixupSymbolLength(dso);
   return dso;
 }
 
