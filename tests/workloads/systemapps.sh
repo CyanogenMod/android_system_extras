@@ -163,10 +163,10 @@ do
 		if [ $totaltimetest -eq 0 ]; then
 			tmpTraceOut="$tmpTraceOutBase-$app.out"
 			>$tmpTraceOut
-			startInstramentation $cur
+			startInstramentation "$app-$cur"
 		else
 			if [ "$memstats" -gt 0 ]; then
-				startInstramentation $cur 0
+				startInstramentation "$app-$cur" 0
 			fi
 			if [ $appnum -eq 0 ]; then
 				printf "%-8s %5s(ms) %3s(ms) %s      %s\n" App Start Iter Jank Latency
