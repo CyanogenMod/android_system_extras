@@ -63,7 +63,11 @@ ThreadEntry* ThreadTree::FindThreadOrNew(int pid, int tid) {
     AddThread(pid, tid, "unknown");
     it = thread_tree_.find(tid);
   } else {
-    CHECK_EQ(pid, it->second.get()->pid) << "tid = " << tid;
+    if (pid != it->second.get()->pid) {
+      // TODO: b/22185053.
+      LOG(DEBUG) << "unexpected (pid, tid) pair: expected (" << it->second.get()->pid << ", " << tid
+                 << "), actual (" << pid << ", " << tid << ")";
+    }
   }
   return it->second.get();
 }
