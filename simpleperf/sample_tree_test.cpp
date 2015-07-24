@@ -80,21 +80,22 @@ void VisitSampleTree(SampleTree* sample_tree,
 class SampleTreeTest : public testing::Test {
  protected:
   virtual void SetUp() {
-    sample_tree = std::unique_ptr<SampleTree>(new SampleTree(CompareSampleFunction));
-    sample_tree->AddThread(1, 1, "p1t1");
-    sample_tree->AddThread(1, 11, "p1t11");
-    sample_tree->AddThread(2, 2, "p2t2");
-    sample_tree->AddThreadMap(1, 1, 1, 5, 0, 0, "process1_thread1");
-    sample_tree->AddThreadMap(1, 1, 6, 5, 0, 0, "process1_thread1_map2");
-    sample_tree->AddThreadMap(1, 11, 1, 10, 0, 0, "process1_thread11");
-    sample_tree->AddThreadMap(2, 2, 1, 20, 0, 0, "process2_thread2");
-    sample_tree->AddKernelMap(10, 20, 0, 0, "kernel");
+    thread_tree.AddThread(1, 1, "p1t1");
+    thread_tree.AddThread(1, 11, "p1t11");
+    thread_tree.AddThread(2, 2, "p2t2");
+    thread_tree.AddThreadMap(1, 1, 1, 5, 0, 0, "process1_thread1");
+    thread_tree.AddThreadMap(1, 1, 6, 5, 0, 0, "process1_thread1_map2");
+    thread_tree.AddThreadMap(1, 11, 1, 10, 0, 0, "process1_thread11");
+    thread_tree.AddThreadMap(2, 2, 1, 20, 0, 0, "process2_thread2");
+    thread_tree.AddKernelMap(10, 20, 0, 0, "kernel");
+    sample_tree = std::unique_ptr<SampleTree>(new SampleTree(&thread_tree, CompareSampleFunction));
   }
 
   void VisitSampleTree(const std::vector<ExpectedSampleInMap>& expected_samples) {
     ::VisitSampleTree(sample_tree.get(), expected_samples);
   }
 
+  ThreadTree thread_tree;
   std::unique_ptr<SampleTree> sample_tree;
 };
 
@@ -128,7 +129,7 @@ TEST_F(SampleTreeTest, different_tid) {
 
 TEST_F(SampleTreeTest, different_comm) {
   sample_tree->AddSample(1, 1, 1, 0, 0, false);
-  sample_tree->AddThread(1, 1, "p1t1_comm2");
+  thread_tree.AddThread(1, 1, "p1t1_comm2");
   sample_tree->AddSample(1, 1, 1, 0, 0, false);
   std::vector<ExpectedSampleInMap> expected_samples = {
       {1, 1, "p1t1", "process1_thread1", 1, 1}, {1, 1, "p1t1_comm2", "process1_thread1", 1, 1},
@@ -166,16 +167,17 @@ TEST_F(SampleTreeTest, map_kernel) {
 }
 
 TEST(sample_tree, overlapped_map) {
-  auto sample_tree = std::unique_ptr<SampleTree>(new SampleTree(CompareSampleFunction));
-  sample_tree->AddThread(1, 1, "thread1");
-  sample_tree->AddThreadMap(1, 1, 1, 10, 0, 0, "map1");  // Add map 1.
-  sample_tree->AddSample(1, 1, 5, 0, 0, false);          // Hit map 1.
-  sample_tree->AddThreadMap(1, 1, 5, 20, 0, 0, "map2");  // Add map 2.
-  sample_tree->AddSample(1, 1, 6, 0, 0, false);          // Hit map 2.
-  sample_tree->AddSample(1, 1, 4, 0, 0, false);          // Hit unknown map.
-  sample_tree->AddThreadMap(1, 1, 2, 7, 0, 0, "map3");   // Add map 3.
-  sample_tree->AddSample(1, 1, 7, 0, 0, false);          // Hit map 3.
-  sample_tree->AddSample(1, 1, 10, 0, 0, false);         // Hit unknown map.
+  ThreadTree thread_tree;
+  SampleTree sample_tree(&thread_tree, CompareSampleFunction);
+  thread_tree.AddThread(1, 1, "thread1");
+  thread_tree.AddThreadMap(1, 1, 1, 10, 0, 0, "map1");  // Add map 1.
+  sample_tree.AddSample(1, 1, 5, 0, 0, false);          // Hit map 1.
+  thread_tree.AddThreadMap(1, 1, 5, 20, 0, 0, "map2");  // Add map 2.
+  sample_tree.AddSample(1, 1, 6, 0, 0, false);          // Hit map 2.
+  sample_tree.AddSample(1, 1, 4, 0, 0, false);          // Hit unknown map.
+  thread_tree.AddThreadMap(1, 1, 2, 7, 0, 0, "map3");   // Add map 3.
+  sample_tree.AddSample(1, 1, 7, 0, 0, false);          // Hit map 3.
+  sample_tree.AddSample(1, 1, 10, 0, 0, false);         // Hit unknown map.
 
   std::vector<ExpectedSampleInMap> expected_samples = {
       {1, 1, "thread1", "map1", 1, 1},
@@ -183,5 +185,5 @@ TEST(sample_tree, overlapped_map) {
       {1, 1, "thread1", "map3", 2, 1},
       {1, 1, "thread1", "unknown", 0, 2},
   };
-  VisitSampleTree(sample_tree.get(), expected_samples);
+  VisitSampleTree(&sample_tree, expected_samples);
 }
