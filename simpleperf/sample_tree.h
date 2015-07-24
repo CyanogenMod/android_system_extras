@@ -25,26 +25,7 @@
 #include <vector>
 
 #include "callchain.h"
-#include "dso.h"
-
-struct MapEntry {
-  uint64_t start_addr;
-  uint64_t len;
-  uint64_t pgoff;
-  uint64_t time;  // Map creation time.
-  DsoEntry* dso;
-};
-
-struct MapComparator {
-  bool operator()(const MapEntry* map1, const MapEntry* map2) const;
-};
-
-struct ThreadEntry {
-  int pid;
-  int tid;
-  const char* comm;  // It always refers to the latest comm.
-  std::set<MapEntry*, MapComparator> maps;
-};
+#include "thread_tree.h"
 
 struct BranchFromEntry {
   uint64_t ip;
@@ -92,34 +73,16 @@ typedef std::function<int(const SampleEntry&, const SampleEntry&)> compare_sampl
 
 class SampleTree {
  public:
-  SampleTree(compare_sample_func_t sample_compare_function)
-      : unknown_dso_(DSO_ELF_FILE, "unknown"),
+  SampleTree(ThreadTree* thread_tree, compare_sample_func_t sample_compare_function)
+      : thread_tree_(thread_tree),
         sample_comparator_(sample_compare_function),
         sample_tree_(sample_comparator_),
         sorted_sample_comparator_(sample_compare_function),
         sorted_sample_tree_(sorted_sample_comparator_),
         total_samples_(0),
         total_period_(0) {
-    unknown_map_ = MapEntry{
-        0,              // start_addr
-        ULLONG_MAX,     // len
-        0,              // pgoff
-        0,              // time
-        &unknown_dso_,  // dso
-    };
-    unknown_symbol_ = SymbolEntry{
-        "unknown",   // name
-        0,           // addr
-        ULLONG_MAX,  // len
-    };
   }
 
-  void AddThread(int pid, int tid, const std::string& comm);
-  void ForkThread(int pid, int tid, int ppid, int ptid);
-  void AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff, uint64_t time,
-                    const std::string& filename);
-  void AddThreadMap(int pid, int tid, uint64_t start_addr, uint64_t len, uint64_t pgoff,
-                    uint64_t time, const std::string& filename);
   SampleEntry* AddSample(int pid, int tid, uint64_t ip, uint64_t time, uint64_t period,
                          bool in_kernel);
   void AddBranchSample(int pid, int tid, uint64_t from_ip, uint64_t to_ip, uint64_t branch_flags,
@@ -139,11 +102,6 @@ class SampleTree {
   }
 
  private:
-  ThreadEntry* FindThreadOrNew(int pid, int tid);
-  const MapEntry* FindMap(const ThreadEntry* thread, uint64_t ip, bool in_kernel);
-  DsoEntry* FindKernelDsoOrNew(const std::string& filename);
-  DsoEntry* FindUserDsoOrNew(const std::string& filename);
-  const SymbolEntry* FindSymbol(const MapEntry* map, uint64_t ip);
   SampleEntry* InsertSample(SampleEntry& value);
   SampleEntry* AllocateSample(SampleEntry& value);
 
@@ -173,19 +131,7 @@ class SampleTree {
     compare_sample_func_t compare_function;
   };
 
-  std::unordered_map<int, std::unique_ptr<ThreadEntry>> thread_tree_;
-  std::vector<std::unique_ptr<std::string>> thread_comm_storage_;
-
-  std::set<MapEntry*, MapComparator> kernel_map_tree_;
-  std::vector<std::unique_ptr<MapEntry>> map_storage_;
-  MapEntry unknown_map_;
-
-  std::unique_ptr<DsoEntry> kernel_dso_;
-  std::unordered_map<std::string, std::unique_ptr<DsoEntry>> module_dso_tree_;
-  std::unordered_map<std::string, std::unique_ptr<DsoEntry>> user_dso_tree_;
-  DsoEntry unknown_dso_;
-  SymbolEntry unknown_symbol_;
-
+  ThreadTree* thread_tree_;
   SampleComparator sample_comparator_;
   std::set<SampleEntry*, SampleComparator> sample_tree_;
   SortedSampleComparator sorted_sample_comparator_;
