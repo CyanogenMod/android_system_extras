@@ -110,47 +110,12 @@ std::vector<uint64_t> RecordFileReader::IdsForAttr(const FileAttr* attr) {
   return result;
 }
 
-static bool IsRecordHappensBefore(const std::unique_ptr<const Record>& r1,
-                                  const std::unique_ptr<const Record>& r2) {
-  bool is_r1_sample = (r1->header.type == PERF_RECORD_SAMPLE);
-  bool is_r2_sample = (r2->header.type == PERF_RECORD_SAMPLE);
-  uint64_t time1 = (is_r1_sample ? static_cast<const SampleRecord*>(r1.get())->time_data.time
-                                 : r1->sample_id.time_data.time);
-  uint64_t time2 = (is_r2_sample ? static_cast<const SampleRecord*>(r2.get())->time_data.time
-                                 : r2->sample_id.time_data.time);
-  // The record with smaller time happens first.
-  if (time1 != time2) {
-    return time1 < time2;
-  }
-  // If happening at the same time, make non-sample records before sample records,
-  // because non-sample records may contain useful information to parse sample records.
-  if (is_r1_sample != is_r2_sample) {
-    return is_r1_sample ? false : true;
-  }
-  // Otherwise, don't care of the order.
-  return false;
-}
-
-std::vector<std::unique_ptr<const Record>> RecordFileReader::DataSection() {
-  std::vector<std::unique_ptr<const Record>> result;
+std::vector<std::unique_ptr<Record>> RecordFileReader::DataSection() {
   const struct FileHeader* header = FileHeader();
   auto file_attrs = AttrSection();
   CHECK(file_attrs.size() > 0);
-  perf_event_attr attr = file_attrs[0]->attr;
-
-  const char* end = mmap_addr_ + header->data.offset + header->data.size;
-  const char* p = mmap_addr_ + header->data.offset;
-  while (p < end) {
-    const perf_event_header* header = reinterpret_cast<const perf_event_header*>(p);
-    if (p + header->size <= end) {
-      result.push_back(ReadRecordFromBuffer(attr, header));
-    }
-    p += header->size;
-  }
-  if ((attr.sample_type & PERF_SAMPLE_TIME) && attr.sample_id_all) {
-    std::sort(result.begin(), result.end(), IsRecordHappensBefore);
-  }
-  return result;
+  return ReadRecordsFromBuffer(file_attrs[0]->attr, mmap_addr_ + header->data.offset,
+                               header->data.size);
 }
 
 const std::map<int, SectionDesc>& RecordFileReader::FeatureSectionDescriptors() {

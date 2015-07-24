@@ -17,6 +17,7 @@
 #include "record.h"
 
 #include <inttypes.h>
+#include <algorithm>
 #include <unordered_map>
 
 #include <base/logging.h>
@@ -435,24 +436,63 @@ std::vector<char> BuildIdRecord::BinaryFormat() const {
   return buf;
 }
 
-std::unique_ptr<const Record> ReadRecordFromBuffer(const perf_event_attr& attr,
-                                                   const perf_event_header* pheader) {
+static std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
+                                                    const perf_event_header* pheader) {
   switch (pheader->type) {
     case PERF_RECORD_MMAP:
-      return std::unique_ptr<const Record>(new MmapRecord(attr, pheader));
+      return std::unique_ptr<Record>(new MmapRecord(attr, pheader));
     case PERF_RECORD_MMAP2:
-      return std::unique_ptr<const Record>(new Mmap2Record(attr, pheader));
+      return std::unique_ptr<Record>(new Mmap2Record(attr, pheader));
     case PERF_RECORD_COMM:
-      return std::unique_ptr<const Record>(new CommRecord(attr, pheader));
+      return std::unique_ptr<Record>(new CommRecord(attr, pheader));
     case PERF_RECORD_EXIT:
-      return std::unique_ptr<const Record>(new ExitRecord(attr, pheader));
+      return std::unique_ptr<Record>(new ExitRecord(attr, pheader));
     case PERF_RECORD_FORK:
-      return std::unique_ptr<const Record>(new ForkRecord(attr, pheader));
+      return std::unique_ptr<Record>(new ForkRecord(attr, pheader));
     case PERF_RECORD_SAMPLE:
-      return std::unique_ptr<const Record>(new SampleRecord(attr, pheader));
+      return std::unique_ptr<Record>(new SampleRecord(attr, pheader));
     default:
-      return std::unique_ptr<const Record>(new Record(pheader));
+      return std::unique_ptr<Record>(new Record(pheader));
   }
+}
+
+static bool IsRecordHappensBefore(const std::unique_ptr<Record>& r1,
+                                  const std::unique_ptr<Record>& r2) {
+  bool is_r1_sample = (r1->header.type == PERF_RECORD_SAMPLE);
+  bool is_r2_sample = (r2->header.type == PERF_RECORD_SAMPLE);
+  uint64_t time1 = (is_r1_sample ? static_cast<const SampleRecord*>(r1.get())->time_data.time
+                                 : r1->sample_id.time_data.time);
+  uint64_t time2 = (is_r2_sample ? static_cast<const SampleRecord*>(r2.get())->time_data.time
+                                 : r2->sample_id.time_data.time);
+  // The record with smaller time happens first.
+  if (time1 != time2) {
+    return time1 < time2;
+  }
+  // If happening at the same time, make non-sample records before sample records,
+  // because non-sample records may contain useful information to parse sample records.
+  if (is_r1_sample != is_r2_sample) {
+    return is_r1_sample ? false : true;
+  }
+  // Otherwise, don't care of the order.
+  return false;
+}
+
+std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(const perf_event_attr& attr,
+                                                           const char* buf, size_t buf_size) {
+  std::vector<std::unique_ptr<Record>> result;
+  const char* p = buf;
+  const char* end = buf + buf_size;
+  while (p < end) {
+    const perf_event_header* header = reinterpret_cast<const perf_event_header*>(p);
+    if (p + header->size <= end) {
+      result.push_back(ReadRecordFromBuffer(attr, header));
+    }
+    p += header->size;
+  }
+  if ((attr.sample_type & PERF_SAMPLE_TIME) && attr.sample_id_all) {
+    std::sort(result.begin(), result.end(), IsRecordHappensBefore);
+  }
+  return result;
 }
 
 MmapRecord CreateMmapRecord(const perf_event_attr& attr, bool in_kernel, uint32_t pid, uint32_t tid,

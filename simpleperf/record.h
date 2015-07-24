@@ -268,8 +268,8 @@ struct BuildIdRecord : public Record {
   void DumpData(size_t indent) const override;
 };
 
-std::unique_ptr<const Record> ReadRecordFromBuffer(const perf_event_attr& attr,
-                                                   const perf_event_header* pheader);
+std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(const perf_event_attr& attr,
+                                                           const char* buf, size_t buf_size);
 MmapRecord CreateMmapRecord(const perf_event_attr& attr, bool in_kernel, uint32_t pid, uint32_t tid,
                             uint64_t addr, uint64_t len, uint64_t pgoff,
                             const std::string& filename);
@@ -279,4 +279,5 @@ ForkRecord CreateForkRecord(const perf_event_attr& attr, uint32_t pid, uint32_t 
                             uint32_t ptid);
 BuildIdRecord CreateBuildIdRecord(bool in_kernel, pid_t pid, const BuildId& build_id,
                                   const std::string& filename);
+
 #endif  // SIMPLE_PERF_RECORD_H_
