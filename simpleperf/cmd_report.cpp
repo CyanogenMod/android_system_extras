@@ -34,6 +34,7 @@
 #include "record.h"
 #include "record_file.h"
 #include "sample_tree.h"
+#include "thread_tree.h"
 
 class Displayable {
  public:
@@ -257,7 +258,8 @@ class ReportCommand : public Command {
         print_callgraph_(false) {
     compare_sample_func_t compare_sample_callback = std::bind(
         &ReportCommand::CompareSampleEntry, this, std::placeholders::_1, std::placeholders::_2);
-    sample_tree_ = std::unique_ptr<SampleTree>(new SampleTree(compare_sample_callback));
+    sample_tree_ =
+        std::unique_ptr<SampleTree>(new SampleTree(&thread_tree_, compare_sample_callback));
   }
 
   bool Run(const std::vector<std::string>& args);
@@ -282,6 +284,7 @@ class ReportCommand : public Command {
   perf_event_attr event_attr_;
   std::vector<std::unique_ptr<Displayable>> displayable_items_;
   std::vector<Comparable*> comparable_items_;
+  ThreadTree thread_tree_;
   std::unique_ptr<SampleTree> sample_tree_;
   bool use_branch_address_;
   std::string record_cmdline_;
@@ -445,38 +448,38 @@ bool ReportCommand::ReadEventAttrFromRecordFile() {
 }
 
 void ReportCommand::ReadSampleTreeFromRecordFile() {
-  sample_tree_->AddThread(0, 0, "swapper");
+  thread_tree_.AddThread(0, 0, "swapper");
 
   std::vector<std::unique_ptr<const Record>> records = record_file_reader_->DataSection();
   for (auto& record : records) {
     if (record->header.type == PERF_RECORD_MMAP) {
       const MmapRecord& r = *static_cast<const MmapRecord*>(record.get());
       if ((r.header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL) {
-        sample_tree_->AddKernelMap(r.data.addr, r.data.len, r.data.pgoff,
-                                   r.sample_id.time_data.time, r.filename);
+        thread_tree_.AddKernelMap(r.data.addr, r.data.len, r.data.pgoff, r.sample_id.time_data.time,
+                                  r.filename);
       } else {
-        sample_tree_->AddThreadMap(r.data.pid, r.data.tid, r.data.addr, r.data.len, r.data.pgoff,
-                                   r.sample_id.time_data.time, r.filename);
+        thread_tree_.AddThreadMap(r.data.pid, r.data.tid, r.data.addr, r.data.len, r.data.pgoff,
+                                  r.sample_id.time_data.time, r.filename);
       }
     } else if (record->header.type == PERF_RECORD_MMAP2) {
       const Mmap2Record& r = *static_cast<const Mmap2Record*>(record.get());
       if ((r.header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL) {
-        sample_tree_->AddKernelMap(r.data.addr, r.data.len, r.data.pgoff,
-                                   r.sample_id.time_data.time, r.filename);
+        thread_tree_.AddKernelMap(r.data.addr, r.data.len, r.data.pgoff, r.sample_id.time_data.time,
+                                  r.filename);
       } else {
         std::string filename =
             (r.filename == DEFAULT_EXECNAME_FOR_THREAD_MMAP) ? "[unknown]" : r.filename;
-        sample_tree_->AddThreadMap(r.data.pid, r.data.tid, r.data.addr, r.data.len, r.data.pgoff,
-                                   r.sample_id.time_data.time, filename);
+        thread_tree_.AddThreadMap(r.data.pid, r.data.tid, r.data.addr, r.data.len, r.data.pgoff,
+                                  r.sample_id.time_data.time, filename);
       }
     } else if (record->header.type == PERF_RECORD_SAMPLE) {
       ProcessSampleRecord(*static_cast<const SampleRecord*>(record.get()));
     } else if (record->header.type == PERF_RECORD_COMM) {
       const CommRecord& r = *static_cast<const CommRecord*>(record.get());
-      sample_tree_->AddThread(r.data.pid, r.data.tid, r.comm);
+      thread_tree_.AddThread(r.data.pid, r.data.tid, r.comm);
     } else if (record->header.type == PERF_RECORD_FORK) {
       const ForkRecord& r = *static_cast<const ForkRecord*>(record.get());
-      sample_tree_->ForkThread(r.data.pid, r.data.tid, r.data.ppid, r.data.ptid);
+      thread_tree_.ForkThread(r.data.pid, r.data.tid, r.data.ppid, r.data.ptid);
     }
   }
 }
