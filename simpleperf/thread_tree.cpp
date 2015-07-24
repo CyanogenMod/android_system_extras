@@ -18,6 +18,8 @@
 
 #include <base/logging.h>
 #include "environment.h"
+#include "perf_event.h"
+#include "record.h"
 
 bool MapComparator::operator()(const MapEntry* map1, const MapEntry* map2) const {
   if (map1->start_addr != map2->start_addr) {
@@ -174,4 +176,36 @@ const SymbolEntry* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip) {
     symbol = &unknown_symbol_;
   }
   return symbol;
+}
+
+void BuildThreadTree(const std::vector<std::unique_ptr<Record>>& records, ThreadTree* thread_tree) {
+  for (auto& record : records) {
+    if (record->header.type == PERF_RECORD_MMAP) {
+      const MmapRecord& r = *static_cast<const MmapRecord*>(record.get());
+      if ((r.header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL) {
+        thread_tree->AddKernelMap(r.data.addr, r.data.len, r.data.pgoff, r.sample_id.time_data.time,
+                                  r.filename);
+      } else {
+        thread_tree->AddThreadMap(r.data.pid, r.data.tid, r.data.addr, r.data.len, r.data.pgoff,
+                                  r.sample_id.time_data.time, r.filename);
+      }
+    } else if (record->header.type == PERF_RECORD_MMAP2) {
+      const Mmap2Record& r = *static_cast<const Mmap2Record*>(record.get());
+      if ((r.header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL) {
+        thread_tree->AddKernelMap(r.data.addr, r.data.len, r.data.pgoff, r.sample_id.time_data.time,
+                                  r.filename);
+      } else {
+        std::string filename =
+            (r.filename == DEFAULT_EXECNAME_FOR_THREAD_MMAP) ? "[unknown]" : r.filename;
+        thread_tree->AddThreadMap(r.data.pid, r.data.tid, r.data.addr, r.data.len, r.data.pgoff,
+                                  r.sample_id.time_data.time, filename);
+      }
+    } else if (record->header.type == PERF_RECORD_COMM) {
+      const CommRecord& r = *static_cast<const CommRecord*>(record.get());
+      thread_tree->AddThread(r.data.pid, r.data.tid, r.comm);
+    } else if (record->header.type == PERF_RECORD_FORK) {
+      const ForkRecord& r = *static_cast<const ForkRecord*>(record.get());
+      thread_tree->ForkThread(r.data.pid, r.data.tid, r.data.ppid, r.data.ptid);
+    }
+  }
 }

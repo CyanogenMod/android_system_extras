@@ -89,4 +89,8 @@ class ThreadTree {
   SymbolEntry unknown_symbol_;
 };
 
+struct Record;
+
+void BuildThreadTree(const std::vector<std::unique_ptr<Record>>& records, ThreadTree* thread_tree);
+
 #endif  // SIMPLE_PERF_THREAD_TREE_H_

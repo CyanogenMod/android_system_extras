@@ -172,7 +172,7 @@ void DumpRecordCommand::DumpAttrSection() {
 }
 
 void DumpRecordCommand::DumpDataSection() {
-  std::vector<std::unique_ptr<const Record>> records = record_file_reader_->DataSection();
+  std::vector<std::unique_ptr<Record>> records = record_file_reader_->DataSection();
   for (auto& record : records) {
     record->Dump();
   }
