@@ -46,10 +46,8 @@ class RecordFileWriter {
     return WriteData(data.data(), data.size());
   }
 
-  // Use MmapRecords and SampleRecords in record file to conclude which modules/files were executing
-  // at sample times.
-  bool GetHitModules(std::vector<std::string>* hit_kernel_modules,
-                     std::vector<std::string>* hit_user_files);
+  // Read data section that has been written, for further processing.
+  bool ReadDataSection(std::vector<std::unique_ptr<Record>>* records);
 
   bool WriteFeatureHeader(size_t feature_count);
   bool WriteBuildIdFeature(const std::vector<BuildIdRecord>& build_id_records);
@@ -101,7 +99,7 @@ class RecordFileReader {
   const PerfFileFormat::FileHeader* FileHeader();
   std::vector<const PerfFileFormat::FileAttr*> AttrSection();
   std::vector<uint64_t> IdsForAttr(const PerfFileFormat::FileAttr* attr);
-  std::vector<std::unique_ptr<const Record>> DataSection();
+  std::vector<std::unique_ptr<Record>> DataSection();
   const std::map<int, PerfFileFormat::SectionDesc>& FeatureSectionDescriptors();
   const char* DataAtOffset(uint64_t offset) {
     return mmap_addr_ + offset;
