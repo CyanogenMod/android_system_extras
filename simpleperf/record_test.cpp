@@ -38,10 +38,10 @@ class RecordTest : public ::testing::Test {
 template <class RecordType>
 void RecordTest::CheckRecordMatchBinary(const RecordType& record) {
   std::vector<char> binary = record.BinaryFormat();
-  std::unique_ptr<const Record> record_p =
-      ReadRecordFromBuffer(event_attr, reinterpret_cast<const perf_event_header*>(binary.data()));
-  ASSERT_TRUE(record_p != nullptr);
-  CheckRecordEqual(record, *record_p);
+  std::vector<std::unique_ptr<Record>> records =
+      ReadRecordsFromBuffer(event_attr, binary.data(), binary.size());
+  ASSERT_EQ(1u, records.size());
+  CheckRecordEqual(record, *records[0]);
 }
 
 TEST_F(RecordTest, MmapRecordMatchBinary) {

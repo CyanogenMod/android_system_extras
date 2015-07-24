@@ -133,64 +133,7 @@ bool RecordFileWriter::Write(const void* buf, size_t len) {
   return true;
 }
 
-void RecordFileWriter::GetHitModulesInBuffer(const char* p, const char* end,
-                                             std::vector<std::string>* hit_kernel_modules,
-                                             std::vector<std::string>* hit_user_files) {
-  std::vector<std::unique_ptr<const Record>> kernel_mmaps;
-  std::vector<std::unique_ptr<const Record>> user_mmaps;
-  std::set<std::string> hit_kernel_set;
-  std::set<std::string> hit_user_set;
-
-  while (p < end) {
-    auto header = reinterpret_cast<const perf_event_header*>(p);
-    CHECK_LE(p + header->size, end);
-    p += header->size;
-    std::unique_ptr<const Record> record = ReadRecordFromBuffer(event_attr_, header);
-    CHECK(record != nullptr);
-    if (record->header.type == PERF_RECORD_MMAP) {
-      if (record->header.misc & PERF_RECORD_MISC_KERNEL) {
-        kernel_mmaps.push_back(std::move(record));
-      } else {
-        user_mmaps.push_back(std::move(record));
-      }
-    } else if (record->header.type == PERF_RECORD_SAMPLE) {
-      auto& r = *static_cast<const SampleRecord*>(record.get());
-      if (!(r.sample_type & PERF_SAMPLE_IP) || !(r.sample_type & PERF_SAMPLE_TID)) {
-        continue;
-      }
-      uint32_t pid = r.tid_data.pid;
-      uint64_t ip = r.ip_data.ip;
-      if (r.header.misc & PERF_RECORD_MISC_KERNEL) {
-        // Loop from back to front, because new MmapRecords are inserted at the end of the mmaps,
-        // and we want to match the newest one.
-        for (auto it = kernel_mmaps.rbegin(); it != kernel_mmaps.rend(); ++it) {
-          auto& m_record = *reinterpret_cast<const MmapRecord*>(it->get());
-          if (ip >= m_record.data.addr && ip < m_record.data.addr + m_record.data.len) {
-            hit_kernel_set.insert(m_record.filename);
-            break;
-          }
-        }
-      } else {
-        for (auto it = user_mmaps.rbegin(); it != user_mmaps.rend(); ++it) {
-          auto& m_record = *reinterpret_cast<const MmapRecord*>(it->get());
-          if (pid == m_record.data.pid && ip >= m_record.data.addr &&
-              ip < m_record.data.addr + m_record.data.len) {
-            hit_user_set.insert(m_record.filename);
-            break;
-          }
-        }
-      }
-    }
-  }
-  hit_kernel_modules->clear();
-  hit_kernel_modules->insert(hit_kernel_modules->begin(), hit_kernel_set.begin(),
-                             hit_kernel_set.end());
-  hit_user_files->clear();
-  hit_user_files->insert(hit_user_files->begin(), hit_user_set.begin(), hit_user_set.end());
-}
-
-bool RecordFileWriter::GetHitModules(std::vector<std::string>* hit_kernel_modules,
-                                     std::vector<std::string>* hit_user_files) {
+bool RecordFileWriter::ReadDataSection(std::vector<std::unique_ptr<Record>>* records) {
   if (fflush(record_fp_) != 0) {
     PLOG(ERROR) << "fflush() failed";
     return false;
@@ -205,14 +148,14 @@ bool RecordFileWriter::GetHitModules(std::vector<std::string>* hit_kernel_module
     PLOG(ERROR) << "mmap() failed";
     return false;
   }
-  const char* data_section_p = reinterpret_cast<const char*>(mmap_addr) + data_section_offset_;
-  const char* data_section_end = data_section_p + data_section_size_;
-  GetHitModulesInBuffer(data_section_p, data_section_end, hit_kernel_modules, hit_user_files);
-
+  const char* data_section = reinterpret_cast<char*>(mmap_addr) + data_section_offset_;
+  std::vector<std::unique_ptr<Record>> result =
+      ReadRecordsFromBuffer(event_attr_, data_section, data_section_size_);
   if (munmap(mmap_addr, mmap_len) == -1) {
     PLOG(ERROR) << "munmap() failed";
     return false;
   }
+  *records = std::move(result);
   return true;
 }
 
