@@ -46,6 +46,7 @@ libsimpleperf_common_src_files := \
   record.cpp \
   record_file_reader.cpp \
   sample_tree.cpp \
+  thread_tree.cpp \
   utils.cpp \
 
 libsimpleperf_src_files := \
