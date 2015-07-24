@@ -60,7 +60,7 @@ TEST(record_cmd, dump_kernel_mmap) {
   ASSERT_TRUE(RecordCmd()->Run({"sleep", "1"}));
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance("perf.data");
   ASSERT_TRUE(reader != nullptr);
-  std::vector<std::unique_ptr<const Record>> records = reader->DataSection();
+  std::vector<std::unique_ptr<Record>> records = reader->DataSection();
   ASSERT_GT(records.size(), 0U);
   bool have_kernel_mmap = false;
   for (auto& record : records) {

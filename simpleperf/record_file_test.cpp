@@ -58,6 +58,12 @@ TEST_F(RecordFileTest, smoke) {
       CreateMmapRecord(event_attr, true, 1, 1, 0x1000, 0x2000, 0x3000, "mmap_record_example");
   ASSERT_TRUE(writer->WriteData(mmap_record.BinaryFormat()));
 
+  // Check data section that has been written.
+  std::vector<std::unique_ptr<Record>> records;
+  ASSERT_TRUE(writer->ReadDataSection(&records));
+  ASSERT_EQ(1u, records.size());
+  CheckRecordEqual(mmap_record, *records[0]);
+
   // Write feature section.
   ASSERT_TRUE(writer->WriteFeatureHeader(1));
   char p[BuildId::Size()];
@@ -81,7 +87,7 @@ TEST_F(RecordFileTest, smoke) {
   ASSERT_EQ(1u, ids.size());
 
   // Read and check data section.
-  std::vector<std::unique_ptr<const Record>> records = reader->DataSection();
+  records = reader->DataSection();
   ASSERT_EQ(1u, records.size());
   CheckRecordEqual(mmap_record, *records[0]);
 
@@ -120,7 +126,7 @@ TEST_F(RecordFileTest, records_sorted_by_time) {
   // Read from a record file.
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(filename);
   ASSERT_TRUE(reader != nullptr);
-  std::vector<std::unique_ptr<const Record>> records = reader->DataSection();
+  std::vector<std::unique_ptr<Record>> records = reader->DataSection();
   ASSERT_EQ(3u, records.size());
   CheckRecordEqual(r2, *records[0]);
   CheckRecordEqual(r1, *records[1]);

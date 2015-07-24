@@ -34,6 +34,7 @@
 #include "read_elf.h"
 #include "record.h"
 #include "record_file.h"
+#include "thread_tree.h"
 #include "utils.h"
 #include "workload.h"
 
@@ -122,6 +123,7 @@ class RecordCommand : public Command {
   bool DumpThreadCommAndMmaps(bool all_threads, const std::vector<pid_t>& selected_threads);
   bool DumpAdditionalFeatures(const std::vector<std::string>& args);
   bool DumpBuildIdFeature();
+  bool GetHitFiles(std::set<std::string>* kernel_modules, std::set<std::string>* user_files);
 
   bool use_sample_freq_;    // Use sample_freq_ when true, otherwise using sample_period_.
   uint64_t sample_freq_;    // Sample 'sample_freq_' times per second.
@@ -538,15 +540,15 @@ bool RecordCommand::DumpAdditionalFeatures(const std::vector<std::string>& args)
 }
 
 bool RecordCommand::DumpBuildIdFeature() {
-  std::vector<std::string> hit_kernel_modules;
-  std::vector<std::string> hit_user_files;
-  if (!record_file_writer_->GetHitModules(&hit_kernel_modules, &hit_user_files)) {
+  std::set<std::string> kernel_modules;
+  std::set<std::string> user_files;
+  if (!GetHitFiles(&kernel_modules, &user_files)) {
     return false;
   }
   std::vector<BuildIdRecord> build_id_records;
   BuildId build_id;
   // Add build_ids for kernel/modules.
-  for (auto& filename : hit_kernel_modules) {
+  for (auto& filename : kernel_modules) {
     if (filename == DEFAULT_KERNEL_MMAP_NAME) {
       if (!GetKernelBuildId(&build_id)) {
         LOG(DEBUG) << "can't read build_id for kernel";
@@ -555,7 +557,8 @@ bool RecordCommand::DumpBuildIdFeature() {
       build_id_records.push_back(
           CreateBuildIdRecord(true, UINT_MAX, build_id, DEFAULT_KERNEL_FILENAME_FOR_BUILD_ID));
     } else {
-      std::string module_name = basename(&filename[0]);
+      std::string path = filename;
+      std::string module_name = basename(&path[0]);
       if (android::base::EndsWith(module_name, ".ko")) {
         module_name = module_name.substr(0, module_name.size() - 3);
       }
@@ -567,7 +570,7 @@ bool RecordCommand::DumpBuildIdFeature() {
     }
   }
   // Add build_ids for user elf files.
-  for (auto& filename : hit_user_files) {
+  for (auto& filename : user_files) {
     if (filename == DEFAULT_EXECNAME_FOR_THREAD_MMAP) {
       continue;
     }
@@ -579,6 +582,30 @@ bool RecordCommand::DumpBuildIdFeature() {
   }
   if (!record_file_writer_->WriteBuildIdFeature(build_id_records)) {
     return false;
+  }
+  return true;
+}
+
+bool RecordCommand::GetHitFiles(std::set<std::string>* kernel_modules,
+                                std::set<std::string>* user_files) {
+  std::vector<std::unique_ptr<Record>> records;
+  if (!record_file_writer_->ReadDataSection(&records)) {
+    return false;
+  }
+  ThreadTree thread_tree;
+  BuildThreadTree(records, &thread_tree);
+  for (auto& record : records) {
+    if (record->header.type == PERF_RECORD_SAMPLE) {
+      auto r = *static_cast<const SampleRecord*>(record.get());
+      bool in_kernel = ((r.header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL);
+      const ThreadEntry* thread = thread_tree.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
+      const MapEntry* map = thread_tree.FindMap(thread, r.ip_data.ip, in_kernel);
+      if (in_kernel) {
+        kernel_modules->insert(map->dso->path);
+      } else {
+        user_files->insert(map->dso->path);
+      }
+    }
   }
   return true;
 }

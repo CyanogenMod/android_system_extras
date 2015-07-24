@@ -448,38 +448,12 @@ bool ReportCommand::ReadEventAttrFromRecordFile() {
 }
 
 void ReportCommand::ReadSampleTreeFromRecordFile() {
+  std::vector<std::unique_ptr<Record>> records = record_file_reader_->DataSection();
   thread_tree_.AddThread(0, 0, "swapper");
-
-  std::vector<std::unique_ptr<const Record>> records = record_file_reader_->DataSection();
+  BuildThreadTree(records, &thread_tree_);
   for (auto& record : records) {
-    if (record->header.type == PERF_RECORD_MMAP) {
-      const MmapRecord& r = *static_cast<const MmapRecord*>(record.get());
-      if ((r.header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL) {
-        thread_tree_.AddKernelMap(r.data.addr, r.data.len, r.data.pgoff, r.sample_id.time_data.time,
-                                  r.filename);
-      } else {
-        thread_tree_.AddThreadMap(r.data.pid, r.data.tid, r.data.addr, r.data.len, r.data.pgoff,
-                                  r.sample_id.time_data.time, r.filename);
-      }
-    } else if (record->header.type == PERF_RECORD_MMAP2) {
-      const Mmap2Record& r = *static_cast<const Mmap2Record*>(record.get());
-      if ((r.header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL) {
-        thread_tree_.AddKernelMap(r.data.addr, r.data.len, r.data.pgoff, r.sample_id.time_data.time,
-                                  r.filename);
-      } else {
-        std::string filename =
-            (r.filename == DEFAULT_EXECNAME_FOR_THREAD_MMAP) ? "[unknown]" : r.filename;
-        thread_tree_.AddThreadMap(r.data.pid, r.data.tid, r.data.addr, r.data.len, r.data.pgoff,
-                                  r.sample_id.time_data.time, filename);
-      }
-    } else if (record->header.type == PERF_RECORD_SAMPLE) {
+    if (record->header.type == PERF_RECORD_SAMPLE) {
       ProcessSampleRecord(*static_cast<const SampleRecord*>(record.get()));
-    } else if (record->header.type == PERF_RECORD_COMM) {
-      const CommRecord& r = *static_cast<const CommRecord*>(record.get());
-      thread_tree_.AddThread(r.data.pid, r.data.tid, r.comm);
-    } else if (record->header.type == PERF_RECORD_FORK) {
-      const ForkRecord& r = *static_cast<const ForkRecord*>(record.get());
-      thread_tree_.ForkThread(r.data.pid, r.data.tid, r.data.ppid, r.data.ptid);
     }
   }
 }
