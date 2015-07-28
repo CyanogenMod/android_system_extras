@@ -208,7 +208,7 @@ class NeighbourTest(multinetwork_base.MultiNetworkBaseTest):
       self.ReceiveUnicastAdvertisement(addr, mac)
       self.assertNeighbourState(NUD_REACHABLE, addr)
 
-    for i in xrange(5):
+    for _ in xrange(5):
       ForceProbe(router6, routermac)
 
 
