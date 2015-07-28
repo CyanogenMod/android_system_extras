@@ -24,6 +24,7 @@ import cstruct
 
 
 # Data structures.
+# These aren't constants, they're classes. So, pylint: disable=invalid-name
 CMsgHdr = cstruct.Struct("cmsghdr", "@Lii", "len level type")
 Iovec = cstruct.Struct("iovec", "@LL", "base len")
 MsgHdr = cstruct.Struct("msghdr", "@LLLLLLi",
@@ -111,6 +112,7 @@ def Bind(s, to):
   ret = libc.bind(s.fileno(), to.CPointer(), len(to))
   MaybeRaiseSocketError(ret)
   return ret
+
 
 def Connect(s, to):
   """Python wrapper for connect."""
