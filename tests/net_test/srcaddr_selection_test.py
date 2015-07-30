@@ -36,6 +36,9 @@ IPV6_PREFER_SRC_PUBLIC = 0x0002
 
 class IPv6SourceAddressSelectionTest(multinetwork_base.MultiNetworkBaseTest):
 
+  def SetIPv6Sysctl(self, ifname, sysctl, value):
+    self.SetSysctl("/proc/sys/net/ipv6/conf/%s/%s" % (ifname, sysctl), value)
+
   def SetDAD(self, ifname, value):
     self.SetSysctl("/proc/sys/net/ipv6/conf/%s/accept_dad" % ifname, value)
     self.SetSysctl("/proc/sys/net/ipv6/conf/%s/dad_transmits" % ifname, value)
@@ -115,10 +118,12 @@ class MultiInterfaceSourceAddressSelectionTest(IPv6SourceAddressSelectionTest):
     # [0]  Make sure DAD, optimistic DAD, and the use_optimistic option
     # are all consistently disabled at the outset.
     for netid in self.tuns:
-      self.SetDAD(self.GetInterfaceName(netid), 0)
-      self.SetOptimisticDAD(self.GetInterfaceName(netid), 0)
-      self.SetUseTempaddrs(self.GetInterfaceName(netid), 0)
-      self.SetUseOptimistic(self.GetInterfaceName(netid), 0)
+      ifname = self.GetInterfaceName(netid)
+      self.SetDAD(ifname, 0)
+      self.SetOptimisticDAD(ifname, 0)
+      self.SetUseTempaddrs(ifname, 0)
+      self.SetUseOptimistic(ifname, 0)
+      self.SetIPv6Sysctl(ifname, "use_oif_addrs_only", 0)
 
     # [1]  Pick an interface on which to test.
     self.test_netid = random.choice(self.tuns.keys())
@@ -299,6 +304,26 @@ class NoNsFromOptimisticTest(MultiInterfaceSourceAddressSelectionTest):
 
 
 # TODO(ek): add tests listening for netlink events.
+
+
+class DefaultCandidateSrcAddrsTest(MultiInterfaceSourceAddressSelectionTest):
+
+  def testChoosesNonInterfaceSourceAddress(self):
+    self.SetIPv6Sysctl(self.test_ifname, "use_oif_addrs_only", 0)
+    src_ip = self.GetSourceIP(self.test_netid)
+    self.assertFalse(src_ip in [self.test_ip, self.test_lladdr])
+    self.assertTrue(src_ip in
+        [self.MyAddress(6, netid)
+         for netid in self.tuns if netid != self.test_netid])
+
+
+class RestrictedCandidateSrcAddrsTest(MultiInterfaceSourceAddressSelectionTest):
+
+  def testChoosesOnlyInterfaceSourceAddress(self):
+    self.SetIPv6Sysctl(self.test_ifname, "use_oif_addrs_only", 1)
+    # self.test_ifname does not have a global IPv6 address, so the only
+    # candidate is the existing link-local address.
+    self.assertAddressSelected(self.test_lladdr, self.test_netid)
 
 
 if __name__ == "__main__":
