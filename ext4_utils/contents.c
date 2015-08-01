@@ -18,7 +18,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#ifdef HAVE_ANDROID_OS
+#ifdef __ANDROID__
 #include <linux/capability.h>
 #else
 #include <private/android_filesystem_capability.h>
