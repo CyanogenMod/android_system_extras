@@ -105,7 +105,8 @@ const EventType* FindEventTypeByName(const std::string& name) {
 std::unique_ptr<EventTypeAndModifier> ParseEventType(const std::string& event_type_str) {
   static std::string modifier_characters = "ukhGHp";
   std::unique_ptr<EventTypeAndModifier> event_type_modifier(new EventTypeAndModifier);
-  std::string name = event_type_str;
+  event_type_modifier->name = event_type_str;
+  std::string event_type_name = event_type_str;
   std::string modifier;
   size_t comm_pos = event_type_str.rfind(':');
   if (comm_pos != std::string::npos) {
@@ -118,17 +119,17 @@ std::unique_ptr<EventTypeAndModifier> ParseEventType(const std::string& event_ty
       }
     }
     if (match_modifier) {
-      name = event_type_str.substr(0, comm_pos);
+      event_type_name = event_type_str.substr(0, comm_pos);
       modifier = event_type_str.substr(comm_pos + 1);
     }
   }
-  const EventType* event_type = FindEventTypeByName(name);
+  const EventType* event_type = FindEventTypeByName(event_type_name);
   if (event_type == nullptr) {
     // Try if the modifier belongs to the event type name, like some tracepoint events.
     if (!modifier.empty()) {
-      name = event_type_str;
+      event_type_name = event_type_str;
       modifier.clear();
-      event_type = FindEventTypeByName(name);
+      event_type = FindEventTypeByName(event_type_name);
     }
     if (event_type == nullptr) {
       return nullptr;

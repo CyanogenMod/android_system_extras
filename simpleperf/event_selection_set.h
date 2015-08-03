@@ -62,24 +62,25 @@ class EventSelectionSet {
   bool OpenEventFilesForThreads(const std::vector<pid_t>& threads);
   bool OpenEventFilesForThreadsOnAllCpus(const std::vector<pid_t>& threads);
   bool EnableEvents();
-  bool ReadCounters(std::map<const EventType*, std::vector<PerfCounter>>* counters_map);
+  bool ReadCounters(std::map<const EventTypeAndModifier*, std::vector<PerfCounter>>* counters_map);
   void PreparePollForEventFiles(std::vector<pollfd>* pollfds);
   bool MmapEventFiles(size_t mmap_pages);
   bool ReadMmapEventData(std::function<bool(const char*, size_t)> callback);
 
   std::string FindEventFileNameById(uint64_t id);
-  const perf_event_attr& FindEventAttrByType(const EventType& event_type);
-  const std::vector<std::unique_ptr<EventFd>>& FindEventFdsByType(const EventType& event_type);
+  const perf_event_attr& FindEventAttrByType(const EventTypeAndModifier& event_type_modifier);
+  const std::vector<std::unique_ptr<EventFd>>& FindEventFdsByType(
+      const EventTypeAndModifier& event_type_modifier);
 
  private:
   bool OpenEventFiles(const std::vector<pid_t>& threads, const std::vector<int>& cpus);
 
   struct EventSelection {
-    EventType event_type;
+    EventTypeAndModifier event_type_modifier;
     perf_event_attr event_attr;
     std::vector<std::unique_ptr<EventFd>> event_fds;
   };
-  EventSelection* FindSelectionByType(const EventType& event_type);
+  EventSelection* FindSelectionByType(const EventTypeAndModifier& event_type_modifier);
 
   std::vector<EventSelection> selections_;
 

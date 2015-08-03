@@ -200,9 +200,8 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
 
   // 4. Open record file writer, and dump kernel/modules/threads mmap information.
   record_file_writer_ = RecordFileWriter::CreateInstance(
-      record_filename_,
-      event_selection_set_.FindEventAttrByType(measured_event_type_modifier_->event_type),
-      event_selection_set_.FindEventFdsByType(measured_event_type_modifier_->event_type));
+      record_filename_, event_selection_set_.FindEventAttrByType(*measured_event_type_modifier_),
+      event_selection_set_.FindEventFdsByType(*measured_event_type_modifier_));
   if (record_file_writer_ == nullptr) {
     return false;
   }
@@ -413,7 +412,7 @@ bool RecordCommand::DumpKernelAndModuleMmaps() {
     return false;
   }
   const perf_event_attr& attr =
-      event_selection_set_.FindEventAttrByType(measured_event_type_modifier_->event_type);
+      event_selection_set_.FindEventAttrByType(*measured_event_type_modifier_);
   MmapRecord mmap_record = CreateMmapRecord(attr, true, UINT_MAX, 0, kernel_mmap.start_addr,
                                             kernel_mmap.len, kernel_mmap.pgoff, kernel_mmap.name);
   if (!record_file_writer_->WriteData(mmap_record.BinaryFormat())) {
@@ -452,7 +451,7 @@ bool RecordCommand::DumpThreadCommAndMmaps(bool all_threads,
   }
 
   const perf_event_attr& attr =
-      event_selection_set_.FindEventAttrByType(measured_event_type_modifier_->event_type);
+      event_selection_set_.FindEventAttrByType(*measured_event_type_modifier_);
 
   // Dump processes.
   for (auto& thread : thread_comms) {

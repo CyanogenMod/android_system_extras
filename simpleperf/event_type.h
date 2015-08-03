@@ -45,6 +45,7 @@ const EventType* FindEventTypeByConfig(uint32_t type, uint64_t config);
 const EventType* FindEventTypeByName(const std::string& name);
 
 struct EventTypeAndModifier {
+  std::string name;
   EventType event_type;
   bool exclude_user;
   bool exclude_kernel;
