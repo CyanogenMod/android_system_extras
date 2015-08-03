@@ -548,7 +548,7 @@ bool RecordCommand::DumpBuildIdFeature() {
   BuildId build_id;
   // Add build_ids for kernel/modules.
   for (auto& filename : kernel_modules) {
-    if (filename == DEFAULT_KERNEL_MMAP_NAME) {
+    if (filename == DEFAULT_KERNEL_FILENAME_FOR_BUILD_ID) {
       if (!GetKernelBuildId(&build_id)) {
         LOG(DEBUG) << "can't read build_id for kernel";
         continue;
@@ -592,8 +592,8 @@ bool RecordCommand::GetHitFiles(std::set<std::string>* kernel_modules,
     return false;
   }
   ThreadTree thread_tree;
-  BuildThreadTree(records, &thread_tree);
   for (auto& record : records) {
+    BuildThreadTree(*record, &thread_tree);
     if (record->header.type == PERF_RECORD_SAMPLE) {
       auto r = *static_cast<const SampleRecord*>(record.get());
       bool in_kernel = ((r.header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL);
