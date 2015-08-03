@@ -450,8 +450,8 @@ bool ReportCommand::ReadEventAttrFromRecordFile() {
 void ReportCommand::ReadSampleTreeFromRecordFile() {
   std::vector<std::unique_ptr<Record>> records = record_file_reader_->DataSection();
   thread_tree_.AddThread(0, 0, "swapper");
-  BuildThreadTree(records, &thread_tree_);
   for (auto& record : records) {
+    BuildThreadTree(*record, &thread_tree_);
     if (record->header.type == PERF_RECORD_SAMPLE) {
       ProcessSampleRecord(*static_cast<const SampleRecord*>(record.get()));
     }
