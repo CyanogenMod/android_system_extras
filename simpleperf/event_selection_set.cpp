@@ -50,7 +50,7 @@ bool IsDwarfCallChainSamplingSupported() {
 
 bool EventSelectionSet::AddEventType(const EventTypeAndModifier& event_type_modifier) {
   EventSelection selection;
-  selection.event_type = event_type_modifier.event_type;
+  selection.event_type_modifier = event_type_modifier;
   selection.event_attr = CreateDefaultPerfEventAttr(event_type_modifier.event_type);
   selection.event_attr.exclude_user = event_type_modifier.exclude_user;
   selection.event_attr.exclude_kernel = event_type_modifier.exclude_kernel;
@@ -59,7 +59,7 @@ bool EventSelectionSet::AddEventType(const EventTypeAndModifier& event_type_modi
   selection.event_attr.exclude_guest = event_type_modifier.exclude_guest;
   selection.event_attr.precise_ip = event_type_modifier.precise_ip;
   if (!IsEventAttrSupportedByKernel(selection.event_attr)) {
-    LOG(ERROR) << "Event type '" << selection.event_type.name << "' is not supported by the kernel";
+    LOG(ERROR) << "Event type '" << event_type_modifier.name << "' is not supported by the kernel";
     return false;
   }
   selections_.push_back(std::move(selection));
@@ -184,8 +184,8 @@ bool EventSelectionSet::OpenEventFiles(const std::vector<pid_t>& threads,
       // As the online cpus can be enabled or disabled at runtime, we may not open event file for
       // all cpus successfully. But we should open at least one cpu successfully.
       if (open_per_thread == 0) {
-        PLOG(ERROR) << "failed to open perf event file for event_type " << selection.event_type.name
-                    << " for "
+        PLOG(ERROR) << "failed to open perf event file for event_type "
+                    << selection.event_type_modifier.name << " for "
                     << (tid == -1 ? "all threads" : android::base::StringPrintf(" thread %d", tid));
         return false;
       }
@@ -206,7 +206,7 @@ bool EventSelectionSet::EnableEvents() {
 }
 
 bool EventSelectionSet::ReadCounters(
-    std::map<const EventType*, std::vector<PerfCounter>>* counters_map) {
+    std::map<const EventTypeAndModifier*, std::vector<PerfCounter>>* counters_map) {
   for (auto& selection : selections_) {
     std::vector<PerfCounter> counters;
     for (auto& event_fd : selection.event_fds) {
@@ -216,7 +216,7 @@ bool EventSelectionSet::ReadCounters(
       }
       counters.push_back(counter);
     }
-    counters_map->insert(std::make_pair(&selection.event_type, counters));
+    counters_map->insert(std::make_pair(&selection.event_type_modifier, counters));
   }
   return true;
 }
@@ -290,20 +290,21 @@ std::string EventSelectionSet::FindEventFileNameById(uint64_t id) {
 }
 
 EventSelectionSet::EventSelection* EventSelectionSet::FindSelectionByType(
-    const EventType& event_type) {
+    const EventTypeAndModifier& event_type_modifier) {
   for (auto& selection : selections_) {
-    if (selection.event_type.name == event_type.name) {
+    if (selection.event_type_modifier.name == event_type_modifier.name) {
       return &selection;
     }
   }
   return nullptr;
 }
 
-const perf_event_attr& EventSelectionSet::FindEventAttrByType(const EventType& event_type) {
-  return FindSelectionByType(event_type)->event_attr;
+const perf_event_attr& EventSelectionSet::FindEventAttrByType(
+    const EventTypeAndModifier& event_type_modifier) {
+  return FindSelectionByType(event_type_modifier)->event_attr;
 }
 
 const std::vector<std::unique_ptr<EventFd>>& EventSelectionSet::FindEventFdsByType(
-    const EventType& event_type) {
-  return FindSelectionByType(event_type)->event_fds;
+    const EventTypeAndModifier& event_type_modifier) {
+  return FindSelectionByType(event_type_modifier)->event_fds;
 }
