@@ -80,14 +80,15 @@ class StatCommand : public Command {
   bool AddMeasuredEventType(const std::string& event_type_name);
   bool AddDefaultMeasuredEventTypes();
   bool SetEventSelection();
-  bool ShowCounters(const std::map<const EventType*, std::vector<PerfCounter>>& counters_map,
-                    std::chrono::steady_clock::duration counting_duration);
+  bool ShowCounters(
+      const std::map<const EventTypeAndModifier*, std::vector<PerfCounter>>& counters_map,
+      std::chrono::steady_clock::duration counting_duration);
 
   bool verbose_mode_;
   bool system_wide_collection_;
   bool child_inherit_;
   std::vector<pid_t> monitored_threads_;
-  std::vector<std::pair<std::string, EventTypeAndModifier>> measured_event_types_;
+  std::vector<EventTypeAndModifier> measured_event_types_;
   EventSelectionSet event_selection_set_;
 
   std::unique_ptr<SignalHandlerRegister> signal_handler_register_;
@@ -153,7 +154,7 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
   auto end_time = std::chrono::steady_clock::now();
 
   // 5. Read and print counters.
-  std::map<const EventType*, std::vector<PerfCounter>> counters_map;
+  std::map<const EventTypeAndModifier*, std::vector<PerfCounter>> counters_map;
   if (!event_selection_set_.ReadCounters(&counters_map)) {
     return false;
   }
@@ -224,7 +225,7 @@ bool StatCommand::AddMeasuredEventType(const std::string& event_type_name) {
   if (event_type_modifier == nullptr) {
     return false;
   }
-  measured_event_types_.push_back(std::make_pair(event_type_name, *event_type_modifier));
+  measured_event_types_.push_back(*event_type_modifier);
   return true;
 }
 
@@ -244,8 +245,8 @@ bool StatCommand::AddDefaultMeasuredEventTypes() {
 }
 
 bool StatCommand::SetEventSelection() {
-  for (auto& pair : measured_event_types_) {
-    if (!event_selection_set_.AddEventType(pair.second)) {
+  for (auto& event_type : measured_event_types_) {
+    if (!event_selection_set_.AddEventType(event_type)) {
       return false;
     }
   }
@@ -254,12 +255,12 @@ bool StatCommand::SetEventSelection() {
 }
 
 bool StatCommand::ShowCounters(
-    const std::map<const EventType*, std::vector<PerfCounter>>& counters_map,
+    const std::map<const EventTypeAndModifier*, std::vector<PerfCounter>>& counters_map,
     std::chrono::steady_clock::duration counting_duration) {
   printf("Performance counter statistics:\n\n");
 
   for (auto& pair : counters_map) {
-    auto& event_type = pair.first;
+    auto& event_type_modifier = pair.first;
     auto& counters = pair.second;
     if (verbose_mode_) {
       for (auto& counter : counters) {
@@ -288,14 +289,8 @@ bool StatCommand::ShowCounters(
                                             sum_counter.time_enabled / sum_counter.time_running);
       }
     }
-    std::string event_type_name;
-    for (auto& pair : measured_event_types_) {
-      if (pair.second.event_type.name == event_type->name) {
-        event_type_name = pair.first;
-      }
-    }
     printf("%'30" PRId64 "%s  %s\n", scaled_count, scaled ? "(scaled)" : "       ",
-           event_type_name.c_str());
+           event_type_modifier->name.c_str());
   }
   printf("\nTotal test time: %lf seconds.\n",
          std::chrono::duration_cast<std::chrono::duration<double>>(counting_duration).count());
