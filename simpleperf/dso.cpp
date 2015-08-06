@@ -162,18 +162,21 @@ bool DsoFactory::LoadKernel(DsoEntry* dso) {
     ParseSymbolsFromElfFile(vmlinux_, build_id,
                             std::bind(VmlinuxSymbolCallback, std::placeholders::_1, dso));
   } else {
-    BuildId real_build_id;
-    GetKernelBuildId(&real_build_id);
-    bool match = (build_id == real_build_id);
-    LOG(DEBUG) << "check kernel build id (" << (match ? "match" : "mismatch") << "): expected "
-               << build_id.ToString() << ", real " << real_build_id.ToString();
-    if (match) {
-      ProcessKernelSymbols("/proc/kallsyms",
-                           std::bind(&KernelSymbolCallback, std::placeholders::_1, dso));
+    if (!build_id.IsEmpty()) {
+      BuildId real_build_id;
+      GetKernelBuildId(&real_build_id);
+      bool match = (build_id == real_build_id);
+      LOG(DEBUG) << "check kernel build id (" << (match ? "match" : "mismatch") << "): expected "
+                 << build_id.ToString() << ", real " << real_build_id.ToString();
+      if (!match) {
+        return false;
+      }
     }
+    ProcessKernelSymbols("/proc/kallsyms",
+                         std::bind(&KernelSymbolCallback, std::placeholders::_1, dso));
   }
   FixupSymbolLength(dso);
-  return dso;
+  return true;
 }
 
 static void ParseSymbolCallback(const ElfFileSymbol& elf_symbol, DsoEntry* dso,
@@ -199,7 +202,7 @@ bool DsoFactory::LoadKernelModule(DsoEntry* dso) {
       symfs_dir_ + dso->path, build_id,
       std::bind(ParseSymbolCallback, std::placeholders::_1, dso, SymbolFilterForKernelModule));
   FixupSymbolLength(dso);
-  return dso;
+  return true;
 }
 
 static bool SymbolFilterForDso(const ElfFileSymbol& elf_symbol) {
@@ -240,7 +243,7 @@ bool DsoFactory::LoadElfFile(DsoEntry* dso) {
     }
   }
   FixupSymbolLength(dso);
-  return dso;
+  return true;
 }
 
 BuildId DsoFactory::GetExpectedBuildId(const std::string& filename) {

@@ -53,6 +53,11 @@ class BuildId {
     return memcmp(data_, build_id.data_, BUILD_ID_SIZE) == 0;
   }
 
+  bool IsEmpty() const {
+    static BuildId empty_build_id;
+    return *this == empty_build_id;
+  }
+
  private:
   unsigned char data_[BUILD_ID_SIZE];
 };
