@@ -209,14 +209,16 @@ bool ParseSymbolsFromElfFile(const std::string& filename, const BuildId& expecte
     LOG(DEBUG) << filename << " is not an object file";
     return false;
   }
-  BuildId real_build_id;
-  GetBuildIdFromObjectFile(obj, &real_build_id);
-  bool result = (expected_build_id == real_build_id);
-  LOG(DEBUG) << "check build id for \"" << filename << "\" (" << (result ? "match" : "mismatch")
-             << "): expected " << expected_build_id.ToString() << ", real "
-             << real_build_id.ToString();
-  if (!result) {
-    return result;
+  if (!expected_build_id.IsEmpty()) {
+    BuildId real_build_id;
+    GetBuildIdFromObjectFile(obj, &real_build_id);
+    bool result = (expected_build_id == real_build_id);
+    LOG(DEBUG) << "check build id for \"" << filename << "\" (" << (result ? "match" : "mismatch")
+               << "): expected " << expected_build_id.ToString() << ", real "
+               << real_build_id.ToString();
+    if (!result) {
+      return false;
+    }
   }
 
   if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(obj)) {
