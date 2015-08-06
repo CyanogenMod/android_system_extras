@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -80,6 +81,8 @@ int load_canned_fs_config(const char* fn) {
 	return 0;
 }
 
+static const int kDebugCannedFsConfig = 0;
+
 void canned_fs_config(const char* path, int dir, const char* target_out_path,
 					  unsigned* uid, unsigned* gid, unsigned* mode, uint64_t* capabilities) {
 	Path key;
@@ -94,16 +97,20 @@ void canned_fs_config(const char* path, int dir, const char* target_out_path,
 	*mode = p->mode;
 	*capabilities = p->capabilities;
 
-#if 0
-	// for debugging, run the built-in fs_config and compare the results.
+	if (kDebugCannedFsConfig) {
+		// for debugging, run the built-in fs_config and compare the results.
 
-	unsigned c_uid, c_gid, c_mode;
-	uint64_t c_capabilities;
-	fs_config(path, dir, target_out_path, &c_uid, &c_gid, &c_mode, &c_capabilities);
+		unsigned c_uid, c_gid, c_mode;
+		uint64_t c_capabilities;
+		fs_config(path, dir, target_out_path, &c_uid, &c_gid, &c_mode, &c_capabilities);
 
-	if (c_uid != *uid) printf("%s uid %d %d\n", path, *uid, c_uid);
-	if (c_gid != *gid) printf("%s gid %d %d\n", path, *gid, c_gid);
-	if (c_mode != *mode) printf("%s mode 0%o 0%o\n", path, *mode, c_mode);
-	if (c_capabilities != *capabilities) printf("%s capabilities %llx %llx\n", path, *capabilities, c_capabilities);
-#endif
+		if (c_uid != *uid) printf("%s uid %d %d\n", path, *uid, c_uid);
+		if (c_gid != *gid) printf("%s gid %d %d\n", path, *gid, c_gid);
+		if (c_mode != *mode) printf("%s mode 0%o 0%o\n", path, *mode, c_mode);
+		if (c_capabilities != *capabilities)
+			printf("%s capabilities %" PRIx64 " %" PRIx64 "\n",
+				path,
+				*capabilities,
+				c_capabilities);
+        }
 }
