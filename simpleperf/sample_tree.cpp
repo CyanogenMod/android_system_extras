@@ -20,6 +20,16 @@
 
 #include "environment.h"
 
+void SampleTree::SetFilters(const std::unordered_set<int>& pid_filter,
+                            const std::unordered_set<int>& tid_filter,
+                            const std::unordered_set<std::string>& comm_filter,
+                            const std::unordered_set<std::string>& dso_filter) {
+  pid_filter_ = pid_filter;
+  tid_filter_ = tid_filter;
+  comm_filter_ = comm_filter;
+  dso_filter_ = dso_filter;
+}
+
 SampleEntry* SampleTree::AddSample(int pid, int tid, uint64_t ip, uint64_t time, uint64_t period,
                                    bool in_kernel) {
   const ThreadEntry* thread = thread_tree_->FindThreadOrNew(pid, tid);
@@ -28,6 +38,9 @@ SampleEntry* SampleTree::AddSample(int pid, int tid, uint64_t ip, uint64_t time,
 
   SampleEntry value(ip, time, period, 0, 1, thread, map, symbol);
 
+  if (IsFilteredOut(value)) {
+    return nullptr;
+  }
   return InsertSample(value);
 }
 
@@ -51,6 +64,9 @@ void SampleTree::AddBranchSample(int pid, int tid, uint64_t from_ip, uint64_t to
   value.branch_from.symbol = from_symbol;
   value.branch_from.flags = branch_flags;
 
+  if (IsFilteredOut(value)) {
+    return;
+  }
   InsertSample(value);
 }
 
@@ -63,6 +79,17 @@ SampleEntry* SampleTree::AddCallChainSample(int pid, int tid, uint64_t ip, uint6
 
   SampleEntry value(ip, time, 0, period, 0, thread, map, symbol);
 
+  if (IsFilteredOut(value)) {
+    // Store in callchain_sample_tree_ for use in other SampleEntry's callchain.
+    auto it = callchain_sample_tree_.find(&value);
+    if (it != callchain_sample_tree_.end()) {
+      return *it;
+    }
+    SampleEntry* sample = AllocateSample(value);
+    callchain_sample_tree_.insert(sample);
+    return sample;
+  }
+
   auto it = sample_tree_.find(&value);
   if (it != sample_tree_.end()) {
     SampleEntry* sample = *it;
@@ -72,6 +99,22 @@ SampleEntry* SampleTree::AddCallChainSample(int pid, int tid, uint64_t ip, uint6
     }
   }
   return InsertSample(value);
+}
+
+bool SampleTree::IsFilteredOut(const SampleEntry& value) {
+  if (!pid_filter_.empty() && pid_filter_.find(value.thread->pid) == pid_filter_.end()) {
+    return true;
+  }
+  if (!tid_filter_.empty() && tid_filter_.find(value.thread->tid) == tid_filter_.end()) {
+    return true;
+  }
+  if (!comm_filter_.empty() && comm_filter_.find(value.thread_comm) == comm_filter_.end()) {
+    return true;
+  }
+  if (!dso_filter_.empty() && dso_filter_.find(value.map->dso->path) == dso_filter_.end()) {
+    return true;
+  }
+  return false;
 }
 
 SampleEntry* SampleTree::InsertSample(SampleEntry& value) {

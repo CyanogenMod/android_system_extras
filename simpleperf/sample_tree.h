@@ -22,6 +22,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "callchain.h"
@@ -77,11 +78,17 @@ class SampleTree {
       : thread_tree_(thread_tree),
         sample_comparator_(sample_compare_function),
         sample_tree_(sample_comparator_),
+        callchain_sample_tree_(sample_comparator_),
         sorted_sample_comparator_(sample_compare_function),
         sorted_sample_tree_(sorted_sample_comparator_),
         total_samples_(0),
         total_period_(0) {
   }
+
+  void SetFilters(const std::unordered_set<int>& pid_filter,
+                  const std::unordered_set<int>& tid_filter,
+                  const std::unordered_set<std::string>& comm_filter,
+                  const std::unordered_set<std::string>& dso_filter);
 
   SampleEntry* AddSample(int pid, int tid, uint64_t ip, uint64_t time, uint64_t period,
                          bool in_kernel);
@@ -102,6 +109,7 @@ class SampleTree {
   }
 
  private:
+  bool IsFilteredOut(const SampleEntry& value);
   SampleEntry* InsertSample(SampleEntry& value);
   SampleEntry* AllocateSample(SampleEntry& value);
 
@@ -134,9 +142,18 @@ class SampleTree {
   ThreadTree* thread_tree_;
   SampleComparator sample_comparator_;
   std::set<SampleEntry*, SampleComparator> sample_tree_;
+  // If a CallChainSample is filtered out, it is stored in callchain_sample_tree_ and only used
+  // in other SampleEntry's callchain.
+  std::set<SampleEntry*, SampleComparator> callchain_sample_tree_;
+
   SortedSampleComparator sorted_sample_comparator_;
   std::set<SampleEntry*, SortedSampleComparator> sorted_sample_tree_;
   std::vector<std::unique_ptr<SampleEntry>> sample_storage_;
+
+  std::unordered_set<int> pid_filter_;
+  std::unordered_set<int> tid_filter_;
+  std::unordered_set<std::string> comm_filter_;
+  std::unordered_set<std::string> dso_filter_;
 
   uint64_t total_samples_;
   uint64_t total_period_;

@@ -61,6 +61,26 @@ TEST_F(ReportCommandTest, callgraph_option) {
   ASSERT_TRUE(ReportCmd()->Run({"-g", "caller", "-i", "perf_g.data"}));
 }
 
+TEST_F(ReportCommandTest, pid_filter_option) {
+  ASSERT_TRUE(ReportCmd()->Run({"--pids", "0"}));
+  ASSERT_TRUE(ReportCmd()->Run({"--pids", "0,1"}));
+}
+
+TEST_F(ReportCommandTest, tid_filter_option) {
+  ASSERT_TRUE(ReportCmd()->Run({"--tids", "0"}));
+  ASSERT_TRUE(ReportCmd()->Run({"--tids", "0,1"}));
+}
+
+TEST_F(ReportCommandTest, comm_filter_option) {
+  ASSERT_TRUE(ReportCmd()->Run({"--comms", "swapper"}));
+  ASSERT_TRUE(ReportCmd()->Run({"--comms", "swapper,simpleperf"}));
+}
+
+TEST_F(ReportCommandTest, dso_filter_option) {
+  ASSERT_TRUE(ReportCmd()->Run({"--dsos", "[kernel.kallsyms]"}));
+  ASSERT_TRUE(ReportCmd()->Run({"--dsos", "[kernel.kallsyms],/init"}));
+}
+
 extern bool IsBranchSamplingSupported();
 
 TEST(report_cmd, use_branch_address) {
