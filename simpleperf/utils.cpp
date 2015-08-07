@@ -92,3 +92,9 @@ bool RemovePossibleFile(const std::string& filename) {
   }
   return true;
 }
+
+bool StringToPid(const std::string& s, int* pid) {
+  char* endptr;
+  *pid = static_cast<int>(strtol(s.c_str(), &endptr, 10));
+  return *endptr == '\0';
+}
