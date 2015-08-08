@@ -243,12 +243,6 @@ bool GetKernelAndModuleMmaps(KernelMmap* kernel_mmap, std::vector<ModuleMmap>* m
   return true;
 }
 
-static bool StringToPid(const std::string& s, pid_t* pid) {
-  char* endptr;
-  *pid = static_cast<pid_t>(strtol(s.c_str(), &endptr, 10));
-  return *endptr == '\0';
-}
-
 static bool ReadThreadNameAndTgid(const std::string& status_file, std::string* comm, pid_t* tgid) {
   FILE* fp = fopen(status_file.c_str(), "re");
   if (fp == nullptr) {
@@ -279,7 +273,7 @@ static std::vector<pid_t> GetThreadsInProcess(pid_t pid) {
   std::vector<std::string> subdirs;
   GetEntriesInDir(task_dirname, nullptr, &subdirs);
   for (auto& name : subdirs) {
-    pid_t tid;
+    int tid;
     if (!StringToPid(name, &tid)) {
       continue;
     }
@@ -313,7 +307,7 @@ bool GetThreadComms(std::vector<ThreadComm>* thread_comms) {
   std::vector<std::string> subdirs;
   GetEntriesInDir("/proc", nullptr, &subdirs);
   for (auto& name : subdirs) {
-    pid_t pid;
+    int pid;
     if (!StringToPid(name, &pid)) {
       continue;
     }
@@ -370,7 +364,7 @@ bool GetModuleBuildId(const std::string& module_name, BuildId* build_id) {
 bool GetValidThreadsFromProcessString(const std::string& pid_str, std::set<pid_t>* tid_set) {
   std::vector<std::string> strs = android::base::Split(pid_str, ",");
   for (auto& s : strs) {
-    pid_t pid;
+    int pid;
     if (!StringToPid(s, &pid)) {
       LOG(ERROR) << "Invalid pid '" << s << "'";
       return false;
@@ -388,7 +382,7 @@ bool GetValidThreadsFromProcessString(const std::string& pid_str, std::set<pid_t
 bool GetValidThreadsFromThreadString(const std::string& tid_str, std::set<pid_t>* tid_set) {
   std::vector<std::string> strs = android::base::Split(tid_str, ",");
   for (auto& s : strs) {
-    pid_t tid;
+    int tid;
     if (!StringToPid(s, &tid)) {
       LOG(ERROR) << "Invalid tid '" << s << "'";
       return false;
