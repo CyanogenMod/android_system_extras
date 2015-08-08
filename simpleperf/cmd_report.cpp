@@ -15,6 +15,7 @@
  */
 
 #include <inttypes.h>
+#include <algorithm>
 #include <functional>
 #include <map>
 #include <set>
@@ -240,7 +241,10 @@ class ReportCommand : public Command {
             "                  the instruction addresses. Only valid for perf.data recorded with\n"
             "                  -b/-j option.\n"
             "    --children    Print the overhead accumulated by appearing in the callchain.\n"
-            "    -g            Print call graph.\n"
+            "    -g [callee|caller]\n"
+            "                  Print call graph. If callee mode is used, the graph shows how\n"
+            "                  functions are called from others. Otherwise, the graph shows how\n"
+            "                  functions call others. Default is callee mode.\n"
             "    -i <file>     Specify path of record file, default is perf.data.\n"
             "    -n            Print the sample count for each item.\n"
             "    --no-demangle        Don't demangle symbol names.\n"
@@ -255,7 +259,8 @@ class ReportCommand : public Command {
         record_filename_("perf.data"),
         use_branch_address_(false),
         accumulate_callchain_(false),
-        print_callgraph_(false) {
+        print_callgraph_(false),
+        callgraph_show_callee_(true) {
     compare_sample_func_t compare_sample_callback = std::bind(
         &ReportCommand::CompareSampleEntry, this, std::placeholders::_1, std::placeholders::_2);
     sample_tree_ =
@@ -290,6 +295,7 @@ class ReportCommand : public Command {
   std::string record_cmdline_;
   bool accumulate_callchain_;
   bool print_callgraph_;
+  bool callgraph_show_callee_;
 };
 
 bool ReportCommand::Run(const std::vector<std::string>& args) {
@@ -332,6 +338,17 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
     } else if (args[i] == "-g") {
       print_callgraph_ = true;
       accumulate_callchain_ = true;
+      if (i + 1 < args.size() && args[i + 1][0] != '-') {
+        ++i;
+        if (args[i] == "callee") {
+          callgraph_show_callee_ = true;
+        } else if (args[i] == "caller") {
+          callgraph_show_callee_ = false;
+        } else {
+          LOG(ERROR) << "Unknown argument with -g option: " << args[i];
+          return false;
+        }
+      }
     } else if (args[i] == "-i") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -504,6 +521,9 @@ void ReportCommand::ProcessSampleRecord(const SampleRecord& r) {
       }
       if (print_callgraph_) {
         std::set<SampleEntry*> added_set;
+        if (!callgraph_show_callee_) {
+          std::reverse(callchain.begin(), callchain.end());
+        }
         while (callchain.size() >= 2) {
           SampleEntry* sample = callchain[0];
           callchain.erase(callchain.begin());

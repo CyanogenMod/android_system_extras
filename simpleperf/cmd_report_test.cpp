@@ -57,6 +57,8 @@ TEST_F(ReportCommandTest, children_option) {
 
 TEST_F(ReportCommandTest, callgraph_option) {
   ASSERT_TRUE(ReportCmd()->Run({"-g", "-i", "perf_g.data"}));
+  ASSERT_TRUE(ReportCmd()->Run({"-g", "callee", "-i", "perf_g.data"}));
+  ASSERT_TRUE(ReportCmd()->Run({"-g", "caller", "-i", "perf_g.data"}));
 }
 
 extern bool IsBranchSamplingSupported();
