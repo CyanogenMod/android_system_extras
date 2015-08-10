@@ -1,5 +1,7 @@
 LOCAL_PATH:= $(call my-dir)
 
+ifeq ($(HOST_OS),linux)
+
 include $(CLEAR_VARS)
 LOCAL_MODULE := verify_boot_signature
 LOCAL_SRC_FILES := verify_boot_signature.c
@@ -8,6 +10,8 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_SHARED_LIBRARIES := libcrypto-host
 LOCAL_C_INCLUDES += external/openssl/include system/extras/ext4_utils system/core/mkbootimg
 include $(BUILD_HOST_EXECUTABLE)
+
+endif # HOST_OS == linux
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := generate_verity_key
