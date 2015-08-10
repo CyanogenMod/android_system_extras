@@ -1,7 +1,5 @@
 LOCAL_PATH:= $(call my-dir)
 
-ifeq ($(HOST_OS),linux)
-
 include $(CLEAR_VARS)
 LOCAL_MODULE := verify_boot_signature
 LOCAL_SRC_FILES := verify_boot_signature.c
@@ -103,5 +101,3 @@ LOCAL_STATIC_LIBRARIES := libsparse_host libz
 LOCAL_SHARED_LIBRARIES := libcrypto-host libbase
 LOCAL_CFLAGS += -Wall -Werror
 include $(BUILD_HOST_EXECUTABLE)
-
-endif # HOST_OS == linux
