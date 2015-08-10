@@ -16,7 +16,6 @@
 
 #define _LARGEFILE64_SOURCE
 
-#include <endian.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
