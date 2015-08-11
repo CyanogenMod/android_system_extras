@@ -17,6 +17,8 @@
 #ifndef SIMPLE_PERF_RECORD_H_
 #define SIMPLE_PERF_RECORD_H_
 
+#include <sys/types.h>
+
 #include <string>
 #include <vector>
 
