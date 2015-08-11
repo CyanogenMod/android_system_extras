@@ -17,6 +17,8 @@
 #ifndef SIMPLE_PERF_ENVIRONMENT_H_
 #define SIMPLE_PERF_ENVIRONMENT_H_
 
+#include <sys/types.h>
+
 #include <functional>
 #include <set>
 #include <string>
