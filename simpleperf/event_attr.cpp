@@ -139,6 +139,8 @@ void DumpPerfEventAttr(const perf_event_attr& attr, size_t indent) {
   PrintIndented(indent + 1, "sample_id_all %u, exclude_host %u, exclude_guest %u\n",
                 attr.sample_id_all, attr.exclude_host, attr.exclude_guest);
   PrintIndented(indent + 1, "branch_sample_type 0x%" PRIx64 "\n", attr.branch_sample_type);
+  PrintIndented(indent + 1, "exclude_callchain_kernel %u, exclude_callchain_user %u\n",
+                attr.exclude_callchain_kernel, attr.exclude_callchain_user);
   PrintIndented(indent + 1, "sample_regs_user 0x%" PRIx64 "\n", attr.sample_regs_user);
   PrintIndented(indent + 1, "sample_stack_user 0x%" PRIx64 "\n", attr.sample_stack_user);
 }

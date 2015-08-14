@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 
 #include "command.h"
+#include "event_selection_set.h"
 
 static std::unique_ptr<Command> RecordCmd() {
   return CreateCommandInstance("record");
@@ -81,8 +82,6 @@ TEST_F(ReportCommandTest, dso_filter_option) {
   ASSERT_TRUE(ReportCmd()->Run({"--dsos", "[kernel.kallsyms],/init"}));
 }
 
-extern bool IsBranchSamplingSupported();
-
 TEST(report_cmd, use_branch_address) {
   if (IsBranchSamplingSupported()) {
     ASSERT_TRUE(RecordCmd()->Run({"-b", "sleep", "1"}));
@@ -91,5 +90,15 @@ TEST(report_cmd, use_branch_address) {
   } else {
     GTEST_LOG_(INFO)
         << "This test does nothing as branch stack sampling is not supported on this device.";
+  }
+}
+
+TEST(report_cmd, dwarf_callgraph) {
+  if (IsDwarfCallChainSamplingSupported()) {
+    ASSERT_TRUE(RecordCmd()->Run({"-g", "-o", "perf_dwarf.data", "sleep", "1"}));
+    ASSERT_TRUE(ReportCmd()->Run({"-g", "-i", "perf_dwarf.data"}));
+  } else {
+    GTEST_LOG_(INFO)
+        << "This test does nothing as dwarf callchain sampling is not supported on this device.";
   }
 }
