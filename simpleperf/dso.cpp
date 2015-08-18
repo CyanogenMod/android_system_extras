@@ -22,6 +22,13 @@
 #include "read_elf.h"
 #include "utils.h"
 
+const std::string& SymbolEntry::GetDemangledName() const {
+  if (demangled_name_.empty()) {
+    demangled_name_ = DsoFactory::GetInstance()->Demangle(name);
+  }
+  return demangled_name_;
+}
+
 bool SymbolComparator::operator()(const std::unique_ptr<SymbolEntry>& symbol1,
                                   const std::unique_ptr<SymbolEntry>& symbol2) {
   return symbol1->addr < symbol2->addr;
@@ -103,6 +110,33 @@ std::unique_ptr<DsoEntry> DsoFactory::CreateDso(DsoType dso_type, const std::str
   return std::unique_ptr<DsoEntry>(new DsoEntry(dso_type, path));
 }
 
+extern "C" char* __cxa_demangle(const char* mangled_name, char* buf, size_t* n, int* status);
+
+std::string DsoFactory::Demangle(const std::string& name) {
+  if (!demangle_) {
+    return name;
+  }
+  int status;
+  bool is_linker_symbol = (name.find(linker_prefix) == 0);
+  const char* mangled_str = name.c_str();
+  if (is_linker_symbol) {
+    mangled_str += linker_prefix.size();
+  }
+  std::string result = name;
+  char* demangled_name = __cxa_demangle(mangled_str, nullptr, nullptr, &status);
+  if (status == 0) {
+    if (is_linker_symbol) {
+      result = std::string("[linker]") + demangled_name;
+    } else {
+      result = demangled_name;
+    }
+    free(demangled_name);
+  } else if (is_linker_symbol) {
+    result = std::string("[linker]") + mangled_str;
+  }
+  return result;
+}
+
 bool DsoFactory::LoadDso(DsoEntry* dso) {
   switch (dso->type) {
     case DSO_KERNEL:
@@ -122,24 +156,16 @@ static bool IsKernelFunctionSymbol(const KernelSymbol& symbol) {
 
 static bool KernelSymbolCallback(const KernelSymbol& kernel_symbol, DsoEntry* dso) {
   if (IsKernelFunctionSymbol(kernel_symbol)) {
-    SymbolEntry* symbol = new SymbolEntry{
-        kernel_symbol.name,  // name
-        kernel_symbol.addr,  // addr
-        0,                   // len
-    };
-    dso->symbols.insert(std::unique_ptr<SymbolEntry>(symbol));
+    dso->symbols.insert(
+        std::unique_ptr<SymbolEntry>(new SymbolEntry(kernel_symbol.name, kernel_symbol.addr, 0)));
   }
   return false;
 }
 
 static void VmlinuxSymbolCallback(const ElfFileSymbol& elf_symbol, DsoEntry* dso) {
   if (elf_symbol.is_func) {
-    SymbolEntry* symbol = new SymbolEntry{
-        elf_symbol.name,   // name
-        elf_symbol.vaddr,  // addr
-        elf_symbol.len,    // len
-    };
-    dso->symbols.insert(std::unique_ptr<SymbolEntry>(symbol));
+    dso->symbols.insert(std::unique_ptr<SymbolEntry>(
+        new SymbolEntry(elf_symbol.name, elf_symbol.vaddr, elf_symbol.len)));
   }
 }
 
@@ -182,12 +208,8 @@ bool DsoFactory::LoadKernel(DsoEntry* dso) {
 static void ParseSymbolCallback(const ElfFileSymbol& elf_symbol, DsoEntry* dso,
                                 bool (*filter)(const ElfFileSymbol&)) {
   if (filter(elf_symbol)) {
-    SymbolEntry* symbol = new SymbolEntry{
-        elf_symbol.name,           // name
-        elf_symbol.start_in_file,  // addr
-        elf_symbol.len,            // len
-    };
-    dso->symbols.insert(std::unique_ptr<SymbolEntry>(symbol));
+    dso->symbols.insert(std::unique_ptr<SymbolEntry>(
+        new SymbolEntry(elf_symbol.name, elf_symbol.start_in_file, elf_symbol.len)));
   }
 }
 
@@ -209,39 +231,11 @@ static bool SymbolFilterForDso(const ElfFileSymbol& elf_symbol) {
   return elf_symbol.is_func || (elf_symbol.is_label && elf_symbol.is_in_text_section);
 }
 
-extern "C" char* __cxa_demangle(const char* mangled_name, char* buf, size_t* n, int* status);
-
-static void DemangleInPlace(std::string* name) {
-  int status;
-  bool is_linker_symbol = (name->find(linker_prefix) == 0);
-  const char* mangled_str = name->c_str();
-  if (is_linker_symbol) {
-    mangled_str += linker_prefix.size();
-  }
-  char* demangled_name = __cxa_demangle(mangled_str, nullptr, nullptr, &status);
-  if (status == 0) {
-    if (is_linker_symbol) {
-      *name = std::string("[linker]") + demangled_name;
-    } else {
-      *name = demangled_name;
-    }
-    free(demangled_name);
-  } else if (is_linker_symbol) {
-    std::string temp = std::string("[linker]") + mangled_str;
-    *name = std::move(temp);
-  }
-}
-
 bool DsoFactory::LoadElfFile(DsoEntry* dso) {
   BuildId build_id = GetExpectedBuildId(dso->path);
   ParseSymbolsFromElfFile(
       symfs_dir_ + dso->path, build_id,
       std::bind(ParseSymbolCallback, std::placeholders::_1, dso, SymbolFilterForDso));
-  if (demangle_) {
-    for (auto& symbol : dso->symbols) {
-      DemangleInPlace(&symbol->name);
-    }
-  }
   FixupSymbolLength(dso);
   return true;
 }
