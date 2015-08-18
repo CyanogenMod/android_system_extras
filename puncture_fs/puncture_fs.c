@@ -187,7 +187,7 @@ static bool puncture_fs (const char * const path, const u64 total_size,
     free(base_file_data);
     rm_bin_argv[2] = delete_dir;
     if (android_fork_execvp_ext(ARRAY_SIZE(rm_bin_argv), rm_bin_argv,
-                                NULL, 1, LOG_KLOG, 0, NULL) < 0) {
+                                NULL, 1, LOG_KLOG, 0, NULL, NULL, 0) < 0) {
         fprintf(stderr, "\nFailed to delete %s\n", rm_bin_argv[2]);
         return false;
     }
