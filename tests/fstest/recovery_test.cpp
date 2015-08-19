@@ -222,7 +222,8 @@ class FsRecoveryTest : public ::testing::Test {
     };
     int status;
     return android_fork_execvp_ext(ARRAY_SIZE(umount_argv), umount_argv,
-                                   NULL, true, LOG_KLOG, false, NULL) >= 0;
+                                   NULL, true, LOG_KLOG, false, NULL,
+                                   NULL, 0) >= 0;
   }
 
   bool mountAll() {
@@ -233,7 +234,8 @@ class FsRecoveryTest : public ::testing::Test {
     };
     int status;
     return android_fork_execvp_ext(ARRAY_SIZE(mountall_argv), mountall_argv,
-                                   NULL, true, LOG_KLOG, false, NULL) >= 0;
+                                   NULL, true, LOG_KLOG, false, NULL,
+                                   NULL, 0) >= 0;
   }
 
   int getCacheBlkFd() {
