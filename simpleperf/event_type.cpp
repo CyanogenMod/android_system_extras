@@ -172,5 +172,6 @@ std::unique_ptr<EventTypeAndModifier> ParseEventType(const std::string& event_ty
         LOG(ERROR) << "Unknown event type modifier '" << c << "'";
     }
   }
+  event_type_modifier->modifier = modifier;
   return event_type_modifier;
 }
