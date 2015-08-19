@@ -29,6 +29,15 @@ struct SymbolEntry {
   std::string name;
   uint64_t addr;
   uint64_t len;
+
+  SymbolEntry(const std::string& name, uint64_t addr, uint64_t len)
+      : name(name), addr(addr), len(len) {
+  }
+
+  const std::string& GetDemangledName() const;
+
+ private:
+  mutable std::string demangled_name_;
 };
 
 struct SymbolComparator {
@@ -57,11 +66,14 @@ struct DsoEntry {
 class DsoFactory {
  public:
   static DsoFactory* GetInstance();
+
   void SetDemangle(bool demangle);
   bool SetSymFsDir(const std::string& symfs_dir);
   void SetVmlinux(const std::string& vmlinux);
   void SetBuildIds(const std::vector<std::pair<std::string, BuildId>>& build_ids);
+
   std::unique_ptr<DsoEntry> CreateDso(DsoType dso_type, const std::string& dso_path = "");
+  std::string Demangle(const std::string& name);
   bool LoadDso(DsoEntry* dso);
 
  private:
