@@ -179,11 +179,12 @@ class SymbolItem : public Displayable, public Comparable {
   }
 
   int Compare(const SampleEntry& sample1, const SampleEntry& sample2) const override {
-    return strcmp(sample1.symbol->name.c_str(), sample2.symbol->name.c_str());
+    return strcmp(sample1.symbol->GetDemangledName().c_str(),
+                  sample2.symbol->GetDemangledName().c_str());
   }
 
   std::string Show(const SampleEntry& sample) const override {
-    return sample.symbol->name;
+    return sample.symbol->GetDemangledName();
   }
 };
 
@@ -214,12 +215,12 @@ class SymbolFromItem : public Displayable, public Comparable {
   }
 
   int Compare(const SampleEntry& sample1, const SampleEntry& sample2) const override {
-    return strcmp(sample1.branch_from.symbol->name.c_str(),
-                  sample2.branch_from.symbol->name.c_str());
+    return strcmp(sample1.branch_from.symbol->GetDemangledName().c_str(),
+                  sample2.branch_from.symbol->GetDemangledName().c_str());
   }
 
   std::string Show(const SampleEntry& sample) const override {
-    return sample.branch_from.symbol->name;
+    return sample.branch_from.symbol->GetDemangledName();
   }
 };
 

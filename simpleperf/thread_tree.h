@@ -43,18 +43,13 @@ struct ThreadEntry {
 
 class ThreadTree {
  public:
-  ThreadTree() : unknown_dso_(DSO_ELF_FILE, "unknown") {
+  ThreadTree() : unknown_dso_(DSO_ELF_FILE, "unknown"), unknown_symbol_("unknown", 0, ULLONG_MAX) {
     unknown_map_ = MapEntry{
         0,              // start_addr
         ULLONG_MAX,     // len
         0,              // pgoff
         0,              // time
         &unknown_dso_,  // dso
-    };
-    unknown_symbol_ = SymbolEntry{
-        "unknown",   // name
-        0,           // addr
-        ULLONG_MAX,  // len
     };
   }
 
