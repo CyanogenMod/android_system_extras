@@ -74,6 +74,10 @@ struct PerfSampleCallChainType {
   std::vector<uint64_t> ips;
 };
 
+struct PerfSampleRawType {
+  std::vector<char> data;
+};
+
 struct PerfSampleBranchStackType {
   struct BranchStackItemType {
     uint64_t from;
@@ -244,6 +248,7 @@ struct SampleRecord : public Record {
   PerfSamplePeriodType period_data;       // Valid if PERF_SAMPLE_PERIOD.
 
   PerfSampleCallChainType callchain_data;       // Valid if PERF_SAMPLE_CALLCHAIN.
+  PerfSampleRawType raw_data;                   // Valid if PERF_SAMPLE_RAW.
   PerfSampleBranchStackType branch_stack_data;  // Valid if PERF_SAMPLE_BRANCH_STACK.
   PerfSampleRegsUserType regs_user_data;        // Valid if PERF_SAMPLE_REGS_USER.
   PerfSampleStackUserType stack_user_data;      // Valid if PERF_SAMPLE_STACK_USER.

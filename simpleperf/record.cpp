@@ -303,6 +303,12 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, const perf_event_header*
     callchain_data.ips.resize(nr);
     MoveFromBinaryFormat(callchain_data.ips.data(), nr, p);
   }
+  if (sample_type & PERF_SAMPLE_RAW) {
+    uint32_t size;
+    MoveFromBinaryFormat(size, p);
+    raw_data.data.resize(size);
+    MoveFromBinaryFormat(raw_data.data.data(), size, p);
+  }
   if (sample_type & PERF_SAMPLE_BRANCH_STACK) {
     uint64_t nr;
     MoveFromBinaryFormat(nr, p);
@@ -373,6 +379,14 @@ void SampleRecord::DumpData(size_t indent) const {
     PrintIndented(indent, "callchain nr=%" PRIu64 "\n", callchain_data.ips.size());
     for (auto& ip : callchain_data.ips) {
       PrintIndented(indent + 1, "0x%" PRIx64 "\n", ip);
+    }
+  }
+  if (sample_type & PERF_SAMPLE_RAW) {
+    PrintIndented(indent, "raw size=%zu\n", raw_data.data.size());
+    const uint32_t* data = reinterpret_cast<const uint32_t*>(raw_data.data.data());
+    size_t size = raw_data.data.size() / sizeof(uint32_t);
+    for (size_t i = 0; i < size; ++i) {
+      PrintIndented(indent + 1, "0x%08x (%zu)\n", data[i], data[i]);
     }
   }
   if (sample_type & PERF_SAMPLE_BRANCH_STACK) {
