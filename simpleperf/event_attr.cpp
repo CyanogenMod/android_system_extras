@@ -92,6 +92,8 @@ perf_event_attr CreateDefaultPerfEventAttr(const EventType& event_type) {
   if (attr.type == PERF_TYPE_TRACEPOINT) {
     attr.sample_freq = 0;
     attr.sample_period = 1;
+    // Tracepoint information are stored in raw data in sample records.
+    attr.sample_type |= PERF_SAMPLE_RAW;
   }
   return attr;
 }
