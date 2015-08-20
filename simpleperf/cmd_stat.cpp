@@ -17,6 +17,9 @@
 #include <inttypes.h>
 #include <signal.h>
 #include <stdio.h>
+#include <string.h>
+
+#include <algorithm>
 #include <chrono>
 #include <set>
 #include <string>
@@ -80,9 +83,7 @@ class StatCommand : public Command {
   bool AddMeasuredEventType(const std::string& event_type_name);
   bool AddDefaultMeasuredEventTypes();
   bool SetEventSelection();
-  bool ShowCounters(
-      const std::map<const EventTypeAndModifier*, std::vector<PerfCounter>>& counters_map,
-      std::chrono::steady_clock::duration counting_duration);
+  bool ShowCounters(const std::vector<CountersInfo>& counters, double duration_in_sec);
 
   bool verbose_mode_;
   bool system_wide_collection_;
@@ -154,11 +155,13 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
   auto end_time = std::chrono::steady_clock::now();
 
   // 5. Read and print counters.
-  std::map<const EventTypeAndModifier*, std::vector<PerfCounter>> counters_map;
-  if (!event_selection_set_.ReadCounters(&counters_map)) {
+  std::vector<CountersInfo> counters;
+  if (!event_selection_set_.ReadCounters(&counters)) {
     return false;
   }
-  if (!ShowCounters(counters_map, end_time - start_time)) {
+  double duration_in_sec =
+      std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time).count();
+  if (!ShowCounters(counters, duration_in_sec)) {
     return false;
   }
   return true;
@@ -254,46 +257,152 @@ bool StatCommand::SetEventSelection() {
   return true;
 }
 
-bool StatCommand::ShowCounters(
-    const std::map<const EventTypeAndModifier*, std::vector<PerfCounter>>& counters_map,
-    std::chrono::steady_clock::duration counting_duration) {
+static std::string ReadableCountValue(uint64_t count,
+                                      const EventTypeAndModifier& event_type_modifier) {
+  if (event_type_modifier.event_type.name == "cpu-clock" ||
+      event_type_modifier.event_type.name == "task-clock") {
+    double value = count / 1e6;
+    return android::base::StringPrintf("%lf(ms)", value);
+  } else {
+    std::string s = android::base::StringPrintf("%" PRIu64, count);
+    for (size_t i = s.size() - 1, j = 1; i > 0; --i, ++j) {
+      if (j == 3) {
+        s.insert(s.begin() + i, ',');
+        j = 0;
+      }
+    }
+    return s;
+  }
+}
+
+struct CounterSummary {
+  const EventTypeAndModifier* event_type;
+  uint64_t count;
+  double scale;
+  std::string readable_count_str;
+  std::string comment;
+};
+
+static std::string GetCommentForSummary(const CounterSummary& summary,
+                                        const std::vector<CounterSummary>& summaries,
+                                        double duration_in_sec) {
+  const std::string& type_name = summary.event_type->event_type.name;
+  const std::string& modifier = summary.event_type->modifier;
+  if (type_name == "task-clock") {
+    double run_sec = summary.count / 1e9;
+    double cpu_usage = run_sec / duration_in_sec;
+    return android::base::StringPrintf("%lf%% cpu usage", cpu_usage * 100);
+  }
+  if (type_name == "cpu-clock") {
+    return "";
+  }
+  if (type_name == "cpu-cycles") {
+    double hz = summary.count / duration_in_sec;
+    return android::base::StringPrintf("%lf GHz", hz / 1e9);
+  }
+  if (type_name == "instructions" && summary.count != 0) {
+    for (auto& t : summaries) {
+      if (t.event_type->event_type.name == "cpu-cycles" && t.event_type->modifier == modifier) {
+        double cycles_per_instruction = t.count * 1.0 / summary.count;
+        return android::base::StringPrintf("%lf cycles per instruction", cycles_per_instruction);
+      }
+    }
+  }
+  if (android::base::EndsWith(type_name, "-misses")) {
+    std::string s;
+    if (type_name == "cache-misses") {
+      s = "cache-references";
+    } else if (type_name == "branch-misses") {
+      s = "branch-instructions";
+    } else {
+      s = type_name.substr(0, type_name.size() - strlen("-misses")) + "s";
+    }
+    for (auto& t : summaries) {
+      if (t.event_type->event_type.name == s && t.event_type->modifier == modifier && t.count != 0) {
+        double miss_rate = summary.count * 1.0 / t.count;
+        return android::base::StringPrintf("%lf%% miss rate", miss_rate * 100);
+      }
+    }
+  }
+  double rate = summary.count / duration_in_sec;
+  if (rate > 1e9) {
+    return android::base::StringPrintf("%.3lf G/sec", rate / 1e9);
+  }
+  if (rate > 1e6) {
+    return android::base::StringPrintf("%.3lf M/sec", rate / 1e6);
+  }
+  if (rate > 1e3) {
+    return android::base::StringPrintf("%.3lf K/sec", rate / 1e3);
+  }
+  return android::base::StringPrintf("%.3lf /sec", rate);
+}
+
+bool StatCommand::ShowCounters(const std::vector<CountersInfo>& counters, double duration_in_sec) {
   printf("Performance counter statistics:\n\n");
 
-  for (auto& pair : counters_map) {
-    auto& event_type_modifier = pair.first;
-    auto& counters = pair.second;
-    if (verbose_mode_) {
-      for (auto& counter : counters) {
-        printf("%s: value %'" PRId64 ", time_enabled %" PRId64 ", time_running %" PRId64
-               ", id %" PRId64 "\n",
-               event_selection_set_.FindEventFileNameById(counter.id).c_str(), counter.value,
-               counter.time_enabled, counter.time_running, counter.id);
+  if (verbose_mode_) {
+    for (auto& counters_info : counters) {
+      const EventTypeAndModifier* event_type = counters_info.event_type;
+      for (auto& counter_info : counters_info.counters) {
+        printf("%s(tid %d, cpu %d): count %s, time_enabled %" PRIu64 ", time running %" PRIu64
+               ", id %" PRIu64 "\n",
+               event_type->name.c_str(), counter_info.tid, counter_info.cpu,
+               ReadableCountValue(counter_info.counter.value, *event_type).c_str(),
+               counter_info.counter.time_enabled, counter_info.counter.time_running,
+               counter_info.counter.id);
       }
     }
+  }
 
-    PerfCounter sum_counter;
-    memset(&sum_counter, 0, sizeof(sum_counter));
-    for (auto& counter : counters) {
-      sum_counter.value += counter.value;
-      sum_counter.time_enabled += counter.time_enabled;
-      sum_counter.time_running += counter.time_running;
+  std::vector<CounterSummary> summaries;
+  for (auto& counters_info : counters) {
+    uint64_t value_sum = 0;
+    uint64_t time_enabled_sum = 0;
+    uint64_t time_running_sum = 0;
+    for (auto& counter_info : counters_info.counters) {
+      value_sum += counter_info.counter.value;
+      time_enabled_sum += counter_info.counter.time_enabled;
+      time_running_sum += counter_info.counter.time_running;
     }
-    bool scaled = false;
-    int64_t scaled_count = sum_counter.value;
-    if (sum_counter.time_running < sum_counter.time_enabled) {
-      if (sum_counter.time_running == 0) {
+    double scale = 1.0;
+    uint64_t scaled_count = value_sum;
+    if (time_running_sum < time_enabled_sum) {
+      if (time_running_sum == 0) {
         scaled_count = 0;
       } else {
-        scaled = true;
-        scaled_count = static_cast<int64_t>(static_cast<double>(sum_counter.value) *
-                                            sum_counter.time_enabled / sum_counter.time_running);
+        scale = static_cast<double>(time_enabled_sum) / time_running_sum;
+        scaled_count = static_cast<uint64_t>(scale * value_sum);
       }
     }
-    printf("%'30" PRId64 "%s  %s\n", scaled_count, scaled ? "(scaled)" : "       ",
-           event_type_modifier->name.c_str());
+    CounterSummary summary;
+    summary.event_type = counters_info.event_type;
+    summary.count = scaled_count;
+    summary.scale = scale;
+    summary.readable_count_str = ReadableCountValue(summary.count, *summary.event_type);
+    summaries.push_back(summary);
   }
-  printf("\nTotal test time: %lf seconds.\n",
-         std::chrono::duration_cast<std::chrono::duration<double>>(counting_duration).count());
+
+  for (auto& summary : summaries) {
+    summary.comment = GetCommentForSummary(summary, summaries, duration_in_sec);
+  }
+
+  size_t count_column_width = 0;
+  size_t name_column_width = 0;
+  size_t comment_column_width = 0;
+  for (auto& summary : summaries) {
+    count_column_width = std::max(count_column_width, summary.readable_count_str.size());
+    name_column_width = std::max(name_column_width, summary.event_type->name.size());
+    comment_column_width = std::max(comment_column_width, summary.comment.size());
+  }
+
+  for (auto& summary : summaries) {
+    printf("  %*s  %-*s   # %-*s   (%.0lf%%)\n", static_cast<int>(count_column_width),
+           summary.readable_count_str.c_str(), static_cast<int>(name_column_width),
+           summary.event_type->name.c_str(), static_cast<int>(comment_column_width),
+           summary.comment.c_str(), 1.0 / summary.scale * 100);
+  }
+
+  printf("\nTotal test time: %lf seconds.\n", duration_in_sec);
   return true;
 }
 

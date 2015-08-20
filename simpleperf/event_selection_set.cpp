@@ -205,18 +205,21 @@ bool EventSelectionSet::EnableEvents() {
   return true;
 }
 
-bool EventSelectionSet::ReadCounters(
-    std::map<const EventTypeAndModifier*, std::vector<PerfCounter>>* counters_map) {
+bool EventSelectionSet::ReadCounters(std::vector<CountersInfo>* counters) {
+  counters->clear();
   for (auto& selection : selections_) {
-    std::vector<PerfCounter> counters;
+    CountersInfo counters_info;
+    counters_info.event_type = &selection.event_type_modifier;
     for (auto& event_fd : selection.event_fds) {
-      PerfCounter counter;
-      if (!event_fd->ReadCounter(&counter)) {
+      CountersInfo::CounterInfo counter_info;
+      if (!event_fd->ReadCounter(&counter_info.counter)) {
         return false;
       }
-      counters.push_back(counter);
+      counter_info.tid = event_fd->ThreadId();
+      counter_info.cpu = event_fd->Cpu();
+      counters_info.counters.push_back(counter_info);
     }
-    counters_map->insert(std::make_pair(&selection.event_type_modifier, counters));
+    counters->push_back(counters_info);
   }
   return true;
 }
@@ -276,17 +279,6 @@ bool EventSelectionSet::ReadMmapEventData(std::function<bool(const char*, size_t
     }
   }
   return true;
-}
-
-std::string EventSelectionSet::FindEventFileNameById(uint64_t id) {
-  for (auto& selection : selections_) {
-    for (auto& event_fd : selection.event_fds) {
-      if (event_fd->Id() == id) {
-        return event_fd->Name();
-      }
-    }
-  }
-  return "";
 }
 
 EventSelectionSet::EventSelection* EventSelectionSet::FindSelectionByType(
