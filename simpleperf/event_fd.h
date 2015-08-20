@@ -42,10 +42,15 @@ class EventFd {
 
   ~EventFd();
 
-  // Give information about this perf_event_file, like (event_name, tid, cpu).
-  std::string Name() const;
-
   uint64_t Id() const;
+
+  pid_t ThreadId() const {
+    return tid_;
+  }
+
+  int Cpu() const {
+    return cpu_;
+  }
 
   // It tells the kernel to start counting and recording events specified by this file.
   bool EnableEvent();
@@ -80,6 +85,9 @@ class EventFd {
         mmap_addr_(nullptr),
         mmap_len_(0) {
   }
+
+  // Give information about this perf_event_file, like (event_name, tid, cpu).
+  std::string Name() const;
 
   int perf_event_fd_;
   mutable uint64_t id_;
