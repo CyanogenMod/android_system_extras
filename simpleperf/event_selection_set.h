@@ -28,6 +28,16 @@
 #include "event_type.h"
 #include "perf_event.h"
 
+struct CountersInfo {
+  const EventTypeAndModifier* event_type;
+  struct CounterInfo {
+    pid_t tid;
+    int cpu;
+    PerfCounter counter;
+  };
+  std::vector<CounterInfo> counters;
+};
+
 // EventSelectionSet helps to monitor events.
 // Firstly, the user creates an EventSelectionSet, and adds the specific event types to monitor.
 // Secondly, the user defines how to monitor the events (by setting enable_on_exec flag,
@@ -62,12 +72,11 @@ class EventSelectionSet {
   bool OpenEventFilesForThreads(const std::vector<pid_t>& threads);
   bool OpenEventFilesForThreadsOnAllCpus(const std::vector<pid_t>& threads);
   bool EnableEvents();
-  bool ReadCounters(std::map<const EventTypeAndModifier*, std::vector<PerfCounter>>* counters_map);
+  bool ReadCounters(std::vector<CountersInfo>* counters);
   void PreparePollForEventFiles(std::vector<pollfd>* pollfds);
   bool MmapEventFiles(size_t mmap_pages);
   bool ReadMmapEventData(std::function<bool(const char*, size_t)> callback);
 
-  std::string FindEventFileNameById(uint64_t id);
   const perf_event_attr& FindEventAttrByType(const EventTypeAndModifier& event_type_modifier);
   const std::vector<std::unique_ptr<EventFd>>& FindEventFdsByType(
       const EventTypeAndModifier& event_type_modifier);
