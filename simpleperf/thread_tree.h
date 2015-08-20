@@ -17,9 +17,12 @@
 #ifndef SIMPLE_PERF_THREAD_TREE_H_
 #define SIMPLE_PERF_THREAD_TREE_H_
 
-#include <limits.h>
 #include <stdint.h>
+
+#include <limits>
+#include <memory>
 #include <set>
+
 #include "dso.h"
 
 struct MapEntry {
@@ -27,7 +30,7 @@ struct MapEntry {
   uint64_t len;
   uint64_t pgoff;
   uint64_t time;  // Map creation time.
-  DsoEntry* dso;
+  Dso* dso;
 };
 
 struct MapComparator {
@@ -43,13 +46,14 @@ struct ThreadEntry {
 
 class ThreadTree {
  public:
-  ThreadTree() : unknown_dso_(DSO_ELF_FILE, "unknown"), unknown_symbol_("unknown", 0, ULLONG_MAX) {
+  ThreadTree() : unknown_symbol_("unknown", 0, std::numeric_limits<unsigned long long>::max()) {
+    unknown_dso_ = Dso::CreateDso(DSO_ELF_FILE, "unknown");
     unknown_map_ = MapEntry{
-        0,              // start_addr
-        ULLONG_MAX,     // len
-        0,              // pgoff
-        0,              // time
-        &unknown_dso_,  // dso
+        0,                                               // start_addr
+        std::numeric_limits<unsigned long long>::max(),  // len
+        0,                                               // pgoff
+        0,                                               // time
+        unknown_dso_.get(),                              // dso
     };
   }
 
@@ -61,14 +65,14 @@ class ThreadTree {
   void AddThreadMap(int pid, int tid, uint64_t start_addr, uint64_t len, uint64_t pgoff,
                     uint64_t time, const std::string& filename);
   const MapEntry* FindMap(const ThreadEntry* thread, uint64_t ip, bool in_kernel);
-  const SymbolEntry* FindSymbol(const MapEntry* map, uint64_t ip);
+  const Symbol* FindSymbol(const MapEntry* map, uint64_t ip);
   const MapEntry* UnknownMap() const {
     return &unknown_map_;
   }
 
  private:
-  DsoEntry* FindKernelDsoOrNew(const std::string& filename);
-  DsoEntry* FindUserDsoOrNew(const std::string& filename);
+  Dso* FindKernelDsoOrNew(const std::string& filename);
+  Dso* FindUserDsoOrNew(const std::string& filename);
 
   std::unordered_map<int, std::unique_ptr<ThreadEntry>> thread_tree_;
   std::vector<std::unique_ptr<std::string>> thread_comm_storage_;
@@ -77,11 +81,11 @@ class ThreadTree {
   std::vector<std::unique_ptr<MapEntry>> map_storage_;
   MapEntry unknown_map_;
 
-  std::unique_ptr<DsoEntry> kernel_dso_;
-  std::unordered_map<std::string, std::unique_ptr<DsoEntry>> module_dso_tree_;
-  std::unordered_map<std::string, std::unique_ptr<DsoEntry>> user_dso_tree_;
-  DsoEntry unknown_dso_;
-  SymbolEntry unknown_symbol_;
+  std::unique_ptr<Dso> kernel_dso_;
+  std::unordered_map<std::string, std::unique_ptr<Dso>> module_dso_tree_;
+  std::unordered_map<std::string, std::unique_ptr<Dso>> user_dso_tree_;
+  std::unique_ptr<Dso> unknown_dso_;
+  Symbol unknown_symbol_;
 };
 
 struct Record;

@@ -600,9 +600,9 @@ bool RecordCommand::GetHitFiles(std::set<std::string>* kernel_modules,
       const ThreadEntry* thread = thread_tree.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
       const MapEntry* map = thread_tree.FindMap(thread, r.ip_data.ip, in_kernel);
       if (in_kernel) {
-        kernel_modules->insert(map->dso->path);
+        kernel_modules->insert(map->dso->Path());
       } else {
-        user_files->insert(map->dso->path);
+        user_files->insert(map->dso->Path());
       }
     }
   }
