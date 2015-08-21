@@ -19,6 +19,8 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#include <limits>
 #include <unordered_map>
 #include <vector>
 
@@ -218,7 +220,7 @@ bool GetKernelAndModuleMmaps(KernelMmap* kernel_mmap, std::vector<ModuleMmap>* m
   kernel_mmap->name = DEFAULT_KERNEL_MMAP_NAME;
   *module_mmaps = GetModulesInUse();
   if (module_mmaps->size() == 0) {
-    kernel_mmap->len = ULLONG_MAX - kernel_mmap->start_addr;
+    kernel_mmap->len = std::numeric_limits<unsigned long long>::max() - kernel_mmap->start_addr;
   } else {
     std::sort(
         module_mmaps->begin(), module_mmaps->end(),
@@ -238,7 +240,8 @@ bool GetKernelAndModuleMmaps(KernelMmap* kernel_mmap, std::vector<ModuleMmap>* m
             (*module_mmaps)[i + 1].start_addr - (*module_mmaps)[i].start_addr - 1;
       }
     }
-    module_mmaps->back().len = ULLONG_MAX - module_mmaps->back().start_addr;
+    module_mmaps->back().len =
+        std::numeric_limits<unsigned long long>::max() - module_mmaps->back().start_addr;
   }
   return true;
 }

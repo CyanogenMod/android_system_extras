@@ -16,7 +16,10 @@
 
 #include "thread_tree.h"
 
+#include <limits>
+
 #include <base/logging.h>
+
 #include "environment.h"
 #include "perf_event.h"
 #include "record.h"
@@ -91,7 +94,7 @@ void ThreadTree::AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff,
   if (len == 0) {
     return;
   }
-  DsoEntry* dso = FindKernelDsoOrNew(filename);
+  Dso* dso = FindKernelDsoOrNew(filename);
   MapEntry* map = new MapEntry{
       start_addr, len, pgoff, time, dso,
   };
@@ -101,16 +104,16 @@ void ThreadTree::AddKernelMap(uint64_t start_addr, uint64_t len, uint64_t pgoff,
   CHECK(pair.second);
 }
 
-DsoEntry* ThreadTree::FindKernelDsoOrNew(const std::string& filename) {
+Dso* ThreadTree::FindKernelDsoOrNew(const std::string& filename) {
   if (filename == DEFAULT_KERNEL_MMAP_NAME) {
     if (kernel_dso_ == nullptr) {
-      kernel_dso_ = DsoFactory::GetInstance()->CreateDso(DSO_KERNEL);
+      kernel_dso_ = Dso::CreateDso(DSO_KERNEL);
     }
     return kernel_dso_.get();
   }
   auto it = module_dso_tree_.find(filename);
   if (it == module_dso_tree_.end()) {
-    module_dso_tree_[filename] = DsoFactory::GetInstance()->CreateDso(DSO_KERNEL_MODULE, filename);
+    module_dso_tree_[filename] = Dso::CreateDso(DSO_KERNEL_MODULE, filename);
     it = module_dso_tree_.find(filename);
   }
   return it->second.get();
@@ -119,7 +122,7 @@ DsoEntry* ThreadTree::FindKernelDsoOrNew(const std::string& filename) {
 void ThreadTree::AddThreadMap(int pid, int tid, uint64_t start_addr, uint64_t len, uint64_t pgoff,
                               uint64_t time, const std::string& filename) {
   ThreadEntry* thread = FindThreadOrNew(pid, tid);
-  DsoEntry* dso = FindUserDsoOrNew(filename);
+  Dso* dso = FindUserDsoOrNew(filename);
   MapEntry* map = new MapEntry{
       start_addr, len, pgoff, time, dso,
   };
@@ -129,10 +132,10 @@ void ThreadTree::AddThreadMap(int pid, int tid, uint64_t start_addr, uint64_t le
   CHECK(pair.second);
 }
 
-DsoEntry* ThreadTree::FindUserDsoOrNew(const std::string& filename) {
+Dso* ThreadTree::FindUserDsoOrNew(const std::string& filename) {
   auto it = user_dso_tree_.find(filename);
   if (it == user_dso_tree_.end()) {
-    user_dso_tree_[filename] = DsoFactory::GetInstance()->CreateDso(DSO_ELF_FILE, filename);
+    user_dso_tree_[filename] = Dso::CreateDso(DSO_ELF_FILE, filename);
     it = user_dso_tree_.find(filename);
   }
   return it->second.get();
@@ -145,11 +148,11 @@ static bool IsAddrInMap(uint64_t addr, const MapEntry* map) {
 static MapEntry* FindMapByAddr(const std::set<MapEntry*, MapComparator>& maps, uint64_t addr) {
   // Construct a map_entry which is strictly after the searched map_entry, based on MapComparator.
   MapEntry find_map = {
-      addr,        // start_addr
-      ULLONG_MAX,  // len
-      0,           // pgoff
-      ULLONG_MAX,  // time
-      nullptr,     // dso
+      addr,                                            // start_addr
+      std::numeric_limits<unsigned long long>::max(),  // len
+      0,                                               // pgoff
+      std::numeric_limits<unsigned long long>::max(),  // time
+      nullptr,                                         // dso
   };
   auto it = maps.upper_bound(&find_map);
   if (it != maps.begin() && IsAddrInMap(addr, *--it)) {
@@ -168,14 +171,14 @@ const MapEntry* ThreadTree::FindMap(const ThreadEntry* thread, uint64_t ip, bool
   return result != nullptr ? result : &unknown_map_;
 }
 
-const SymbolEntry* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip) {
+const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip) {
   uint64_t offset_in_file;
   if (map->dso == kernel_dso_.get()) {
     offset_in_file = ip;
   } else {
     offset_in_file = ip - map->start_addr + map->pgoff;
   }
-  const SymbolEntry* symbol = map->dso->FindSymbol(offset_in_file);
+  const Symbol* symbol = map->dso->FindSymbol(offset_in_file);
   if (symbol == nullptr) {
     symbol = &unknown_symbol_;
   }

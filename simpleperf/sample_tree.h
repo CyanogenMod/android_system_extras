@@ -31,7 +31,7 @@
 struct BranchFromEntry {
   uint64_t ip;
   const MapEntry* map;
-  const SymbolEntry* symbol;
+  const Symbol* symbol;
   uint64_t flags;
 
   BranchFromEntry() : ip(0), map(nullptr), symbol(nullptr), flags(0) {
@@ -47,13 +47,13 @@ struct SampleEntry {
   const ThreadEntry* thread;
   const char* thread_comm;  // It refers to the thread comm when the sample happens.
   const MapEntry* map;
-  const SymbolEntry* symbol;
+  const Symbol* symbol;
   BranchFromEntry branch_from;
   CallChainRoot callchain;  // A callchain tree representing all callchains in the sample records.
 
   SampleEntry(uint64_t ip, uint64_t time, uint64_t period, uint64_t accumulated_period,
               uint64_t sample_count, const ThreadEntry* thread, const MapEntry* map,
-              const SymbolEntry* symbol)
+              const Symbol* symbol)
       : ip(ip),
         time(time),
         period(period),
