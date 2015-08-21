@@ -34,7 +34,7 @@ SampleEntry* SampleTree::AddSample(int pid, int tid, uint64_t ip, uint64_t time,
                                    bool in_kernel) {
   const ThreadEntry* thread = thread_tree_->FindThreadOrNew(pid, tid);
   const MapEntry* map = thread_tree_->FindMap(thread, ip, in_kernel);
-  const SymbolEntry* symbol = thread_tree_->FindSymbol(map, ip);
+  const Symbol* symbol = thread_tree_->FindSymbol(map, ip);
 
   SampleEntry value(ip, time, period, 0, 1, thread, map, symbol);
 
@@ -51,12 +51,12 @@ void SampleTree::AddBranchSample(int pid, int tid, uint64_t from_ip, uint64_t to
   if (from_map == thread_tree_->UnknownMap()) {
     from_map = thread_tree_->FindMap(thread, from_ip, true);
   }
-  const SymbolEntry* from_symbol = thread_tree_->FindSymbol(from_map, from_ip);
+  const Symbol* from_symbol = thread_tree_->FindSymbol(from_map, from_ip);
   const MapEntry* to_map = thread_tree_->FindMap(thread, to_ip, false);
   if (to_map == thread_tree_->UnknownMap()) {
     to_map = thread_tree_->FindMap(thread, to_ip, true);
   }
-  const SymbolEntry* to_symbol = thread_tree_->FindSymbol(to_map, to_ip);
+  const Symbol* to_symbol = thread_tree_->FindSymbol(to_map, to_ip);
 
   SampleEntry value(to_ip, time, period, 0, 1, thread, to_map, to_symbol);
   value.branch_from.ip = from_ip;
@@ -75,7 +75,7 @@ SampleEntry* SampleTree::AddCallChainSample(int pid, int tid, uint64_t ip, uint6
                                             const std::vector<SampleEntry*>& callchain) {
   const ThreadEntry* thread = thread_tree_->FindThreadOrNew(pid, tid);
   const MapEntry* map = thread_tree_->FindMap(thread, ip, in_kernel);
-  const SymbolEntry* symbol = thread_tree_->FindSymbol(map, ip);
+  const Symbol* symbol = thread_tree_->FindSymbol(map, ip);
 
   SampleEntry value(ip, time, 0, period, 0, thread, map, symbol);
 
@@ -111,7 +111,7 @@ bool SampleTree::IsFilteredOut(const SampleEntry& value) {
   if (!comm_filter_.empty() && comm_filter_.find(value.thread_comm) == comm_filter_.end()) {
     return true;
   }
-  if (!dso_filter_.empty() && dso_filter_.find(value.map->dso->path) == dso_filter_.end()) {
+  if (!dso_filter_.empty() && dso_filter_.find(value.map->dso->Path()) == dso_filter_.end()) {
     return true;
   }
   return false;
