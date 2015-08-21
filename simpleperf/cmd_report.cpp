@@ -165,11 +165,11 @@ class DsoItem : public Displayable, public Comparable {
   }
 
   int Compare(const SampleEntry& sample1, const SampleEntry& sample2) const override {
-    return strcmp(sample1.map->dso->path.c_str(), sample2.map->dso->path.c_str());
+    return strcmp(sample1.map->dso->Path().c_str(), sample2.map->dso->Path().c_str());
   }
 
   std::string Show(const SampleEntry& sample) const override {
-    return sample.map->dso->path;
+    return sample.map->dso->Path();
   }
 };
 
@@ -194,12 +194,12 @@ class DsoFromItem : public Displayable, public Comparable {
   }
 
   int Compare(const SampleEntry& sample1, const SampleEntry& sample2) const override {
-    return strcmp(sample1.branch_from.map->dso->path.c_str(),
-                  sample2.branch_from.map->dso->path.c_str());
+    return strcmp(sample1.branch_from.map->dso->Path().c_str(),
+                  sample2.branch_from.map->dso->Path().c_str());
   }
 
   std::string Show(const SampleEntry& sample) const override {
-    return sample.branch_from.map->dso->path;
+    return sample.branch_from.map->dso->Path();
   }
 };
 
@@ -424,12 +424,12 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
     }
   }
 
-  DsoFactory::GetInstance()->SetDemangle(demangle);
-  if (!DsoFactory::GetInstance()->SetSymFsDir(symfs_dir)) {
+  Dso::SetDemangle(demangle);
+  if (!Dso::SetSymFsDir(symfs_dir)) {
     return false;
   }
   if (!vmlinux.empty()) {
-    DsoFactory::GetInstance()->SetVmlinux(vmlinux);
+    Dso::SetVmlinux(vmlinux);
   }
 
   if (!accumulate_callchain_) {
@@ -590,7 +590,7 @@ bool ReportCommand::ReadFeaturesFromRecordFile() {
   for (auto& r : records) {
     build_ids.push_back(std::make_pair(r.filename, r.build_id));
   }
-  DsoFactory::GetInstance()->SetBuildIds(build_ids);
+  Dso::SetBuildIds(build_ids);
 
   std::string arch = record_file_reader_->ReadFeatureString(PerfFileFormat::FEAT_ARCH);
   if (!arch.empty()) {
@@ -695,10 +695,11 @@ static void PrintCallGraphEntry(size_t depth, std::string prefix,
     double percentage = 100.0 * (node->period + node->children_period) / parent_period;
     percentage_s = android::base::StringPrintf("--%.2lf%%-- ", percentage);
   }
-  printf("%s%s%s\n", prefix.c_str(), percentage_s.c_str(), node->chain[0]->symbol->name.c_str());
+  printf("%s%s%s\n", prefix.c_str(), percentage_s.c_str(),
+         node->chain[0]->symbol->GetDemangledName().c_str());
   prefix.append(percentage_s.size(), ' ');
   for (size_t i = 1; i < node->chain.size(); ++i) {
-    printf("%s%s\n", prefix.c_str(), node->chain[i]->symbol->name.c_str());
+    printf("%s%s\n", prefix.c_str(), node->chain[i]->symbol->GetDemangledName().c_str());
   }
 
   for (size_t i = 0; i < node->children.size(); ++i) {
@@ -710,7 +711,7 @@ static void PrintCallGraphEntry(size_t depth, std::string prefix,
 void ReportCommand::PrintCallGraph(const SampleEntry& sample) {
   std::string prefix = "       ";
   printf("%s|\n", prefix.c_str());
-  printf("%s-- %s\n", prefix.c_str(), sample.symbol->name.c_str());
+  printf("%s-- %s\n", prefix.c_str(), sample.symbol->GetDemangledName().c_str());
   prefix.append(3, ' ');
   for (size_t i = 0; i < sample.callchain.children.size(); ++i) {
     PrintCallGraphEntry(1, prefix, sample.callchain.children[i], sample.callchain.children_period,
