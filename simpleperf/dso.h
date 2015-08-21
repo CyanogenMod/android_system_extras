@@ -25,13 +25,12 @@
 
 #include "build_id.h"
 
-struct SymbolEntry {
+struct Symbol {
   std::string name;
   uint64_t addr;
   uint64_t len;
 
-  SymbolEntry(const std::string& name, uint64_t addr, uint64_t len)
-      : name(name), addr(addr), len(len) {
+  Symbol(const std::string& name, uint64_t addr, uint64_t len) : name(name), addr(addr), len(len) {
   }
 
   const std::string& GetDemangledName() const;
@@ -41,8 +40,7 @@ struct SymbolEntry {
 };
 
 struct SymbolComparator {
-  bool operator()(const std::unique_ptr<SymbolEntry>& symbol1,
-                  const std::unique_ptr<SymbolEntry>& symbol2);
+  bool operator()(const std::unique_ptr<Symbol>& symbol1, const std::unique_ptr<Symbol>& symbol2);
 };
 
 enum DsoType {
@@ -51,42 +49,49 @@ enum DsoType {
   DSO_ELF_FILE,
 };
 
-struct DsoEntry {
-  DsoType type;
-  std::string path;
-  std::set<std::unique_ptr<SymbolEntry>, SymbolComparator> symbols;
+struct KernelSymbol;
+struct ElfFileSymbol;
 
-  DsoEntry(DsoType type, const std::string& path);
-  const SymbolEntry* FindSymbol(uint64_t offset_in_dso);
-
- private:
-  bool is_loaded;
-};
-
-class DsoFactory {
+struct Dso {
  public:
-  static DsoFactory* GetInstance();
+  static void SetDemangle(bool demangle);
+  static std::string Demangle(const std::string& name);
+  static bool SetSymFsDir(const std::string& symfs_dir);
+  static void SetVmlinux(const std::string& vmlinux);
+  static void SetBuildIds(const std::vector<std::pair<std::string, BuildId>>& build_ids);
 
-  void SetDemangle(bool demangle);
-  bool SetSymFsDir(const std::string& symfs_dir);
-  void SetVmlinux(const std::string& vmlinux);
-  void SetBuildIds(const std::vector<std::pair<std::string, BuildId>>& build_ids);
+  static std::unique_ptr<Dso> CreateDso(DsoType dso_type, const std::string& dso_path = "");
 
-  std::unique_ptr<DsoEntry> CreateDso(DsoType dso_type, const std::string& dso_path = "");
-  std::string Demangle(const std::string& name);
-  bool LoadDso(DsoEntry* dso);
+  const std::string& Path() const {
+    return path_;
+  }
+
+  const Symbol* FindSymbol(uint64_t offset_in_dso);
 
  private:
-  DsoFactory();
-  bool LoadKernel(DsoEntry* dso);
-  bool LoadKernelModule(DsoEntry* dso);
-  bool LoadElfFile(DsoEntry* dso);
-  BuildId GetExpectedBuildId(const std::string& filename);
+  static BuildId GetExpectedBuildId(const std::string& filename);
+  static bool KernelSymbolCallback(const KernelSymbol& kernel_symbol, Dso* dso);
+  static void VmlinuxSymbolCallback(const ElfFileSymbol& elf_symbol, Dso* dso);
+  static void ElfFileSymbolCallback(const ElfFileSymbol& elf_symbol, Dso* dso,
+                                    bool (*filter)(const ElfFileSymbol&));
 
-  bool demangle_;
-  std::string symfs_dir_;
-  std::string vmlinux_;
-  std::unordered_map<std::string, BuildId> build_id_map_;
+  static bool demangle_;
+  static std::string symfs_dir_;
+  static std::string vmlinux_;
+  static std::unordered_map<std::string, BuildId> build_id_map_;
+
+  Dso(DsoType type, const std::string& path);
+  bool Load();
+  bool LoadKernel();
+  bool LoadKernelModule();
+  bool LoadElfFile();
+  void InsertSymbol(const Symbol& symbol);
+  void FixupSymbolLength();
+
+  const DsoType type_;
+  const std::string path_;
+  std::set<std::unique_ptr<Symbol>, SymbolComparator> symbols_;
+  bool is_loaded_;
 };
 
 #endif  // SIMPLE_PERF_DSO_H_

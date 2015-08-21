@@ -35,7 +35,7 @@ static void SampleMatchExpectation(const SampleEntry& sample, const ExpectedSamp
   ASSERT_EQ(expected.tid, sample.thread->tid);
   ASSERT_STREQ(expected.comm, sample.thread_comm);
   ASSERT_TRUE(sample.map != nullptr);
-  ASSERT_EQ(expected.dso_name, sample.map->dso->path);
+  ASSERT_EQ(expected.dso_name, sample.map->dso->Path());
   ASSERT_EQ(expected.map_start_addr, sample.map->start_addr);
   ASSERT_EQ(expected.sample_count, sample.sample_count);
   *has_error = false;
@@ -60,8 +60,8 @@ static int CompareSampleFunction(const SampleEntry& sample1, const SampleEntry& 
   if (strcmp(sample1.thread_comm, sample2.thread_comm) != 0) {
     return strcmp(sample1.thread_comm, sample2.thread_comm);
   }
-  if (sample1.map->dso->path != sample2.map->dso->path) {
-    return sample1.map->dso->path > sample2.map->dso->path ? 1 : -1;
+  if (sample1.map->dso->Path() != sample2.map->dso->Path()) {
+    return sample1.map->dso->Path() > sample2.map->dso->Path() ? 1 : -1;
   }
   if (sample1.map->start_addr != sample2.map->start_addr) {
     return sample1.map->start_addr - sample2.map->start_addr;
