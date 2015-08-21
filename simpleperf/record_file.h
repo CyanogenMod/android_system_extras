@@ -29,17 +29,19 @@
 #include "record.h"
 #include "record_file_format.h"
 
-class EventFd;
+struct AttrWithId {
+  const perf_event_attr* attr;
+  std::vector<uint64_t> ids;
+};
 
 // RecordFileWriter writes to a perf record file, like perf.data.
 class RecordFileWriter {
  public:
-  static std::unique_ptr<RecordFileWriter> CreateInstance(
-      const std::string& filename, const perf_event_attr& event_attr,
-      const std::vector<std::unique_ptr<EventFd>>& event_fds);
+  static std::unique_ptr<RecordFileWriter> CreateInstance(const std::string& filename);
 
   ~RecordFileWriter();
 
+  bool WriteAttrSection(const std::vector<AttrWithId>& attr_ids);
   bool WriteData(const void* buf, size_t len);
 
   bool WriteData(const std::vector<char>& data) {
@@ -62,8 +64,6 @@ class RecordFileWriter {
 
  private:
   RecordFileWriter(const std::string& filename, FILE* fp);
-  bool WriteAttrSection(const perf_event_attr& event_attr,
-                        const std::vector<std::unique_ptr<EventFd>>& event_fds);
   void GetHitModulesInBuffer(const char* p, const char* end,
                              std::vector<std::string>* hit_kernel_modules,
                              std::vector<std::string>* hit_user_files);

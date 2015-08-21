@@ -19,7 +19,6 @@
 #include <string.h>
 #include "environment.h"
 #include "event_attr.h"
-#include "event_fd.h"
 #include "event_type.h"
 #include "record.h"
 #include "record_file.h"
@@ -31,31 +30,37 @@ using namespace PerfFileFormat;
 class RecordFileTest : public ::testing::Test {
  protected:
   virtual void SetUp() {
-    filename = "temporary.record_file";
-    std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType("cpu-cycles");
-    ASSERT_TRUE(event_type_modifier != nullptr);
-    event_attr = CreateDefaultPerfEventAttr(event_type_modifier->event_type);
-    event_attr.sample_id_all = 1;
-    event_attr.sample_type |= PERF_SAMPLE_TIME;
-    std::unique_ptr<EventFd> event_fd = EventFd::OpenEventFile(event_attr, getpid(), -1);
-    ASSERT_TRUE(event_fd != nullptr);
-    event_fds.push_back(std::move(event_fd));
+    filename_ = "temporary.record_file";
   }
 
-  std::string filename;
-  perf_event_attr event_attr;
-  std::vector<std::unique_ptr<EventFd>> event_fds;
+  void AddEventType(const std::string& event_type_str) {
+    std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType(event_type_str);
+    ASSERT_TRUE(event_type_modifier != nullptr);
+    perf_event_attr attr = CreateDefaultPerfEventAttr(event_type_modifier->event_type);
+    attrs_.push_back(attr);
+    AttrWithId attr_id;
+    attr_id.attr = &attrs_[attrs_.size() - 1];
+    attr_id.ids.push_back(attrs_.size());  // Fake id.
+    attr_ids_.push_back(attr_id);
+  }
+
+  std::string filename_;
+  std::vector<perf_event_attr> attrs_;
+  std::vector<AttrWithId> attr_ids_;
 };
 
 TEST_F(RecordFileTest, smoke) {
   // Write to a record file.
-  std::unique_ptr<RecordFileWriter> writer =
-      RecordFileWriter::CreateInstance(filename, event_attr, event_fds);
+  std::unique_ptr<RecordFileWriter> writer = RecordFileWriter::CreateInstance(filename_);
   ASSERT_TRUE(writer != nullptr);
+
+  // Write attr section.
+  AddEventType("cpu-cycles");
+  ASSERT_TRUE(writer->WriteAttrSection(attr_ids_));
 
   // Write data section.
   MmapRecord mmap_record =
-      CreateMmapRecord(event_attr, true, 1, 1, 0x1000, 0x2000, 0x3000, "mmap_record_example");
+      CreateMmapRecord(attrs_[0], true, 1, 1, 0x1000, 0x2000, 0x3000, "mmap_record_example");
   ASSERT_TRUE(writer->WriteData(mmap_record.BinaryFormat()));
 
   // Check data section that has been written.
@@ -76,15 +81,15 @@ TEST_F(RecordFileTest, smoke) {
   ASSERT_TRUE(writer->Close());
 
   // Read from a record file.
-  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(filename);
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(filename_);
   ASSERT_TRUE(reader != nullptr);
   const FileHeader* file_header = reader->FileHeader();
   ASSERT_TRUE(file_header != nullptr);
-  std::vector<const FileAttr*> attrs = reader->AttrSection();
-  ASSERT_EQ(1u, attrs.size());
-  ASSERT_EQ(0, memcmp(&attrs[0]->attr, &event_attr, sizeof(perf_event_attr)));
-  std::vector<uint64_t> ids = reader->IdsForAttr(attrs[0]);
-  ASSERT_EQ(1u, ids.size());
+  std::vector<const FileAttr*> file_attrs = reader->AttrSection();
+  ASSERT_EQ(1u, file_attrs.size());
+  ASSERT_EQ(0, memcmp(&file_attrs[0]->attr, attr_ids_[0].attr, sizeof(perf_event_attr)));
+  std::vector<uint64_t> ids = reader->IdsForAttr(file_attrs[0]);
+  ASSERT_EQ(ids, attr_ids_[0].ids);
 
   // Read and check data section.
   records = reader->DataSection();
@@ -106,13 +111,18 @@ TEST_F(RecordFileTest, smoke) {
 }
 
 TEST_F(RecordFileTest, records_sorted_by_time) {
-  // Write to a record file;
-  std::unique_ptr<RecordFileWriter> writer =
-      RecordFileWriter::CreateInstance(filename, event_attr, event_fds);
+  // Write to a record file.
+  std::unique_ptr<RecordFileWriter> writer = RecordFileWriter::CreateInstance(filename_);
   ASSERT_TRUE(writer != nullptr);
 
+  // Write attr section.
+  AddEventType("cpu-cycles");
+  attrs_[0].sample_id_all = 1;
+  attrs_[0].sample_type |= PERF_SAMPLE_TIME;
+  ASSERT_TRUE(writer->WriteAttrSection(attr_ids_));
+
   // Write data section.
-  MmapRecord r1 = CreateMmapRecord(event_attr, true, 1, 1, 0x100, 0x2000, 0x3000, "mmap_record1");
+  MmapRecord r1 = CreateMmapRecord(attrs_[0], true, 1, 1, 0x100, 0x2000, 0x3000, "mmap_record1");
   MmapRecord r2 = r1;
   MmapRecord r3 = r1;
   r1.sample_id.time_data.time = 2;
@@ -124,7 +134,7 @@ TEST_F(RecordFileTest, records_sorted_by_time) {
   ASSERT_TRUE(writer->Close());
 
   // Read from a record file.
-  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(filename);
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(filename_);
   ASSERT_TRUE(reader != nullptr);
   std::vector<std::unique_ptr<Record>> records = reader->DataSection();
   ASSERT_EQ(3u, records.size());
@@ -133,4 +143,29 @@ TEST_F(RecordFileTest, records_sorted_by_time) {
   CheckRecordEqual(r3, *records[2]);
 
   ASSERT_TRUE(reader->Close());
+}
+
+TEST_F(RecordFileTest, record_more_than_one_attr) {
+  // Write to a record file.
+  std::unique_ptr<RecordFileWriter> writer = RecordFileWriter::CreateInstance(filename_);
+  ASSERT_TRUE(writer != nullptr);
+
+  // Write attr section.
+  AddEventType("cpu-cycles");
+  AddEventType("cpu-clock");
+  AddEventType("task-clock");
+  ASSERT_TRUE(writer->WriteAttrSection(attr_ids_));
+
+  ASSERT_TRUE(writer->Close());
+
+  // Read from a record file.
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(filename_);
+  ASSERT_TRUE(reader != nullptr);
+  std::vector<const FileAttr*> file_attrs = reader->AttrSection();
+  ASSERT_EQ(3u, file_attrs.size());
+  for (size_t i = 0; i < file_attrs.size(); ++i) {
+    ASSERT_EQ(0, memcmp(&file_attrs[i]->attr, attr_ids_[i].attr, sizeof(perf_event_attr)));
+    std::vector<uint64_t> ids = reader->IdsForAttr(file_attrs[i]);
+    ASSERT_EQ(ids, attr_ids_[i].ids);
+  }
 }
