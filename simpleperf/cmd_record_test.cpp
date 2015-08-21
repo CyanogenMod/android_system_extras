@@ -141,3 +141,8 @@ TEST(record_cmd, existing_threads) {
 TEST(record_cmd, no_monitored_threads) {
   ASSERT_FALSE(RecordCmd()->Run({""}));
 }
+
+TEST(record_cmd, more_than_one_event_types) {
+  ASSERT_TRUE(RecordCmd()->Run({"-e", "cpu-cycles,cpu-clock", "sleep", "1"}));
+  ASSERT_TRUE(RecordCmd()->Run({"-e", "cpu-cycles", "-e", "cpu-clock", "sleep", "1"}));
+}

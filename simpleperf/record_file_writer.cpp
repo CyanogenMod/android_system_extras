@@ -25,16 +25,13 @@
 
 #include <base/logging.h>
 
-#include "event_fd.h"
 #include "perf_event.h"
 #include "record.h"
 #include "utils.h"
 
 using namespace PerfFileFormat;
 
-std::unique_ptr<RecordFileWriter> RecordFileWriter::CreateInstance(
-    const std::string& filename, const perf_event_attr& event_attr,
-    const std::vector<std::unique_ptr<EventFd>>& event_fds) {
+std::unique_ptr<RecordFileWriter> RecordFileWriter::CreateInstance(const std::string& filename) {
   // Remove old perf.data to avoid file ownership problems.
   if (!RemovePossibleFile(filename)) {
     return nullptr;
@@ -45,11 +42,7 @@ std::unique_ptr<RecordFileWriter> RecordFileWriter::CreateInstance(
     return nullptr;
   }
 
-  auto writer = std::unique_ptr<RecordFileWriter>(new RecordFileWriter(filename, fp));
-  if (!writer->WriteAttrSection(event_attr, event_fds)) {
-    return nullptr;
-  }
-  return writer;
+  return std::unique_ptr<RecordFileWriter>(new RecordFileWriter(filename, fp));
 }
 
 RecordFileWriter::RecordFileWriter(const std::string& filename, FILE* fp)
@@ -69,38 +62,41 @@ RecordFileWriter::~RecordFileWriter() {
   }
 }
 
-bool RecordFileWriter::WriteAttrSection(const perf_event_attr& event_attr,
-                                        const std::vector<std::unique_ptr<EventFd>>& event_fds) {
+bool RecordFileWriter::WriteAttrSection(const std::vector<AttrWithId>& attr_ids) {
+  if (attr_ids.empty()) {
+    return false;
+  }
+
   // Skip file header part.
   if (fseek(record_fp_, sizeof(FileHeader), SEEK_SET) == -1) {
     return false;
   }
 
   // Write id section.
-  std::vector<uint64_t> ids;
-  for (auto& event_fd : event_fds) {
-    ids.push_back(event_fd->Id());
-  }
   long id_section_offset = ftell(record_fp_);
   if (id_section_offset == -1) {
     return false;
   }
-  if (!Write(ids.data(), ids.size() * sizeof(uint64_t))) {
-    return false;
+  for (auto& attr_id : attr_ids) {
+    if (!Write(attr_id.ids.data(), attr_id.ids.size() * sizeof(uint64_t))) {
+      return false;
+    }
   }
 
   // Write attr section.
-  FileAttr attr;
-  attr.attr = event_attr;
-  attr.ids.offset = id_section_offset;
-  attr.ids.size = ids.size() * sizeof(uint64_t);
-
   long attr_section_offset = ftell(record_fp_);
   if (attr_section_offset == -1) {
     return false;
   }
-  if (!Write(&attr, sizeof(attr))) {
-    return false;
+  for (auto& attr_id : attr_ids) {
+    FileAttr file_attr;
+    file_attr.attr = *attr_id.attr;
+    file_attr.ids.offset = id_section_offset;
+    file_attr.ids.size = attr_id.ids.size() * sizeof(uint64_t);
+    id_section_offset += file_attr.ids.size;
+    if (!Write(&file_attr, sizeof(file_attr))) {
+      return false;
+    }
   }
 
   long data_section_offset = ftell(record_fp_);
@@ -109,11 +105,11 @@ bool RecordFileWriter::WriteAttrSection(const perf_event_attr& event_attr,
   }
 
   attr_section_offset_ = attr_section_offset;
-  attr_section_size_ = sizeof(attr);
+  attr_section_size_ = data_section_offset - attr_section_offset;
   data_section_offset_ = data_section_offset;
 
   // Save event_attr for use when reading records.
-  event_attr_ = event_attr;
+  event_attr_ = *attr_ids[0].attr;
   return true;
 }
 
