@@ -1,0 +1,4 @@
+service perfprofd /system/xbin/perfprofd
+    class late_start
+    user root
+    oneshot
