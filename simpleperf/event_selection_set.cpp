@@ -63,7 +63,20 @@ bool EventSelectionSet::AddEventType(const EventTypeAndModifier& event_type_modi
     return false;
   }
   selections_.push_back(std::move(selection));
+  UnionSampleType();
   return true;
+}
+
+// Union the sample type of different event attrs can make reading sample records in perf.data
+// easier.
+void EventSelectionSet::UnionSampleType() {
+  uint64_t sample_type = 0;
+  for (auto& selection : selections_) {
+    sample_type |= selection.event_attr.sample_type;
+  }
+  for (auto& selection : selections_) {
+    selection.event_attr.sample_type = sample_type;
+  }
 }
 
 void EventSelectionSet::SetEnableOnExec(bool enable) {
@@ -291,12 +304,14 @@ EventSelectionSet::EventSelection* EventSelectionSet::FindSelectionByType(
   return nullptr;
 }
 
-const perf_event_attr& EventSelectionSet::FindEventAttrByType(
+const perf_event_attr* EventSelectionSet::FindEventAttrByType(
     const EventTypeAndModifier& event_type_modifier) {
-  return FindSelectionByType(event_type_modifier)->event_attr;
+  EventSelection* selection = FindSelectionByType(event_type_modifier);
+  return (selection != nullptr) ? &selection->event_attr : nullptr;
 }
 
-const std::vector<std::unique_ptr<EventFd>>& EventSelectionSet::FindEventFdsByType(
+const std::vector<std::unique_ptr<EventFd>>* EventSelectionSet::FindEventFdsByType(
     const EventTypeAndModifier& event_type_modifier) {
-  return FindSelectionByType(event_type_modifier)->event_fds;
+  EventSelection* selection = FindSelectionByType(event_type_modifier);
+  return (selection != nullptr) ? &selection->event_fds : nullptr;
 }
