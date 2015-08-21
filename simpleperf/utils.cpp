@@ -23,7 +23,34 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
+#include <string>
+
 #include <base/logging.h>
+
+void OneTimeFreeAllocator::Clear() {
+  for (auto& p : v_) {
+    delete[] p;
+  }
+  v_.clear();
+  cur_ = nullptr;
+  end_ = nullptr;
+}
+
+const char* OneTimeFreeAllocator::AllocateString(const std::string& s) {
+  size_t size = s.size() + 1;
+  if (cur_ + size > end_) {
+    size_t alloc_size = std::max(size, unit_size_);
+    char* p = new char[alloc_size];
+    v_.push_back(p);
+    cur_ = p;
+    end_ = p + alloc_size;
+  }
+  strcpy(cur_, s.c_str());
+  const char* result = cur_;
+  cur_ += size;
+  return result;
+}
 
 void PrintIndented(size_t indent, const char* fmt, ...) {
   va_list ap;

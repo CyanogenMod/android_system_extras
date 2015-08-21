@@ -179,12 +179,11 @@ class SymbolItem : public Displayable, public Comparable {
   }
 
   int Compare(const SampleEntry& sample1, const SampleEntry& sample2) const override {
-    return strcmp(sample1.symbol->GetDemangledName().c_str(),
-                  sample2.symbol->GetDemangledName().c_str());
+    return strcmp(sample1.symbol->DemangledName(), sample2.symbol->DemangledName());
   }
 
   std::string Show(const SampleEntry& sample) const override {
-    return sample.symbol->GetDemangledName();
+    return sample.symbol->DemangledName();
   }
 };
 
@@ -215,12 +214,12 @@ class SymbolFromItem : public Displayable, public Comparable {
   }
 
   int Compare(const SampleEntry& sample1, const SampleEntry& sample2) const override {
-    return strcmp(sample1.branch_from.symbol->GetDemangledName().c_str(),
-                  sample2.branch_from.symbol->GetDemangledName().c_str());
+    return strcmp(sample1.branch_from.symbol->DemangledName(),
+                  sample2.branch_from.symbol->DemangledName());
   }
 
   std::string Show(const SampleEntry& sample) const override {
-    return sample.branch_from.symbol->GetDemangledName();
+    return sample.branch_from.symbol->DemangledName();
   }
 };
 
@@ -695,11 +694,10 @@ static void PrintCallGraphEntry(size_t depth, std::string prefix,
     double percentage = 100.0 * (node->period + node->children_period) / parent_period;
     percentage_s = android::base::StringPrintf("--%.2lf%%-- ", percentage);
   }
-  printf("%s%s%s\n", prefix.c_str(), percentage_s.c_str(),
-         node->chain[0]->symbol->GetDemangledName().c_str());
+  printf("%s%s%s\n", prefix.c_str(), percentage_s.c_str(), node->chain[0]->symbol->DemangledName());
   prefix.append(percentage_s.size(), ' ');
   for (size_t i = 1; i < node->chain.size(); ++i) {
-    printf("%s%s\n", prefix.c_str(), node->chain[i]->symbol->GetDemangledName().c_str());
+    printf("%s%s\n", prefix.c_str(), node->chain[i]->symbol->DemangledName());
   }
 
   for (size_t i = 0; i < node->children.size(); ++i) {
@@ -711,7 +709,7 @@ static void PrintCallGraphEntry(size_t depth, std::string prefix,
 void ReportCommand::PrintCallGraph(const SampleEntry& sample) {
   std::string prefix = "       ";
   printf("%s|\n", prefix.c_str());
-  printf("%s-- %s\n", prefix.c_str(), sample.symbol->GetDemangledName().c_str());
+  printf("%s-- %s\n", prefix.c_str(), sample.symbol->DemangledName());
   prefix.append(3, ' ');
   for (size_t i = 0; i < sample.callchain.children.size(); ++i) {
     PrintCallGraphEntry(1, prefix, sample.callchain.children[i], sample.callchain.children_period,
