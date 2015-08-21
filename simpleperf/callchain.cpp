@@ -16,12 +16,15 @@
 
 #include "callchain.h"
 
+#include <string.h>
+
 #include <queue>
+
 #include <base/logging.h>
 #include "sample_tree.h"
 
 static bool MatchSampleByName(const SampleEntry* sample1, const SampleEntry* sample2) {
-  return (sample1->symbol->name == sample2->symbol->name);
+  return strcmp(sample1->symbol->Name(), sample2->symbol->Name()) == 0;
 }
 
 static size_t GetMatchingLengthInNode(const CallChainNode* node,
