@@ -67,8 +67,8 @@ class RecordCommand : public Command {
             "    --call-graph fp | dwarf[,<dump_stack_size>]\n"
             "                 Enable call graph recording. Use frame pointer or dwarf as the\n"
             "                 method to parse call graph in stack. Default is dwarf,8192.\n"
-            "    -e event[:modifier]\n"
-            "                 Select the event to sample. Use `simpleperf list` to find\n"
+            "    -e event1[:modifier1],event2[:modifier2],...\n"
+            "                 Select the event list to sample. Use `simpleperf list` to find\n"
             "                 all possible event names. Modifiers can be added to define\n"
             "                 how the event should be monitored. Possible modifiers are:\n"
             "                   u - monitor user space events only\n"
@@ -116,8 +116,9 @@ class RecordCommand : public Command {
 
  private:
   bool ParseOptions(const std::vector<std::string>& args, std::vector<std::string>* non_option_args);
-  bool SetMeasuredEventType(const std::string& event_type_name);
+  bool AddMeasuredEventType(const std::string& event_type_name);
   bool SetEventSelection();
+  bool CreateRecordFile();
   bool WriteData(const char* data, size_t size);
   bool DumpKernelAndModuleMmaps();
   bool DumpThreadCommAndMmaps(bool all_threads, const std::vector<pid_t>& selected_threads);
@@ -136,7 +137,7 @@ class RecordCommand : public Command {
   uint32_t dump_stack_size_in_dwarf_sampling_;
   bool child_inherit_;
   std::vector<pid_t> monitored_threads_;
-  std::unique_ptr<EventTypeAndModifier> measured_event_type_modifier_;
+  std::vector<EventTypeAndModifier> measured_event_types_;
   EventSelectionSet event_selection_set_;
 
   // mmap pages used by each perf event file, should be power of 2.
@@ -154,8 +155,8 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   if (!ParseOptions(args, &workload_args)) {
     return false;
   }
-  if (measured_event_type_modifier_ == nullptr) {
-    if (!SetMeasuredEventType(default_measured_event_type)) {
+  if (measured_event_types_.empty()) {
+    if (!AddMeasuredEventType(default_measured_event_type)) {
       return false;
     }
   }
@@ -198,17 +199,8 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   std::vector<pollfd> pollfds;
   event_selection_set_.PreparePollForEventFiles(&pollfds);
 
-  // 4. Open record file writer, and dump kernel/modules/threads mmap information.
-  record_file_writer_ = RecordFileWriter::CreateInstance(
-      record_filename_, event_selection_set_.FindEventAttrByType(*measured_event_type_modifier_),
-      event_selection_set_.FindEventFdsByType(*measured_event_type_modifier_));
-  if (record_file_writer_ == nullptr) {
-    return false;
-  }
-  if (!DumpKernelAndModuleMmaps()) {
-    return false;
-  }
-  if (!DumpThreadCommAndMmaps(system_wide_collection_, monitored_threads_)) {
+  // 4. Create perf.data.
+  if (!CreateRecordFile()) {
     return false;
   }
 
@@ -295,8 +287,11 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       if (!NextArgumentOrError(args, &i)) {
         return false;
       }
-      if (!SetMeasuredEventType(args[i])) {
-        return false;
+      std::vector<std::string> event_types = android::base::Split(args[i], ",");
+      for (auto& event_type : event_types) {
+        if (!AddMeasuredEventType(event_type)) {
+          return false;
+        }
       }
     } else if (args[i] == "-f" || args[i] == "-F") {
       if (!NextArgumentOrError(args, &i)) {
@@ -368,18 +363,20 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
   return true;
 }
 
-bool RecordCommand::SetMeasuredEventType(const std::string& event_type_name) {
+bool RecordCommand::AddMeasuredEventType(const std::string& event_type_name) {
   std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType(event_type_name);
   if (event_type_modifier == nullptr) {
     return false;
   }
-  measured_event_type_modifier_ = std::move(event_type_modifier);
+  measured_event_types_.push_back(*event_type_modifier);
   return true;
 }
 
 bool RecordCommand::SetEventSelection() {
-  if (!event_selection_set_.AddEventType(*measured_event_type_modifier_)) {
-    return false;
+  for (auto& event_type : measured_event_types_) {
+    if (!event_selection_set_.AddEventType(event_type)) {
+      return false;
+    }
   }
   if (use_sample_freq_) {
     event_selection_set_.SetSampleFreq(sample_freq_);
@@ -401,6 +398,38 @@ bool RecordCommand::SetEventSelection() {
   return true;
 }
 
+bool RecordCommand::CreateRecordFile() {
+  record_file_writer_ = RecordFileWriter::CreateInstance(record_filename_);
+  if (record_file_writer_ == nullptr) {
+    return false;
+  }
+
+  std::vector<AttrWithId> attr_ids;
+  for (auto& event_type : measured_event_types_) {
+    AttrWithId attr_id;
+    attr_id.attr = event_selection_set_.FindEventAttrByType(event_type);
+    CHECK(attr_id.attr != nullptr);
+    const std::vector<std::unique_ptr<EventFd>>* fds =
+        event_selection_set_.FindEventFdsByType(event_type);
+    CHECK(fds != nullptr);
+    for (auto& fd : *fds) {
+      attr_id.ids.push_back(fd->Id());
+    }
+    attr_ids.push_back(attr_id);
+  }
+  if (!record_file_writer_->WriteAttrSection(attr_ids)) {
+    return false;
+  }
+
+  if (!DumpKernelAndModuleMmaps()) {
+    return false;
+  }
+  if (!DumpThreadCommAndMmaps(system_wide_collection_, monitored_threads_)) {
+    return false;
+  }
+  return true;
+}
+
 bool RecordCommand::WriteData(const char* data, size_t size) {
   return record_file_writer_->WriteData(data, size);
 }
@@ -411,9 +440,9 @@ bool RecordCommand::DumpKernelAndModuleMmaps() {
   if (!GetKernelAndModuleMmaps(&kernel_mmap, &module_mmaps)) {
     return false;
   }
-  const perf_event_attr& attr =
-      event_selection_set_.FindEventAttrByType(*measured_event_type_modifier_);
-  MmapRecord mmap_record = CreateMmapRecord(attr, true, UINT_MAX, 0, kernel_mmap.start_addr,
+  const perf_event_attr* attr = event_selection_set_.FindEventAttrByType(measured_event_types_[0]);
+  CHECK(attr != nullptr);
+  MmapRecord mmap_record = CreateMmapRecord(*attr, true, UINT_MAX, 0, kernel_mmap.start_addr,
                                             kernel_mmap.len, kernel_mmap.pgoff, kernel_mmap.name);
   if (!record_file_writer_->WriteData(mmap_record.BinaryFormat())) {
     return false;
@@ -423,7 +452,7 @@ bool RecordCommand::DumpKernelAndModuleMmaps() {
     if (filename.empty()) {
       filename = "[" + module_mmap.name + "]";
     }
-    MmapRecord mmap_record = CreateMmapRecord(attr, true, UINT_MAX, 0, module_mmap.start_addr,
+    MmapRecord mmap_record = CreateMmapRecord(*attr, true, UINT_MAX, 0, module_mmap.start_addr,
                                               module_mmap.len, 0, filename);
     if (!record_file_writer_->WriteData(mmap_record.BinaryFormat())) {
       return false;
@@ -450,8 +479,8 @@ bool RecordCommand::DumpThreadCommAndMmaps(bool all_threads,
     }
   }
 
-  const perf_event_attr& attr =
-      event_selection_set_.FindEventAttrByType(*measured_event_type_modifier_);
+  const perf_event_attr* attr = event_selection_set_.FindEventAttrByType(measured_event_types_[0]);
+  CHECK(attr != nullptr);
 
   // Dump processes.
   for (auto& thread : thread_comms) {
@@ -461,7 +490,7 @@ bool RecordCommand::DumpThreadCommAndMmaps(bool all_threads,
     if (!all_threads && dump_processes.find(thread.pid) == dump_processes.end()) {
       continue;
     }
-    CommRecord record = CreateCommRecord(attr, thread.pid, thread.tid, thread.comm);
+    CommRecord record = CreateCommRecord(*attr, thread.pid, thread.tid, thread.comm);
     if (!record_file_writer_->WriteData(record.BinaryFormat())) {
       return false;
     }
@@ -475,7 +504,7 @@ bool RecordCommand::DumpThreadCommAndMmaps(bool all_threads,
         continue;  // No need to dump non-executable mmap info.
       }
       MmapRecord record =
-          CreateMmapRecord(attr, false, thread.pid, thread.tid, thread_mmap.start_addr,
+          CreateMmapRecord(*attr, false, thread.pid, thread.tid, thread_mmap.start_addr,
                            thread_mmap.len, thread_mmap.pgoff, thread_mmap.name);
       if (!record_file_writer_->WriteData(record.BinaryFormat())) {
         return false;
@@ -491,11 +520,11 @@ bool RecordCommand::DumpThreadCommAndMmaps(bool all_threads,
     if (!all_threads && dump_threads.find(thread.tid) == dump_threads.end()) {
       continue;
     }
-    ForkRecord fork_record = CreateForkRecord(attr, thread.pid, thread.tid, thread.pid, thread.pid);
+    ForkRecord fork_record = CreateForkRecord(*attr, thread.pid, thread.tid, thread.pid, thread.pid);
     if (!record_file_writer_->WriteData(fork_record.BinaryFormat())) {
       return false;
     }
-    CommRecord comm_record = CreateCommRecord(attr, thread.pid, thread.tid, thread.comm);
+    CommRecord comm_record = CreateCommRecord(*attr, thread.pid, thread.tid, thread.comm);
     if (!record_file_writer_->WriteData(comm_record.BinaryFormat())) {
       return false;
     }
