@@ -21,6 +21,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+
 #include <string>
 #include <vector>
 
@@ -70,6 +71,28 @@ class SignalHandlerRegister {
 
  private:
   std::vector<std::pair<int, sig_t>> saved_signal_handlers_;
+};
+
+// OneTimeAllocator is used to allocate memory many times and free only once at the end.
+// It reduces the cost to free each allocated memory.
+class OneTimeFreeAllocator {
+ public:
+  OneTimeFreeAllocator(size_t unit_size = 8192u)
+      : unit_size_(unit_size), cur_(nullptr), end_(nullptr) {
+  }
+
+  ~OneTimeFreeAllocator() {
+    Clear();
+  }
+
+  void Clear();
+  const char* AllocateString(const std::string& s);
+
+ private:
+  const size_t unit_size_;
+  std::vector<char*> v_;
+  char* cur_;
+  char* end_;
 };
 
 template <class T>

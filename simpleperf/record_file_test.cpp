@@ -17,6 +17,9 @@
 #include <gtest/gtest.h>
 
 #include <string.h>
+
+#include <memory>
+
 #include "environment.h"
 #include "event_attr.h"
 #include "event_type.h"
@@ -37,15 +40,15 @@ class RecordFileTest : public ::testing::Test {
     std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType(event_type_str);
     ASSERT_TRUE(event_type_modifier != nullptr);
     perf_event_attr attr = CreateDefaultPerfEventAttr(event_type_modifier->event_type);
-    attrs_.push_back(attr);
+    attrs_.push_back(std::unique_ptr<perf_event_attr>(new perf_event_attr(attr)));
     AttrWithId attr_id;
-    attr_id.attr = &attrs_[attrs_.size() - 1];
+    attr_id.attr = attrs_.back().get();
     attr_id.ids.push_back(attrs_.size());  // Fake id.
     attr_ids_.push_back(attr_id);
   }
 
   std::string filename_;
-  std::vector<perf_event_attr> attrs_;
+  std::vector<std::unique_ptr<perf_event_attr>> attrs_;
   std::vector<AttrWithId> attr_ids_;
 };
 
@@ -59,8 +62,8 @@ TEST_F(RecordFileTest, smoke) {
   ASSERT_TRUE(writer->WriteAttrSection(attr_ids_));
 
   // Write data section.
-  MmapRecord mmap_record =
-      CreateMmapRecord(attrs_[0], true, 1, 1, 0x1000, 0x2000, 0x3000, "mmap_record_example");
+  MmapRecord mmap_record = CreateMmapRecord(*(attr_ids_[0].attr), true, 1, 1, 0x1000, 0x2000,
+                                            0x3000, "mmap_record_example");
   ASSERT_TRUE(writer->WriteData(mmap_record.BinaryFormat()));
 
   // Check data section that has been written.
@@ -117,12 +120,13 @@ TEST_F(RecordFileTest, records_sorted_by_time) {
 
   // Write attr section.
   AddEventType("cpu-cycles");
-  attrs_[0].sample_id_all = 1;
-  attrs_[0].sample_type |= PERF_SAMPLE_TIME;
+  attrs_[0]->sample_id_all = 1;
+  attrs_[0]->sample_type |= PERF_SAMPLE_TIME;
   ASSERT_TRUE(writer->WriteAttrSection(attr_ids_));
 
   // Write data section.
-  MmapRecord r1 = CreateMmapRecord(attrs_[0], true, 1, 1, 0x100, 0x2000, 0x3000, "mmap_record1");
+  MmapRecord r1 =
+      CreateMmapRecord(*(attr_ids_[0].attr), true, 1, 1, 0x100, 0x2000, 0x3000, "mmap_record1");
   MmapRecord r2 = r1;
   MmapRecord r3 = r1;
   r1.sample_id.time_data.time = 2;
