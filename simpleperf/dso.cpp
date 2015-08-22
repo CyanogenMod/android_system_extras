@@ -17,8 +17,11 @@
 #include "dso.h"
 
 #include <stdlib.h>
+#include <string.h>
 
+#include <algorithm>
 #include <limits>
+#include <vector>
 
 #include <base/logging.h>
 
@@ -26,22 +29,32 @@
 #include "read_elf.h"
 #include "utils.h"
 
-const std::string& Symbol::GetDemangledName() const {
-  if (demangled_name_.empty()) {
-    demangled_name_ = Dso::Demangle(name);
-  }
-  return demangled_name_;
+static OneTimeFreeAllocator symbol_name_allocator;
+
+Symbol::Symbol(const std::string& name, uint64_t addr, uint64_t len)
+    : addr(addr),
+      len(len),
+      name_(symbol_name_allocator.AllocateString(name)),
+      demangled_name_(nullptr) {
 }
 
-bool SymbolComparator::operator()(const std::unique_ptr<Symbol>& symbol1,
-                                  const std::unique_ptr<Symbol>& symbol2) {
-  return symbol1->addr < symbol2->addr;
+const char* Symbol::DemangledName() const {
+  if (demangled_name_ == nullptr) {
+    const std::string s = Dso::Demangle(name_);
+    if (s == name_) {
+      demangled_name_ = name_;
+    } else {
+      demangled_name_ = symbol_name_allocator.AllocateString(s);
+    }
+  }
+  return demangled_name_;
 }
 
 bool Dso::demangle_ = true;
 std::string Dso::symfs_dir_;
 std::string Dso::vmlinux_;
 std::unordered_map<std::string, BuildId> Dso::build_id_map_;
+size_t Dso::dso_count_;
 
 void Dso::SetDemangle(bool demangle) {
   demangle_ = demangle;
@@ -122,7 +135,20 @@ std::unique_ptr<Dso> Dso::CreateDso(DsoType dso_type, const std::string& dso_pat
 }
 
 Dso::Dso(DsoType type, const std::string& path) : type_(type), path_(path), is_loaded_(false) {
+  dso_count_++;
 }
+
+Dso::~Dso() {
+  if (--dso_count_ == 0) {
+    symbol_name_allocator.Clear();
+  }
+}
+
+struct SymbolComparator {
+  bool operator()(const Symbol& symbol1, const Symbol& symbol2) {
+    return symbol1.addr < symbol2.addr;
+  }
+};
 
 const Symbol* Dso::FindSymbol(uint64_t offset_in_dso) {
   if (!is_loaded_) {
@@ -132,17 +158,13 @@ const Symbol* Dso::FindSymbol(uint64_t offset_in_dso) {
       return nullptr;
     }
   }
-  std::unique_ptr<Symbol> symbol(new Symbol{
-      "",             // name
-      offset_in_dso,  // addr
-      0,              // len
-  });
 
-  auto it = symbols_.upper_bound(symbol);
+  auto it = std::upper_bound(symbols_.begin(), symbols_.end(), Symbol("", offset_in_dso, 0),
+                             SymbolComparator());
   if (it != symbols_.begin()) {
     --it;
-    if ((*it)->addr <= offset_in_dso && (*it)->addr + (*it)->len > offset_in_dso) {
-      return (*it).get();
+    if (it->addr <= offset_in_dso && it->addr + it->len > offset_in_dso) {
+      return &*it;
     }
   }
   return nullptr;
@@ -162,6 +184,7 @@ bool Dso::Load() {
       break;
   }
   if (result) {
+    std::sort(symbols_.begin(), symbols_.end(), SymbolComparator());
     FixupSymbolLength();
   }
   return result;
@@ -239,16 +262,16 @@ bool Dso::LoadElfFile() {
 }
 
 void Dso::InsertSymbol(const Symbol& symbol) {
-  symbols_.insert(std::unique_ptr<Symbol>(new Symbol(symbol)));
+  symbols_.push_back(symbol);
 }
 
 void Dso::FixupSymbolLength() {
   Symbol* prev_symbol = nullptr;
   for (auto& symbol : symbols_) {
     if (prev_symbol != nullptr && prev_symbol->len == 0) {
-      prev_symbol->len = symbol->addr - prev_symbol->addr;
+      prev_symbol->len = symbol.addr - prev_symbol->addr;
     }
-    prev_symbol = symbol.get();
+    prev_symbol = &symbol;
   }
   if (prev_symbol != nullptr && prev_symbol->len == 0) {
     prev_symbol->len = std::numeric_limits<unsigned long long>::max() - prev_symbol->addr;
