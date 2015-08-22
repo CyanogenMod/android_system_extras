@@ -18,7 +18,6 @@
 #define SIMPLE_PERF_DSO_H_
 
 #include <memory>
-#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -26,21 +25,19 @@
 #include "build_id.h"
 
 struct Symbol {
-  std::string name;
   uint64_t addr;
   uint64_t len;
 
-  Symbol(const std::string& name, uint64_t addr, uint64_t len) : name(name), addr(addr), len(len) {
+  Symbol(const std::string& name, uint64_t addr, uint64_t len);
+  const char* Name() const {
+    return name_;
   }
 
-  const std::string& GetDemangledName() const;
+  const char* DemangledName() const;
 
  private:
-  mutable std::string demangled_name_;
-};
-
-struct SymbolComparator {
-  bool operator()(const std::unique_ptr<Symbol>& symbol1, const std::unique_ptr<Symbol>& symbol2);
+  const char* name_;
+  mutable const char* demangled_name_;
 };
 
 enum DsoType {
@@ -62,6 +59,7 @@ struct Dso {
 
   static std::unique_ptr<Dso> CreateDso(DsoType dso_type, const std::string& dso_path = "");
 
+  ~Dso();
   const std::string& Path() const {
     return path_;
   }
@@ -79,6 +77,7 @@ struct Dso {
   static std::string symfs_dir_;
   static std::string vmlinux_;
   static std::unordered_map<std::string, BuildId> build_id_map_;
+  static size_t dso_count_;
 
   Dso(DsoType type, const std::string& path);
   bool Load();
@@ -90,7 +89,7 @@ struct Dso {
 
   const DsoType type_;
   const std::string path_;
-  std::set<std::unique_ptr<Symbol>, SymbolComparator> symbols_;
+  std::vector<Symbol> symbols_;
   bool is_loaded_;
 };
 
