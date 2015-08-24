@@ -65,7 +65,7 @@ int make_f2fs_sparse_fd(int fd, long long len,
 	}
 	reset_f2fs_info();
 	f2fs_init_configuration(&config);
-	len &= ~((__u64)F2FS_BLKSIZE);
+	len &= ~((__u64)(F2FS_BLKSIZE - 1));
 	config.total_sectors = len / config.sector_size;
 	config.start_sector = 0;
 	f2fs_sparse_file = sparse_file_new(F2FS_BLKSIZE, len);
