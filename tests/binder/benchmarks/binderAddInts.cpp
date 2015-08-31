@@ -36,6 +36,7 @@
 #include <cerrno>
 #include <grp.h>
 #include <iostream>
+#include <iomanip>
 #include <libgen.h>
 #include <time.h>
 #include <unistd.h>
@@ -88,8 +89,23 @@ class AddIntsService : public BBinder
     int cpu_;
 };
 
+struct Duration {
+    double value;
+    friend std::ostream& operator<<(std::ostream& stream, const Duration& d) {
+        static const char *SUFFIXES[] = {"s", "ms", "us", "ns"};
+        size_t suffix = 0;
+        double temp = d.value;
+        while (temp < .1 && suffix < 3) {
+            temp *= 1000;
+            suffix++;
+        }
+        stream << temp << SUFFIXES[suffix];
+        return stream;
+    }
+};
+
 // File scope function prototypes
-static void server(void);
+static bool server(void);
 static void client(void);
 static void bindCPU(unsigned int cpu);
 static ostream &operator<<(ostream &stream, const String16& str);
@@ -196,7 +212,7 @@ int main(int argc, char *argv[])
         return 0;
 
     default: // Parent
-        server();
+        if (!server()) { break; }
 
         // Wait for all children to end
         do {
@@ -219,7 +235,7 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-static void server(void)
+static bool server(void)
 {
     int rv;
 
@@ -230,10 +246,12 @@ static void server(void)
         new AddIntsService(options.serverCPU))) != 0) {
         cerr << "addService " << serviceName << " failed, rv: " << rv
             << " errno: " << errno << endl;
+        return false;
     }
 
     // Start threads to handle server work
     proc->startThreadPool();
+    return true;
 }
 
 static void client(void)
@@ -248,12 +266,17 @@ static void client(void)
 
     // Attach to service
     sp<IBinder> binder;
-    do {
+    for (int i = 0; i < 3; i++) {
         binder = sm->getService(serviceName);
         if (binder != 0) break;
         cout << serviceName << " not published, waiting..." << endl;
         usleep(500000); // 0.5 s
-    } while(true);
+    }
+
+    if (binder == 0) {
+        cout << serviceName << " failed to publish, aborting" << endl;
+        return;
+    }
 
     // Perform the IPC operations
     for (unsigned int iter = 0; iter < options.iterations; iter++) {
@@ -298,9 +321,10 @@ static void client(void)
     }
 
     // Display the results
-    cout << "Time per iteration min: " << min
-        << " avg: " << (total / options.iterations)
-        << " max: " << max
+    cout << fixed << setprecision(2)
+        << "Time per iteration min: " << Duration{min}
+        << " avg: " << Duration{total / options.iterations}
+        << " max: " << Duration{max}
         << endl;
 }
 
