@@ -130,12 +130,16 @@ class NeighbourTest(multinetwork_base.MultiNetworkBaseTest):
     else:
       raise NotImplementedError
 
-  def MonitorSleep(self, intervalseconds, addr):
+  def MonitorSleepMs(self, interval, addr):
     slept = 0
-    while slept < intervalseconds:
-      time.sleep(0.1)
-      slept += 0.1
+    while slept < interval:
+      sleep_ms = min(100, interval - slept)
+      time.sleep(sleep_ms / 1000.0)
+      slept += sleep_ms
       print self.GetNdEntry(addr)
+
+  def MonitorSleep(self, intervalseconds, addr):
+    self.MonitorSleepMs(interval * 1000, addr)
 
   def SleepMs(self, ms):
     time.sleep(ms / 1000.0)
