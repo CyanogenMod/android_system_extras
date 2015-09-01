@@ -27,9 +27,9 @@ LOCAL_CFLAGS += -fno-strict-aliasing
 LOCAL_STATIC_LIBRARIES := \
     libsparse_host \
     libz
-ifneq ($(HOST_OS),windows)
-  LOCAL_STATIC_LIBRARIES += libselinux
-endif
+LOCAL_STATIC_LIBRARIES_darwin += libselinux
+LOCAL_STATIC_LIBRARIES_linux += libselinux
+LOCAL_MODULE_HOST_OS := darwin linux windows
 include $(BUILD_HOST_STATIC_LIBRARY)
 
 
@@ -41,12 +41,11 @@ LOCAL_STATIC_LIBRARIES += \
     libext4_utils_host \
     libsparse_host \
     libz
-ifeq ($(HOST_OS),windows)
-  LOCAL_LDLIBS += -lws2_32
-else
-  LOCAL_SHARED_LIBRARIES += libselinux
-  LOCAL_CFLAGS := -DHOST
-endif
+LOCAL_LDLIBS_windows += -lws2_32
+LOCAL_SHARED_LIBRARIES_darwin += libselinux
+LOCAL_SHARED_LIBRARIES_linux += libselinux
+LOCAL_CFLAGS_darwin := -DHOST
+LOCAL_CFLAGS_linux := -DHOST
 include $(BUILD_HOST_EXECUTABLE)
 
 
