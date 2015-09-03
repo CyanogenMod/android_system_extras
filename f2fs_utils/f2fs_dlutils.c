@@ -35,10 +35,20 @@
 
 #include <f2fs_fs.h>
 #include <f2fs_format_utils.h>
+#if defined(__linux__)
 #define F2FS_DYN_LIB "libf2fs_fmt_host_dyn.so"
+#elif defined(__APPLE__) && defined(__MACH__)
+#define F2FS_DYN_LIB "libf2fs_fmt_host_dyn.dylib"
+#else
+#error "Not supported OS"
+#endif
 
 int (*f2fs_format_device_dl)(void);
 void (*f2fs_init_configuration_dl)(struct f2fs_configuration *);
+void (*flush_sparse_buffs_dl)(void);
+void (*init_sparse_file_dl)(unsigned int, int64_t);
+void (*finalize_sparse_file_dl)(int);
+struct f2fs_configuration *f2fs_config;
 
 int f2fs_format_device(void) {
 	assert(f2fs_format_device_dl);
@@ -48,7 +58,18 @@ void f2fs_init_configuration(struct f2fs_configuration *config) {
 	assert(f2fs_init_configuration_dl);
 	f2fs_init_configuration_dl(config);
 }
-
+void flush_sparse_buffs(void) {
+	assert(flush_sparse_buffs_dl);
+	return flush_sparse_buffs_dl();
+}
+void init_sparse_file(unsigned int block_size, int64_t len) {
+	assert(init_sparse_file_dl);
+	return init_sparse_file_dl(block_size, len);
+}
+void finalize_sparse_file(int fd) {
+	assert(finalize_sparse_file_dl);
+	return finalize_sparse_file_dl(fd);
+}
 int dlopenf2fs() {
 	void* f2fs_lib;
 
@@ -58,7 +79,13 @@ int dlopenf2fs() {
 	}
 	f2fs_format_device_dl = dlsym(f2fs_lib, "f2fs_format_device");
 	f2fs_init_configuration_dl = dlsym(f2fs_lib, "f2fs_init_configuration");
-	if (!f2fs_format_device_dl || !f2fs_init_configuration_dl) {
+	flush_sparse_buffs_dl = dlsym(f2fs_lib, "flush_sparse_buffs");
+	init_sparse_file_dl = dlsym(f2fs_lib, "init_sparse_file");
+	finalize_sparse_file_dl = dlsym(f2fs_lib, "finalize_sparse_file");
+	f2fs_config = dlsym(f2fs_lib, "config");
+	if (!f2fs_format_device_dl || !f2fs_init_configuration_dl ||
+			!flush_sparse_buffs_dl || !f2fs_config ||
+			!init_sparse_file_dl || !finalize_sparse_file_dl) {
 		return -1;
 	}
 	return 0;

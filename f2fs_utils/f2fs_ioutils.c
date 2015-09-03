@@ -29,11 +29,13 @@
 #define _LARGEFILE64_SOURCE
 
 #include <assert.h>
-#include <asm/types.h>
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
+#ifdef __linux__
+#include <asm/types.h>
 #include <linux/fs.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>  /* memset() */
@@ -136,6 +138,17 @@ static int dev_write_sparse(void *buf, __u64 byte_offset, size_t byte_len)
 
 	sparse_file_add_data(f2fs_sparse_file, bi->buf, byte_len, byte_offset/F2FS_BLKSIZE);
 	return 0;
+}
+
+void init_sparse_file(unsigned int block_size, int64_t len)
+{
+	f2fs_sparse_file = sparse_file_new(block_size, len);
+}
+
+void finalize_sparse_file(int fd)
+{
+	sparse_file_write(f2fs_sparse_file, fd, /*gzip*/0, /*sparse*/1, /*crc*/0);
+	sparse_file_destroy(f2fs_sparse_file);
 }
 
 void f2fs_finalize_device(struct f2fs_configuration *c)
