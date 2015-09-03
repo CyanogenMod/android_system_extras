@@ -42,6 +42,7 @@
 #include "perfprofdutils.h"
 #include "perf_data_converter.h"
 #include "cpuconfig.h"
+#include "configreader.h"
 
 //
 // Perf profiling daemon -- collects system-wide profiles using
@@ -101,274 +102,12 @@ static int is_debug_build = -1;
 static unsigned short random_seed[3];
 
 //
-// Config file path. May be overridden with -c command line option
+// SIGHUP handler. Sending SIGHUP to the daemon can be used to break it
+// out of a sleep() call so as to trigger a new collection (debugging)
 //
-static const char *config_file_path =
-    "/data/data/com.google.android.gms/files/perfprofd.conf";
-
-//
-// This table describes the config file syntax in terms of key/value pairs.
-// Values come in two flavors: strings, or unsigned integers. In the latter
-// case the reader sets allowable minimum/maximum for the setting.
-//
-class ConfigReader {
-
- public:
-  ConfigReader();
-  ~ConfigReader();
-
-  // Ask for the current setting of a config item
-  unsigned getUnsignedValue(const char *key) const;
-  std::string getStringValue(const char *key) const;
-
-  // read the specified config file, applying any settings it contains
-  void readFile(bool initial);
-
- private:
-  void addUnsignedEntry(const char *key,
-                        unsigned default_value,
-                        unsigned min_value,
-                        unsigned max_value);
-  void addStringEntry(const char *key, const char *default_value);
-  void addDefaultEntries();
-  void parseLine(const char *key, const char *value, unsigned linecount);
-
-  typedef struct { unsigned minv, maxv; } values;
-  std::map<std::string, values> u_info;
-  std::map<std::string, unsigned> u_entries;
-  std::map<std::string, std::string> s_entries;
-  bool trace_config_read;
-};
-
-ConfigReader::ConfigReader()
-    : trace_config_read(false)
+static void sig_hup(int /* signum */)
 {
-  addDefaultEntries();
-}
-
-ConfigReader::~ConfigReader()
-{
-}
-
-//
-// Populate the reader with the set of allowable entries
-//
-void ConfigReader::addDefaultEntries()
-{
-  // Average number of seconds between perf profile collections (if
-  // set to 100, then over time we want to see a perf profile
-  // collected every 100 seconds). The actual time within the interval
-  // for the collection is chosen randomly.
-  addUnsignedEntry("collection_interval", 14400, 100, UINT32_MAX);
-
-  // Use the specified fixed seed for random number generation (unit
-  // testing)
-  addUnsignedEntry("use_fixed_seed", 0, 0, UINT32_MAX);
-
-  // For testing purposes, number of times to iterate through main
-  // loop.  Value of zero indicates that we should loop forever.
-  addUnsignedEntry("main_loop_iterations", 0, 0, UINT32_MAX);
-
-  // Destination directory (where to write profiles). This location
-  // chosen since it is accessible to the uploader service.
-  addStringEntry("destination_directory", "/data/misc/perfprofd");
-
-  // Config directory (where to read configs).
-  addStringEntry("config_directory", "/data/data/com.google.android.gms/files");
-
-  // Full path to 'perf' executable.
-  addStringEntry("perf_path", "/system/xbin/simpleperf");
-
-  // Desired sampling period (passed to perf -c option). Small
-  // sampling periods can perturb the collected profiles, so enforce
-  // min/max.
-  addUnsignedEntry("sampling_period", 500000, 5000, UINT32_MAX);
-
-  // Length of time to collect samples (number of seconds for 'perf
-  // record -a' run).
-  addUnsignedEntry("sample_duration", 3, 2, 600);
-
-  // If this parameter is non-zero it will cause perfprofd to
-  // exit immediately if the build type is not userdebug or eng.
-  // Currently defaults to 1 (true).
-  addUnsignedEntry("only_debug_build", 1, 0, 1);
-
-  // If the "mpdecision" service is running at the point we are ready
-  // to kick off a profiling run, then temporarily disable the service
-  // and hard-wire all cores on prior to the collection run, provided
-  // that the duration of the recording is less than or equal to the value of
-  // 'hardwire_cpus_max_duration'.
-  addUnsignedEntry("hardwire_cpus", 1, 0, 1);
-  addUnsignedEntry("hardwire_cpus_max_duration", 5, 1, UINT32_MAX);
-
-  // Maximum number of unprocessed profiles we can accumulate in the
-  // destination directory. Once we reach this limit, we continue
-  // to collect, but we just overwrite the most recent profile.
-  addUnsignedEntry("max_unprocessed_profiles", 10, 1, UINT32_MAX);
-
-  // If set to 1, pass the -g option when invoking 'perf' (requests
-  // stack traces as opposed to flat profile).
-  addUnsignedEntry("stack_profile", 0, 0, 1);
-
-  // For unit testing only: if set to 1, emit info messages on config
-  // file parsing.
-  addUnsignedEntry("trace_config_read", 0, 0, 1);
-}
-
-void ConfigReader::addUnsignedEntry(const char *key,
-                                    unsigned default_value,
-                                    unsigned min_value,
-                                    unsigned max_value)
-{
-  std::string ks(key);
-  if (u_entries.find(ks) != u_entries.end() ||
-      s_entries.find(ks) != s_entries.end()) {
-    W_ALOGE("internal error -- duplicate entry for key %s", key);
-    exit(9);
-  }
-  values vals;
-  vals.minv = min_value;
-  vals.maxv = max_value;
-  u_info[ks] = vals;
-  u_entries[ks] = default_value;
-}
-
-void ConfigReader::addStringEntry(const char *key, const char *default_value)
-{
-  std::string ks(key);
-  if (u_entries.find(ks) != u_entries.end() ||
-      s_entries.find(ks) != s_entries.end()) {
-    W_ALOGE("internal error -- duplicate entry for key %s", key);
-    exit(9);
-  }
-  if (default_value == nullptr) {
-    W_ALOGE("internal error -- bad default value for key %s", key);
-    exit(9);
-  }
-  s_entries[ks] = std::string(default_value);
-}
-
-unsigned ConfigReader::getUnsignedValue(const char *key) const
-{
-  std::string ks(key);
-  auto it = u_entries.find(ks);
-  assert(it != u_entries.end());
-  return it->second;
-}
-
-std::string ConfigReader::getStringValue(const char *key) const
-{
-  std::string ks(key);
-  auto it = s_entries.find(ks);
-  assert(it != s_entries.end());
-  return it->second;
-}
-
-//
-// Parse a key=value pair read from the config file. This will issue
-// warnings or errors to the system logs if the line can't be
-// interpreted properly.
-//
-void ConfigReader::parseLine(const char *key,
-                             const char *value,
-                             unsigned linecount)
-{
-  assert(key);
-  assert(value);
-
-  auto uit = u_entries.find(key);
-  if (uit != u_entries.end()) {
-    unsigned uvalue = 0;
-    if (isdigit(value[0]) == 0 || sscanf(value, "%u", &uvalue) != 1) {
-      W_ALOGW("line %d: malformed unsigned value (ignored)", linecount);
-    } else {
-      values vals;
-      auto iit = u_info.find(key);
-      assert(iit != u_info.end());
-      vals = iit->second;
-      if (uvalue < vals.minv || uvalue > vals.maxv) {
-        W_ALOGW("line %d: specified value %u for '%s' "
-                "outside permitted range [%u %u] (ignored)",
-                linecount, uvalue, key, vals.minv, vals.maxv);
-      } else {
-        if (trace_config_read) {
-          W_ALOGI("option %s set to %u", key, uvalue);
-        }
-        uit->second = uvalue;
-      }
-    }
-    trace_config_read = (getUnsignedValue("trace_config_read") != 0);
-    return;
-  }
-
-  auto sit = s_entries.find(key);
-  if (sit != s_entries.end()) {
-    if (trace_config_read) {
-      W_ALOGI("option %s set to %s", key, value);
-    }
-    sit->second = std::string(value);
-    return;
-  }
-
-  W_ALOGW("line %d: unknown option '%s' ignored", linecount, key);
-}
-
-static bool isblank(const std::string &line)
-{
-  for (std::string::const_iterator it = line.begin(); it != line.end(); ++it)
-  {
-    if (isspace(*it) == 0) {
-      return false;
-    }
-  }
-  return true;
-}
-
-void ConfigReader::readFile(bool initial)
-{
-  FILE *fp = fopen(config_file_path, "r");
-  if (!fp) {
-    if (initial) {
-      W_ALOGE("unable to open configuration file %s", config_file_path);
-    }
-    return;
-  }
-
-  char *linebuf = NULL;
-  size_t line_length = 0;
-  for (unsigned linecount = 1;
-       getline(&linebuf, &line_length, fp) != -1;
-       ++linecount) {
-    char *eq = 0;
-    char *key, *value;
-
-    // comment line?
-    if (linebuf[0] == '#') {
-      continue;
-    }
-
-    // blank line?
-    if (isblank(linebuf)) {
-      continue;
-    }
-
-    // look for X=Y assignment
-    eq = strchr(linebuf, '=');
-    if (!eq) {
-      W_ALOGW("line %d: line malformed (no '=' found)", linecount);
-      continue;
-    }
-
-    *eq = '\0';
-    key = linebuf;
-    value = eq+1;
-    char *ln = strrchr(value, '\n');
-    if (ln) { *ln = '\0'; }
-
-    parseLine(key, value, linecount);
-  }
-  free(linebuf);
-  fclose(fp);
+  W_ALOGW("SIGHUP received");
 }
 
 //
@@ -385,8 +124,7 @@ static void parse_args(int argc, char** argv)
         W_ALOGE("malformed command line: -c option requires argument)");
         continue;
       }
-      config_file_path = strdup(argv[ac+1]);
-      W_ALOGI("config file path set to %s", config_file_path);
+      ConfigReader::setConfigFilePath(argv[ac+1]);
       ++ac;
     } else {
       W_ALOGE("malformed command line: unknown option or arg %s)", argv[ac]);
@@ -482,8 +220,207 @@ static CKPROFILE_RESULT check_profiling_enabled(ConfigReader &config)
   return DO_COLLECT_PROFILE;
 }
 
-static void annotate_encoded_perf_profile(wireless_android_play_playlog::AndroidPerfProfile *profile)
+bool get_booting()
 {
+  char propBuf[PROPERTY_VALUE_MAX];
+  propBuf[0] = '\0';
+  property_get("sys.boot_completed", propBuf, "");
+  return (propBuf[0] != '1');
+}
+
+//
+// Constructor takes a timeout (in seconds) and a child pid; If an
+// alarm set for the specified number of seconds triggers, then a
+// SIGKILL is sent to the child. Destructor resets alarm. Example:
+//
+//       pid_t child_pid = ...;
+//       { AlarmHelper h(10, child_pid);
+//         ... = read_from_child(child_pid, ...);
+//       }
+//
+// NB: this helper is not re-entrant-- avoid nested use or
+// use by multiple threads
+//
+class AlarmHelper {
+ public:
+  AlarmHelper(unsigned num_seconds, pid_t child)
+  {
+    struct sigaction sigact;
+    assert(child);
+    assert(child_ == 0);
+    memset(&sigact, 0, sizeof(sigact));
+    sigact.sa_sigaction = handler;
+    sigaction(SIGALRM, &sigact, &oldsigact_);
+    child_ = child;
+    alarm(num_seconds);
+  }
+  ~AlarmHelper()
+  {
+    alarm(0);
+    child_ = 0;
+    sigaction(SIGALRM, &oldsigact_, NULL);
+  }
+  static void handler(int, siginfo_t *, void *);
+
+ private:
+  struct sigaction oldsigact_;
+  static pid_t child_;
+};
+
+pid_t AlarmHelper::child_;
+
+void AlarmHelper::handler(int, siginfo_t *, void *)
+{
+  W_ALOGW("SIGALRM timeout");
+  kill(child_, SIGKILL);
+}
+
+//
+// This implementation invokes "dumpsys media.camera" and inspects the
+// output to determine if any camera clients are active. NB: this is
+// currently disable (via config option) until the selinux issues can
+// be sorted out. Another possible implementation (not yet attempted)
+// would be to use the binder to call into the native camera service
+// via "ICameraService".
+//
+bool get_camera_active()
+{
+  int pipefds[2];
+  if (pipe2(pipefds, O_CLOEXEC) != 0) {
+    W_ALOGE("pipe2() failed (%s)", strerror(errno));
+    return false;
+  }
+  pid_t pid = fork();
+  if (pid == -1) {
+    W_ALOGE("fork() failed (%s)", strerror(errno));
+    close(pipefds[0]);
+    close(pipefds[1]);
+    return false;
+  } else if (pid == 0) {
+    // child
+    close(pipefds[0]);
+    dup2(pipefds[1], fileno(stderr));
+    dup2(pipefds[1], fileno(stdout));
+    const char *argv[10];
+    unsigned slot = 0;
+    argv[slot++] = "/system/bin/dumpsys";
+    argv[slot++] = "media.camera";
+    argv[slot++] = nullptr;
+    execvp(argv[0], (char * const *)argv);
+    W_ALOGE("execvp() failed (%s)", strerror(errno));
+    return false;
+  }
+  // parent
+  AlarmHelper helper(10, pid);
+  close(pipefds[1]);
+
+  // read output
+  bool have_cam = false;
+  bool have_clients = true;
+  std::string dump_output;
+  bool result = android::base::ReadFdToString(pipefds[0], &dump_output);
+  close(pipefds[0]);
+  if (result) {
+    std::stringstream ss(dump_output);
+    std::string line;
+    while (std::getline(ss,line,'\n')) {
+      if (line.find("Camera module API version:") !=
+          std::string::npos) {
+        have_cam = true;
+      }
+      if (line.find("No camera module available") !=
+          std::string::npos ||
+          line.find("No active camera clients yet") !=
+          std::string::npos) {
+        have_clients = false;
+      }
+    }
+  }
+
+  // reap child (no zombies please)
+  int st = 0;
+  TEMP_FAILURE_RETRY(waitpid(pid, &st, 0));
+  return have_cam && have_clients;
+}
+
+bool get_charging()
+{
+  std::string psdir("/sys/class/power_supply");
+  DIR* dir = opendir(psdir.c_str());
+  if (dir == NULL) {
+    W_ALOGE("Failed to open dir %s (%s)", psdir.c_str(), strerror(errno));
+    return false;
+  }
+  struct dirent* e;
+  bool result = false;
+  while ((e = readdir(dir)) != 0) {
+    if (e->d_name[0] != '.') {
+      std::string online_path = psdir + "/" + e->d_name + "/online";
+      std::string contents;
+      int value = 0;
+      if (android::base::ReadFileToString(online_path.c_str(), &contents) &&
+          sscanf(contents.c_str(), "%d", &value) == 1) {
+        if (value) {
+          result = true;
+          break;
+        }
+      }
+    }
+  }
+  closedir(dir);
+  return result;
+}
+
+bool postprocess_proc_stat_contents(const std::string &pscontents,
+                                    long unsigned *idleticks,
+                                    long unsigned *remainingticks)
+{
+  long unsigned usertime, nicetime, systime, idletime, iowaittime;
+  long unsigned irqtime, softirqtime;
+
+  int rc = sscanf(pscontents.c_str(), "cpu  %lu %lu %lu %lu %lu %lu %lu",
+                  &usertime, &nicetime, &systime, &idletime,
+                  &iowaittime, &irqtime, &softirqtime);
+  if (rc != 7) {
+    return false;
+  }
+  *idleticks = idletime;
+  *remainingticks = usertime + nicetime + systime + iowaittime + irqtime + softirqtime;
+  return true;
+}
+
+unsigned collect_cpu_utilization()
+{
+  std::string contents;
+  long unsigned idle[2];
+  long unsigned busy[2];
+  for (unsigned iter = 0; iter < 2; ++iter) {
+    if (!android::base::ReadFileToString("/proc/stat", &contents)) {
+      return 0;
+    }
+    if (!postprocess_proc_stat_contents(contents, &idle[iter], &busy[iter])) {
+      return 0;
+    }
+    if (iter == 0) {
+      sleep(1);
+    }
+  }
+  long unsigned total_delta = (idle[1] + busy[1]) - (idle[0] + busy[0]);
+  long unsigned busy_delta = busy[1] - busy[0];
+  return busy_delta * 100 / total_delta;
+}
+
+static void annotate_encoded_perf_profile(wireless_android_play_playlog::AndroidPerfProfile *profile,
+                                          const ConfigReader &config,
+                                          unsigned cpu_utilization)
+{
+  //
+  // Incorporate cpu utilization (collected prior to perf run)
+  //
+  if (config.getUnsignedValue("collect_cpu_utilization")) {
+    profile->set_cpu_utilization(cpu_utilization);
+  }
+
   //
   // Load average as reported by the kernel
   //
@@ -495,6 +432,20 @@ static void annotate_encoded_perf_profile(wireless_android_play_playlog::Android
     profile->set_sys_load_average(iload);
   } else {
     W_ALOGE("Failed to read or scan /proc/loadavg (%s)", strerror(errno));
+  }
+
+  //
+  // Device still booting? Camera in use? Plugged into charger?
+  //
+  bool is_booting = get_booting();
+  if (config.getUnsignedValue("collect_booting")) {
+    profile->set_booting(is_booting);
+  }
+  if (config.getUnsignedValue("collect_camera_active")) {
+    profile->set_camera_active(is_booting ? false : get_camera_active());
+  }
+  if (config.getUnsignedValue("collect_charging_state")) {
+    profile->set_on_charger(get_charging());
   }
 
   //
@@ -516,7 +467,9 @@ inline char* string_as_array(std::string* str) {
 }
 
 PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
-                               const char *encoded_file_path)
+                               const char *encoded_file_path,
+                               const ConfigReader &config,
+                               unsigned cpu_utilization)
 {
   //
   // Open and read perf.data file
@@ -532,11 +485,11 @@ PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
   }
 
   // All of the info in 'encodedProfile' is derived from the perf.data file;
-  // here we tack display status and system load.
+  // here we tack display status, cpu utilization, system load, etc.
   wireless_android_play_playlog::AndroidPerfProfile &prof =
       const_cast<wireless_android_play_playlog::AndroidPerfProfile&>
       (encodedProfile);
-  annotate_encoded_perf_profile(&prof);
+  annotate_encoded_perf_profile(&prof, config, cpu_utilization);
 
   //
   // Serialize protobuf to array
@@ -751,6 +704,14 @@ static bool post_process(const ConfigReader &config, int current_seq)
 static PROFILE_RESULT collect_profile(const ConfigReader &config, int seq)
 {
   //
+  // Collect cpu utilization if enabled
+  //
+  unsigned cpu_utilization = 0;
+  if (config.getUnsignedValue("collect_cpu_utilization")) {
+    cpu_utilization = collect_cpu_utilization();
+  }
+
+  //
   // Form perf.data file name, perf error output file name
   //
   std::string destdir = config.getStringValue("destination_directory");
@@ -813,15 +774,7 @@ static PROFILE_RESULT collect_profile(const ConfigReader &config, int seq)
   //
   std::string path = android::base::StringPrintf(
       "%s.encoded.%d", data_file_path.c_str(), seq);
-  return encode_to_proto(data_file_path, path.c_str());
-}
-
-//
-// SIGHUP handler. Sending SIGHUP to the daemon can be used to break it
-// out of a sleep() call so as to trigger a new collection (debugging)
-//
-static void sig_hup(int /* signum */)
-{
+  return encode_to_proto(data_file_path, path.c_str(), config, cpu_utilization);
 }
 
 //
@@ -870,7 +823,11 @@ static void set_seed(ConfigReader &config)
 //
 static void init(ConfigReader &config)
 {
-  config.readFile(true);
+  if (!config.readFile()) {
+    W_ALOGE("unable to open configuration file %s",
+            config.getConfigFilePath());
+  }
+
   set_seed(config);
   cleanup_destination_dir(config);
 
@@ -924,7 +881,7 @@ int perfprofd_main(int argc, char** argv)
 
     // Reread config file -- the uploader may have rewritten it as a result
     // of a gservices change
-    config.readFile(false);
+    config.readFile();
 
     // Check for profiling enabled...
     CKPROFILE_RESULT ckresult = check_profiling_enabled(config);

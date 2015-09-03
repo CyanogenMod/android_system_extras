@@ -15,6 +15,11 @@
 ** limitations under the License.
 */
 
+#ifndef SYSTEM_EXTRAS_PERFPROFD_PERFPROFDCORE_H_
+#define SYSTEM_EXTRAS_PERFPROFD_PERFPROFDCORE_H_
+
+class ConfigReader;
+
 // Semaphore file that indicates that the user is opting in
 #define SEMAPHORE_FILENAME "perf_profile_collection_enabled.txt"
 
@@ -63,4 +68,16 @@ typedef enum {
 // was successful (either OK_PROFILE_COLLECTION or an error of some sort).
 //
 PROFILE_RESULT encode_to_proto(const std::string &data_file_path,
-                               const char *encoded_file_path);
+                               const char *encoded_file_path,
+                               const ConfigReader &config,
+                               unsigned cpu_utilization);
+
+//
+// Exposed for unit testing
+//
+extern unsigned collect_cpu_utilization();
+extern bool get_booting();
+extern bool get_charging();
+extern bool get_camera_active();
+
+#endif

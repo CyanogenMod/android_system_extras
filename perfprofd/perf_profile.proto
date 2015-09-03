@@ -99,4 +99,19 @@ message AndroidPerfProfile {
   // to first value from /proc/loadavg multiplied by 100 then
   // converted to int32
   optional int32 sys_load_average = 6;
+
+  // At the point when the profile was collected, was a camera active?
+  optional bool camera_active = 7;
+
+  // At the point when the profile was collected, was the device still booting?
+  optional bool booting = 8;
+
+  // At the point when the profile was collected, was the device plugged into
+  // a charger?
+  optional bool on_charger = 9;
+
+  // CPU utilization measured prior to profile collection (expressed as
+  // 100 minus the idle percentage).
+  optional int32 cpu_utilization = 10;
+
 }
