@@ -145,6 +145,14 @@ class NeighbourTest(multinetwork_base.MultiNetworkBaseTest):
     time.sleep(ms / 1000.0)
 
   def testNotifications(self):
+    """Tests neighbour notifications.
+
+    Relevant kernel commits:
+      upstream net-next:
+        53385d2 neigh: Netlink notification for administrative NUD state change
+          (only checked on kernel v3.13+, not on v3.10)
+    """
+
     router4 = self._RouterAddress(self.netid, 4)
     router6 = self._RouterAddress(self.netid, 6)
     self.assertNeighbourState(NUD_PERMANENT, router4)
@@ -167,6 +175,11 @@ class NeighbourTest(multinetwork_base.MultiNetworkBaseTest):
     # Respond to the NS and verify we're in REACHABLE again.
     self.ReceiveUnicastAdvertisement(router6, self.RouterMacAddress(self.netid))
     self.assertNeighbourState(NUD_REACHABLE, router6)
+    if net_test.LINUX_VERSION >= (3, 13, 0):
+      # commit 53385d2 (v3.13) "neigh: Netlink notification for administrative
+      # NUD state change" produces notifications for NUD_REACHABLE, but these
+      # are not generated on earlier kernels.
+      self.ExpectNeighbourNotification(router6, NUD_REACHABLE)
 
     # Wait until the reachable time has passed, and verify we're in STALE.
     self.SleepMs(self.REACHABLE_TIME_MS * 1.5)
