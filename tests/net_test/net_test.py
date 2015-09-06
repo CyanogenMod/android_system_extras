@@ -292,7 +292,6 @@ except ValueError:
 
 
 class RunAsUid(object):
-
   """Context guard to run a code block as a given UID."""
 
   def __init__(self, uid):
