@@ -100,7 +100,6 @@ def MakePktInfo(version, addr, ifindex):
 
 
 class MultiNetworkBaseTest(net_test.NetworkTest):
-
   """Base class for all multinetwork tests.
 
   This class does not contain any test code, but contains code to set up and

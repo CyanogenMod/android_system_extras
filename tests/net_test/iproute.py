@@ -209,7 +209,6 @@ def PaddedLength(length):
 
 
 class IPRoute(object):
-
   """Provides a tiny subset of iproute functionality."""
 
   BUFSIZE = 65536
