@@ -380,7 +380,15 @@ class Ping6Test(multinetwork_base.MultiNetworkBaseTest):
     # No crash? Good.
 
   def testCrossProtocolCalls(self):
-    """Tests that passing in the wrong family returns EAFNOSUPPORT."""
+    """Tests that passing in the wrong family returns EAFNOSUPPORT.
+
+    Relevant kernel commits:
+      upstream net:
+        9145736 net: ping: Return EAFNOSUPPORT when appropriate.
+
+      android-3.10:
+        428e6d6 net: ping: Return EAFNOSUPPORT when appropriate.
+    """
 
     def CheckEAFNoSupport(function, *args):
       self.assertRaisesErrno(errno.EAFNOSUPPORT, function, *args)
