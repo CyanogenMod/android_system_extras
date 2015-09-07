@@ -139,7 +139,7 @@ class NeighbourTest(multinetwork_base.MultiNetworkBaseTest):
       print self.GetNdEntry(addr)
 
   def MonitorSleep(self, intervalseconds, addr):
-    self.MonitorSleepMs(interval * 1000, addr)
+    self.MonitorSleepMs(intervalseconds * 1000, addr)
 
   def SleepMs(self, ms):
     time.sleep(ms / 1000.0)

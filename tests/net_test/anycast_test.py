@@ -55,7 +55,15 @@ class CloseFileDescriptorThread(threading.Thread):
 
 
 class AnycastTest(multinetwork_base.MultiNetworkBaseTest):
+  """Tests for IPv6 anycast addresses.
 
+  Relevant kernel commits:
+    upstream net-next:
+      381f4dc ipv6: clean up anycast when an interface is destroyed
+
+    android-3.10:
+      86a47ad ipv6: clean up anycast when an interface is destroyed
+  """
   _TEST_NETID = 123
 
   def AnycastSetsockopt(self, s, is_add, netid, addr):

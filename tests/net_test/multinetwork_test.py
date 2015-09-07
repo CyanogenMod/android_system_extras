@@ -937,6 +937,16 @@ class PMTUTest(InboundMarkingTest):
         self.assertEquals(metrics["RTAX_MTU"], 1280)
 
   def testIPv4BasicPMTU(self):
+    """Tests IPv4 path MTU discovery.
+
+    Relevant kernel commits:
+      upstream net-next:
+        6a66271 ipv4, fib: pass LOOPBACK_IFINDEX instead of 0 to flowi4_iif
+
+      android-3.10:
+        4bc64dd ipv4, fib: pass LOOPBACK_IFINDEX instead of 0 to flowi4_iif
+    """
+
     self.CheckPMTU(4, True, ["mark", "oif"])
     self.CheckPMTU(4, False, ["mark", "oif"])
 
@@ -976,6 +986,17 @@ class PMTUTest(InboundMarkingTest):
 
 @unittest.skipUnless(multinetwork_base.HAVE_UID_ROUTING, "no UID routes")
 class UidRoutingTest(multinetwork_base.MultiNetworkBaseTest):
+  """Tests that per-UID routing works properly.
+
+  Relevant kernel commits:
+    android-3.4:
+      0b42874 net: core: Support UID-based routing.
+      0836a0c Handle 'sk' being NULL in UID-based routing.
+
+    android-3.10:
+      99a6ea4 net: core: Support UID-based routing.
+      455b09d Handle 'sk' being NULL in UID-based routing.
+  """
 
   def GetRulesAtPriority(self, version, priority):
     rules = self.iproute.DumpRules(version)
