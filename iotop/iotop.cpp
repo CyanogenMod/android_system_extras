@@ -238,21 +238,35 @@ int main(int argc, char* argv[]) {
           "mem",
           "total");
       int n = limit;
+      const int delay_div = accumulated ? 1 : delay;
+      uint64_t total_read = 0;
+      uint64_t total_write = 0;
+      uint64_t total_read_write = 0;
       for (const TaskStatistics& statistics : stats) {
-        const int delay_div = accumulated ? 1 : delay;
-        printf("%6d %-16s %6" PRIu64 " %6" PRIu64 " %6" PRIu64 " %5.2f%% %5.2f%% %5.2f%% %5.2f%% %5.2f%%\n",
-            statistics.pid(),
-            statistics.comm().c_str(),
-            BytesToKB(statistics.read()) / delay_div,
-            BytesToKB(statistics.write()) / delay_div,
-            BytesToKB(statistics.read_write()) / delay_div,
-            TimeToTgidPercent(statistics.delay_io(), delay, statistics),
-            TimeToTgidPercent(statistics.delay_swap(), delay, statistics),
-            TimeToTgidPercent(statistics.delay_sched(), delay, statistics),
-            TimeToTgidPercent(statistics.delay_mem(), delay, statistics),
-            TimeToTgidPercent(statistics.delay_total(), delay, statistics));
-        if (n > 0 && --n == 0) break;
+        total_read += statistics.read();
+        total_write += statistics.write();
+        total_read_write += statistics.read_write();
+
+        if (n > 0) {
+          n--;
+          printf("%6d %-16s %6" PRIu64 " %6" PRIu64 " %6" PRIu64 " %5.2f%% %5.2f%% %5.2f%% %5.2f%% %5.2f%%\n",
+              statistics.pid(),
+              statistics.comm().c_str(),
+              BytesToKB(statistics.read()) / delay_div,
+              BytesToKB(statistics.write()) / delay_div,
+              BytesToKB(statistics.read_write()) / delay_div,
+              TimeToTgidPercent(statistics.delay_io(), delay, statistics),
+              TimeToTgidPercent(statistics.delay_swap(), delay, statistics),
+              TimeToTgidPercent(statistics.delay_sched(), delay, statistics),
+              TimeToTgidPercent(statistics.delay_mem(), delay, statistics),
+              TimeToTgidPercent(statistics.delay_total(), delay, statistics));
+        }
       }
+      printf("%6s %-16s %6" PRIu64 " %6" PRIu64 " %6" PRIu64 "\n", "", "TOTAL",
+          BytesToKB(total_read) / delay_div,
+          BytesToKB(total_write) / delay_div,
+          BytesToKB(total_read_write) / delay_div);
+
       second = false;
 
       if (cycles > 0 && --cycles == 0) break;
