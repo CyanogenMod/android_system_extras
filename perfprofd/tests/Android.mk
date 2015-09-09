@@ -34,7 +34,7 @@ include $(CLEAR_VARS)
 LOCAL_CLANG := true
 LOCAL_CPP_EXTENSION := cc
 LOCAL_CXX_STL := libc++
-LOCAL_STATIC_LIBRARIES := libperfprofdcore libperfprofdmockutils libbase
+LOCAL_STATIC_LIBRARIES := libperfprofdcore libperfprofdmockutils libgtest libbase
 LOCAL_SHARED_LIBRARIES := libprotobuf-cpp-lite
 LOCAL_C_INCLUDES += system/extras/perfprofd external/protobuf/src
 LOCAL_SRC_FILES := perfprofd_test.cc
