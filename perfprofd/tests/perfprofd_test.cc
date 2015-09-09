@@ -27,6 +27,7 @@
 #include <base/stringprintf.h>
 
 #include "perfprofdcore.h"
+#include "configreader.h"
 #include "perfprofdutils.h"
 #include "perfprofdmockutils.h"
 
@@ -480,6 +481,20 @@ TEST_F(PerfProfdTest, ConfigFileParsing)
                      expected, "ConfigFileParsing");
 }
 
+TEST_F(PerfProfdTest, ProfileCollectionAnnotations)
+{
+  unsigned util1 = collect_cpu_utilization();
+  EXPECT_LE(util1, 100);
+  EXPECT_GE(util1, 0);
+
+  // NB: expectation is that when we run this test, the device will be
+  // completed booted, will be on charger, and will not have the camera
+  // active.
+  EXPECT_FALSE(get_booting());
+  EXPECT_TRUE(get_charging());
+  EXPECT_FALSE(get_camera_active());
+}
+
 TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
 {
   //
@@ -491,9 +506,15 @@ TEST_F(PerfProfdTest, BasicRunWithCannedPerf)
   std::string input_perf_data(test_dir);
   input_perf_data += "/canned.perf.data";
 
+  // Set up config to avoid these annotations (they are tested elsewhere)
+  ConfigReader config;
+  config.overrideUnsignedEntry("collect_cpu_utilization", 0);
+  config.overrideUnsignedEntry("collect_charging_state", 0);
+  config.overrideUnsignedEntry("collect_camera_active", 0);
+
   // Kick off encoder and check return code
   PROFILE_RESULT result =
-      encode_to_proto(input_perf_data, encoded_file_path(0).c_str());
+      encode_to_proto(input_perf_data, encoded_file_path(0).c_str(), config, 0);
   EXPECT_EQ(OK_PROFILE_COLLECTION, result);
 
   // Read and decode the resulting perf.data.encoded file

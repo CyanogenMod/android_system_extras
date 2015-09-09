@@ -29,6 +29,7 @@ LOCAL_SRC_FILES :=  \
 	quipper/perf_reader.cc \
 	quipper/perf_parser.cc \
 	perf_data_converter.cc \
+	configreader.cc \
 	cpuconfig.cc \
 	perfprofdcore.cc \
 
