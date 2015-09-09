@@ -307,7 +307,7 @@ static void init_bg(struct block_group_info *bg, unsigned int i)
 	bg->first_free_block = 0;
 	bg->free_inodes = info.inodes_per_group;
 	bg->first_free_inode = 1;
-	bg->flags = EXT4_BG_INODE_UNINIT;
+	bg->flags = 0;
 
 	if (reserve_blocks(bg, bg->first_free_block, bg->header_blocks) < 0)
 		error("failed to reserve %u blocks in block group %u\n", bg->header_blocks, i);
