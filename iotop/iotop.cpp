@@ -41,6 +41,7 @@ static float TimeToTgidPercent(uint64_t ns, int time, const TaskStatistics& stat
 static void usage(char* myname) {
   printf(
       "Usage: %s [-h] [-P] [-d <delay>] [-n <cycles>] [-s <column>]\n"
+      "   -a  Show byte count instead of rate\n"
       "   -d  Set the delay between refreshes in seconds.\n"
       "   -h  Display this help screen.\n"
       "   -m  Set the number of processes or threads to show\n"
@@ -97,6 +98,7 @@ static Sorter GetSorter(const std::string field) {
 }
 
 int main(int argc, char* argv[]) {
+  bool accumulated = false;
   bool processes = false;
   int delay = 1;
   int cycles = -1;
@@ -108,6 +110,7 @@ int main(int argc, char* argv[]) {
   while (1) {
     int c;
     static const option longopts[] = {
+        {"accumulated", 0, 0, 'a'},
         {"delay", required_argument, 0, 'd'},
         {"help", 0, 0, 'h'},
         {"limit", required_argument, 0, 'm'},
@@ -116,11 +119,14 @@ int main(int argc, char* argv[]) {
         {"processes", 0, 0, 'P'},
         {0, 0, 0, 0},
     };
-    c = getopt_long(argc, argv, "d:hm:n:Ps:", longopts, NULL);
+    c = getopt_long(argc, argv, "ad:hm:n:Ps:", longopts, NULL);
     if (c < 0) {
       break;
     }
     switch (c) {
+    case 'a':
+      accumulated = true;
+      break;
     case 'd':
       delay = atoi(optarg);
       break;
@@ -213,8 +219,13 @@ int main(int argc, char* argv[]) {
       if (!second) {
         printf("\n");
       }
-      printf("%6s %-16s %20s %34s\n", "", "",
-          "--- IO (KiB/s) ---", "----------- delayed on ----------");
+      if (accumulated) {
+        printf("%6s %-16s %20s %34s\n", "", "",
+            "---- IO (KiB) ----", "----------- delayed on ----------");
+      } else {
+        printf("%6s %-16s %20s %34s\n", "", "",
+            "--- IO (KiB/s) ---", "----------- delayed on ----------");
+      }
       printf("%6s %-16s %6s %6s %6s  %-5s  %-5s  %-5s  %-5s  %-5s\n",
           "PID",
           "Command",
@@ -227,20 +238,35 @@ int main(int argc, char* argv[]) {
           "mem",
           "total");
       int n = limit;
+      const int delay_div = accumulated ? 1 : delay;
+      uint64_t total_read = 0;
+      uint64_t total_write = 0;
+      uint64_t total_read_write = 0;
       for (const TaskStatistics& statistics : stats) {
-        printf("%6d %-16s %6" PRIu64 " %6" PRIu64 " %6" PRIu64 " %5.2f%% %5.2f%% %5.2f%% %5.2f%% %5.2f%%\n",
-            statistics.pid(),
-            statistics.comm().c_str(),
-            BytesToKB(statistics.read()),
-            BytesToKB(statistics.write()),
-            BytesToKB(statistics.read_write()),
-            TimeToTgidPercent(statistics.delay_io(), delay, statistics),
-            TimeToTgidPercent(statistics.delay_swap(), delay, statistics),
-            TimeToTgidPercent(statistics.delay_sched(), delay, statistics),
-            TimeToTgidPercent(statistics.delay_mem(), delay, statistics),
-            TimeToTgidPercent(statistics.delay_total(), delay, statistics));
-        if (n > 0 && --n == 0) break;
+        total_read += statistics.read();
+        total_write += statistics.write();
+        total_read_write += statistics.read_write();
+
+        if (n > 0) {
+          n--;
+          printf("%6d %-16s %6" PRIu64 " %6" PRIu64 " %6" PRIu64 " %5.2f%% %5.2f%% %5.2f%% %5.2f%% %5.2f%%\n",
+              statistics.pid(),
+              statistics.comm().c_str(),
+              BytesToKB(statistics.read()) / delay_div,
+              BytesToKB(statistics.write()) / delay_div,
+              BytesToKB(statistics.read_write()) / delay_div,
+              TimeToTgidPercent(statistics.delay_io(), delay, statistics),
+              TimeToTgidPercent(statistics.delay_swap(), delay, statistics),
+              TimeToTgidPercent(statistics.delay_sched(), delay, statistics),
+              TimeToTgidPercent(statistics.delay_mem(), delay, statistics),
+              TimeToTgidPercent(statistics.delay_total(), delay, statistics));
+        }
       }
+      printf("%6s %-16s %6" PRIu64 " %6" PRIu64 " %6" PRIu64 "\n", "", "TOTAL",
+          BytesToKB(total_read) / delay_div,
+          BytesToKB(total_write) / delay_div,
+          BytesToKB(total_read_write) / delay_div);
+
       second = false;
 
       if (cycles > 0 && --cycles == 0) break;
