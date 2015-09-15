@@ -6,6 +6,7 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:= rand_emmc_perf.c
 LOCAL_MODULE:= rand_emmc_perf
+LOCAL_MULTILIB := both
 LOCAL_MODULE_STEM_32:= rand_emmc_perf
 LOCAL_MODULE_STEM_64:= rand_emmc_perf64
 LOCAL_MODULE_TAGS := optional
