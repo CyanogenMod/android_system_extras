@@ -25,6 +25,7 @@ LOCAL_SRC_FILES := $(memory_replay_src_files) main.cpp
 LOCAL_CFLAGS := -Wall -Wextra -Werror
 LOCAL_MODULE_TAGS := debug
 LOCAL_MODULE := memory_replay
+LOCAL_MODULE_HOST_OS := linux
 include $(BUILD_HOST_EXECUTABLE)
 
 memory_replay_test_src_files := \
@@ -63,6 +64,7 @@ LOCAL_CFLAGS := -Wall -Wextra -Werror
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/tests
 LOCAL_MODULE_TAGS := debug
 LOCAL_MODULE := memory_replay_tests
+LOCAL_MODULE_HOST_OS := linux
 
 LOCAL_SHARED_LIBRARIES := libbase
 
