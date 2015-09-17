@@ -89,22 +89,32 @@ static int ParseTaskStats(nl_msg* msg, void* arg) {
   TaskStatsRequest* taskstats_request = static_cast<TaskStatsRequest*>(arg);
   genlmsghdr* gnlh = static_cast<genlmsghdr*>(nlmsg_data(nlmsg_hdr(msg)));
   nlattr* attr = genlmsg_attrdata(gnlh, 0);
+  int remaining = genlmsg_attrlen(gnlh, 0);
 
-  switch (nla_type(attr)) {
-  case TASKSTATS_TYPE_AGGR_PID:
-  case TASKSTATS_TYPE_AGGR_TGID:
-    nlattr* nested_attr = static_cast<nlattr*>(nla_data(attr));
-    taskstats stats;
-    pid_t ret;
+  nla_for_each_attr(attr, attr, remaining, remaining) {
+    switch (nla_type(attr)) {
+    case TASKSTATS_TYPE_AGGR_PID:
+    case TASKSTATS_TYPE_AGGR_TGID:
+    {
+      nlattr* nested_attr = static_cast<nlattr*>(nla_data(attr));
+      taskstats stats;
+      pid_t ret;
 
-    ret = ParseAggregateTaskStats(nested_attr, nla_len(attr), &stats);
-    if (ret < 0) {
-      LOG(ERROR) << "Bad AGGR_PID contents";
-    } else if (ret == taskstats_request->requested_pid) {
-      taskstats_request->stats = stats;
-    } else {
-      LOG(WARNING) << "got taskstats for unexpected pid " << ret <<
-          " (expected " << taskstats_request->requested_pid << ", continuing...";
+      ret = ParseAggregateTaskStats(nested_attr, nla_len(attr), &stats);
+      if (ret < 0) {
+        LOG(ERROR) << "Bad AGGR_PID contents";
+      } else if (ret == taskstats_request->requested_pid) {
+        taskstats_request->stats = stats;
+      } else {
+        LOG(WARNING) << "got taskstats for unexpected pid " << ret <<
+            " (expected " << taskstats_request->requested_pid << ", continuing...";
+      }
+      break;
+    }
+    case TASKSTATS_TYPE_NULL:
+      break;
+    default:
+      LOG(ERROR) << "unexpected attribute in taskstats";
     }
   }
   return NL_OK;
