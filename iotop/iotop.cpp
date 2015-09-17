@@ -247,20 +247,23 @@ int main(int argc, char* argv[]) {
         total_write += statistics.write();
         total_read_write += statistics.read_write();
 
-        if (n > 0) {
+        if (n == 0) {
+          continue;
+        } else if (n > 0) {
           n--;
-          printf("%6d %-16s %6" PRIu64 " %6" PRIu64 " %6" PRIu64 " %5.2f%% %5.2f%% %5.2f%% %5.2f%% %5.2f%%\n",
-              statistics.pid(),
-              statistics.comm().c_str(),
-              BytesToKB(statistics.read()) / delay_div,
-              BytesToKB(statistics.write()) / delay_div,
-              BytesToKB(statistics.read_write()) / delay_div,
-              TimeToTgidPercent(statistics.delay_io(), delay, statistics),
-              TimeToTgidPercent(statistics.delay_swap(), delay, statistics),
-              TimeToTgidPercent(statistics.delay_sched(), delay, statistics),
-              TimeToTgidPercent(statistics.delay_mem(), delay, statistics),
-              TimeToTgidPercent(statistics.delay_total(), delay, statistics));
         }
+
+        printf("%6d %-16s %6" PRIu64 " %6" PRIu64 " %6" PRIu64 " %5.2f%% %5.2f%% %5.2f%% %5.2f%% %5.2f%%\n",
+            statistics.pid(),
+            statistics.comm().c_str(),
+            BytesToKB(statistics.read()) / delay_div,
+            BytesToKB(statistics.write()) / delay_div,
+            BytesToKB(statistics.read_write()) / delay_div,
+            TimeToTgidPercent(statistics.delay_io(), delay, statistics),
+            TimeToTgidPercent(statistics.delay_swap(), delay, statistics),
+            TimeToTgidPercent(statistics.delay_sched(), delay, statistics),
+            TimeToTgidPercent(statistics.delay_mem(), delay, statistics),
+            TimeToTgidPercent(statistics.delay_total(), delay, statistics));
       }
       printf("%6s %-16s %6" PRIu64 " %6" PRIu64 " %6" PRIu64 "\n", "", "TOTAL",
           BytesToKB(total_read) / delay_div,
