@@ -147,6 +147,11 @@ int main(int argc, char *argv[])
     boot_control_module_t *module;
     int ret;
 
+    if (argc < 2) {
+        usage(stderr, argc, argv);
+        return EX_USAGE;
+    }
+
     ret = hw_get_module("bootctrl", &hw_module);
     if (ret != 0) {
         fprintf(stderr, "Error getting bootctrl module.\n");
@@ -154,11 +159,6 @@ int main(int argc, char *argv[])
     }
     module = (boot_control_module_t*) hw_module;
     module->init(module);
-
-    if (argc < 2) {
-        usage(stderr, argc, argv);
-        return EX_USAGE;
-    }
 
     if (strcmp(argv[1], "hal-info") == 0) {
         return do_hal_info(hw_module);
