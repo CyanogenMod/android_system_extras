@@ -149,8 +149,12 @@ class NeighbourTest(multinetwork_base.MultiNetworkBaseTest):
 
     Relevant kernel commits:
       upstream net-next:
+        765c9c6 neigh: Better handling of transition to NUD_PROBE state
         53385d2 neigh: Netlink notification for administrative NUD state change
           (only checked on kernel v3.13+, not on v3.10)
+
+      android-3.10:
+        e4a6d6b neigh: Better handling of transition to NUD_PROBE state
     """
 
     router4 = self._RouterAddress(self.netid, 4)
