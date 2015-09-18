@@ -384,9 +384,11 @@ class Ping6Test(multinetwork_base.MultiNetworkBaseTest):
 
     Relevant kernel commits:
       upstream net:
+        91a0b60 net/ping: handle protocol mismatching scenario
         9145736 net: ping: Return EAFNOSUPPORT when appropriate.
 
       android-3.10:
+        78a6809 net/ping: handle protocol mismatching scenario
         428e6d6 net: ping: Return EAFNOSUPPORT when appropriate.
     """
 
