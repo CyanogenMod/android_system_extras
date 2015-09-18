@@ -66,23 +66,24 @@ for tap in $tapinterfaces; do
   fi
 done
 
-# Exporting ARCH=um SUBARCH=x86_64 doesn't seem to work, as it "sometimes" (?)
-# results in a 32-bit kernel.
+if [ -z "$KERNEL_BINARY" ]; then
+  # Exporting ARCH=um SUBARCH=x86_64 doesn't seem to work, as it "sometimes"
+  # (?) results in a 32-bit kernel.
 
-# If there's no kernel config at all, create one or UML won't work.
-[ -f .config ] || make defconfig ARCH=um SUBARCH=x86_64
+  # If there's no kernel config at all, create one or UML won't work.
+  [ -f .config ] || make defconfig ARCH=um SUBARCH=x86_64
 
-# Enable the kernel config options listed in $OPTIONS.
-cmdline=${OPTIONS// / -e }
-./scripts/config $cmdline
+  # Enable the kernel config options listed in $OPTIONS.
+  cmdline=${OPTIONS// / -e }
+  ./scripts/config $cmdline
 
-# Disable the kernel config options listed in $DISABLE_OPTIONS.
-cmdline=${DISABLE_OPTIONS// / -d }
-./scripts/config $cmdline
+  # Disable the kernel config options listed in $DISABLE_OPTIONS.
+  cmdline=${DISABLE_OPTIONS// / -d }
+  ./scripts/config $cmdline
 
-# olddefconfig doesn't work on old kernels.
-if ! make olddefconfig ARCH=um SUBARCH=x86_64 CROSS_COMPILE= ; then
-  cat >&2 << EOF
+  # olddefconfig doesn't work on old kernels.
+  if ! make olddefconfig ARCH=um SUBARCH=x86_64 CROSS_COMPILE= ; then
+    cat >&2 << EOF
 
 Warning: "make olddefconfig" failed.
 Perhaps this kernel is too old to support it.
@@ -90,15 +91,18 @@ You may get asked lots of questions.
 Keep enter pressed to accept the defaults.
 
 EOF
+  fi
+
+  # Compile the kernel.
+  make -j32 linux ARCH=um SUBARCH=x86_64 CROSS_COMPILE=
+  KERNEL_BINARY=./linux
 fi
 
-# Compile the kernel.
-make -j32 linux ARCH=um SUBARCH=x86_64 CROSS_COMPILE=
 
 # Get the absolute path to the test file that's being run.
 dir=/host$(dirname $(readlink -f $0))
 
 # Start the VM.
-exec ./linux umid=net_test ubda=$(dirname $0)/$ROOTFS \
+exec $KERNEL_BINARY umid=net_test ubda=$(dirname $0)/$ROOTFS \
     mem=512M init=/sbin/net_test.sh net_test=$dir/$test \
     $netconfig
