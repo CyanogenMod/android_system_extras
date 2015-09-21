@@ -48,14 +48,23 @@ std::unique_ptr<EventFd> EventFd::OpenEventFile(const perf_event_attr& attr, pid
   }
   int perf_event_fd = perf_event_open(&perf_attr, tid, cpu, -1, 0);
   if (perf_event_fd == -1) {
-    (report_error ? PLOG(ERROR) : PLOG(DEBUG)) << "open perf_event_file (event " << event_name
-                                               << ", tid " << tid << ", cpu " << cpu << ") failed";
+    if (report_error) {
+      PLOG(ERROR) << "open perf_event_file (event " << event_name << ", tid " << tid << ", cpu "
+                  << cpu << ") failed";
+    } else {
+      PLOG(DEBUG) << "open perf_event_file (event " << event_name << ", tid " << tid << ", cpu "
+                  << cpu << ") failed";
+    }
     return nullptr;
   }
   if (fcntl(perf_event_fd, F_SETFD, FD_CLOEXEC) == -1) {
-    (report_error ? PLOG(ERROR) : PLOG(DEBUG)) << "fcntl(FD_CLOEXEC) for perf_event_file (event "
-                                               << event_name << ", tid " << tid << ", cpu " << cpu
-                                               << ") failed";
+    if (report_error) {
+      PLOG(ERROR) << "fcntl(FD_CLOEXEC) for perf_event_file (event " << event_name << ", tid "
+                  << tid << ", cpu " << cpu << ") failed";
+    } else {
+      PLOG(DEBUG) << "fcntl(FD_CLOEXEC) for perf_event_file (event " << event_name << ", tid "
+                  << tid << ", cpu " << cpu << ") failed";
+    }
     return nullptr;
   }
   return std::unique_ptr<EventFd>(new EventFd(perf_event_fd, event_name, tid, cpu));

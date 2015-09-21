@@ -28,9 +28,7 @@
 #include "event_fd.h"
 #include "utils.h"
 
-#define EVENT_TYPE_TABLE_ENTRY(name, type, config) \
-  { name, type, config }                           \
-  ,
+#define EVENT_TYPE_TABLE_ENTRY(name, type, config) {name, type, config},
 
 static const std::vector<EventType> static_event_type_array = {
 #include "event_type_table.h"
