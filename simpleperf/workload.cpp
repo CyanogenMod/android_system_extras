@@ -108,9 +108,9 @@ static void ChildProcessFn(std::vector<std::string>& args, int start_signal_fd, 
     TEMP_FAILURE_RETRY(write(exec_child_fd, &exec_child_failed, 1));
     close(exec_child_fd);
     errno = saved_errno;
-    PLOG(FATAL) << "execvp(" << argv[0] << ") failed";
+    PLOG(ERROR) << "child process failed to execvp(" << argv[0] << ")";
   } else {
-    PLOG(FATAL) << "child process failed to receive start_signal, nread = " << nread;
+    PLOG(ERROR) << "child process failed to receive start_signal, nread = " << nread;
   }
 }
 
@@ -125,7 +125,11 @@ bool Workload::Start() {
   char exec_child_failed;
   ssize_t nread = TEMP_FAILURE_RETRY(read(exec_child_fd_, &exec_child_failed, 1));
   if (nread != 0) {
-    ((nread == -1) ? PLOG(ERROR) : LOG(ERROR)) << "exec child failed, nread = " << nread;
+    if (nread == -1) {
+      PLOG(ERROR) << "failed to receive error message from child process";
+    } else {
+      LOG(ERROR) << "received error message from child process";
+    }
     return false;
   }
   work_state_ = Started;
