@@ -13,17 +13,23 @@
 # limitations under the License.
 
 LOCAL_PATH := $(call my-dir)
-include $(CLEAR_VARS)
 
+pagemap_src_files := \
+    pm_kernel.c \
+    pm_process.c \
+    pm_map.c \
+    pm_memusage.c \
+
+include $(CLEAR_VARS)
 LOCAL_MODULE := libpagemap
 LOCAL_MODULE_TAGS := debug
-
-LOCAL_SRC_FILES := \
-	pm_kernel.c \
-	pm_process.c \
-	pm_map.c \
-	pm_memusage.c
-
+LOCAL_SRC_FILES := $(pagemap_src_files)
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/include
-
+LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
 include $(BUILD_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := pagemap_test
+LOCAL_SRC_FILES := pagemap_test.cpp
+LOCAL_SHARED_LIBRARIES := libpagemap
+include $(BUILD_NATIVE_TEST)
