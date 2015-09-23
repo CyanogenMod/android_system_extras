@@ -39,21 +39,52 @@ unsigned module_getNumberSlots(boot_control_module_t *module)
   return 2;
 }
 
+static bool get_dev_t_for_partition(const char *name, dev_t *out_device)
+{
+  int fd;
+  struct stat statbuf;
+
+  fd = boot_info_open_partition(name, NULL, O_RDONLY);
+  if (fd == -1)
+    return false;
+  if (fstat(fd, &statbuf) != 0) {
+    fprintf(stderr, "WARNING: Error getting information about part %s: %s\n",
+            name, strerror(errno));
+    close(fd);
+    return false;
+  }
+  close(fd);
+  *out_device = statbuf.st_rdev;
+  return true;
+}
+
 unsigned module_getCurrentSlot(boot_control_module_t *module)
 {
-  BrilloBootInfo info;
+  struct stat statbuf;
+  dev_t system_a_dev, system_b_dev;
 
-  if (!boot_info_load(&info)) {
-    fprintf(stderr, "WARNING: Error loading boot-info. Resetting.\n");
-    boot_info_reset(&info);
-  } else {
-    if (!boot_info_validate(&info)) {
-      fprintf(stderr, "WARNING: boot-info is invalid. Resetting.\n");
-      boot_info_reset(&info);
-    }
+  if (stat("/system", &statbuf) != 0) {
+    fprintf(stderr, "WARNING: Error getting information about /system: %s\n",
+            strerror(errno));
+    return 0;
   }
 
-  return info.active_slot;
+  if (!get_dev_t_for_partition("system_a", &system_a_dev) ||
+      !get_dev_t_for_partition("system_b", &system_b_dev))
+    return 0;
+
+  if (statbuf.st_dev == system_a_dev) {
+    return 0;
+  } else if (statbuf.st_dev == system_b_dev) {
+    return 1;
+  } else {
+    fprintf(stderr, "WARNING: Error determining current slot "
+            "(/system dev_t of %d:%d does not match a=%d:%d or b=%d:%d)\n",
+            major(statbuf.st_dev), minor(statbuf.st_dev),
+            major(system_a_dev), minor(system_a_dev),
+            major(system_b_dev), minor(system_b_dev));
+    return 0;
+  }
 }
 
 int module_markBootSuccessful(boot_control_module_t *module)
