@@ -50,7 +50,7 @@ static void run_signaled_workload() {
     auto workload = Workload::CreateWorkload({"sleep", "10"});
     ASSERT_TRUE(workload != nullptr);
     ASSERT_TRUE(workload->Start());
-    ASSERT_EQ(0, kill(workload->GetPid(), SIGABRT));
+    ASSERT_EQ(0, kill(workload->GetPid(), SIGKILL));
     while (!signaled) {
     }
   }
