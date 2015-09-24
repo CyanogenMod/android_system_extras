@@ -78,6 +78,7 @@ bool Workload::CreateNewProcess() {
     close(start_signal_pipe[1]);
     close(exec_child_pipe[0]);
     ChildProcessFn(args_, start_signal_pipe[0], exec_child_pipe[1]);
+    _exit(0);
   }
   // In parent process.
   close(start_signal_pipe[0]);
