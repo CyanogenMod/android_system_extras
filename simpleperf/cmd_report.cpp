@@ -29,6 +29,7 @@
 #include <base/strings.h>
 
 #include "command.h"
+#include "dwarf_unwind.h"
 #include "environment.h"
 #include "event_attr.h"
 #include "event_type.h"
@@ -532,10 +533,28 @@ void ReportCommand::ProcessSampleRecord(const SampleRecord& r) {
     if (sample == nullptr) {
       return;
     }
-    if (accumulate_callchain_ && (r.sample_type & PERF_SAMPLE_CALLCHAIN) != 0) {
+    if (accumulate_callchain_) {
+      std::vector<uint64_t> ips;
+      if (r.sample_type & PERF_SAMPLE_CALLCHAIN) {
+        ips.insert(ips.end(), r.callchain_data.ips.begin(), r.callchain_data.ips.end());
+      }
+      // Use stack_user_data.data.size() instead of stack_user_data.dyn_size, to make up for
+      // the missing kernel patch in N9. See b/22612370.
+      if ((r.sample_type & PERF_SAMPLE_REGS_USER) && (r.regs_user_data.reg_mask != 0) &&
+          (r.sample_type & PERF_SAMPLE_STACK_USER) && (!r.stack_user_data.data.empty())) {
+        RegSet regs = CreateRegSet(r.regs_user_data.reg_mask, r.regs_user_data.regs);
+        std::vector<char> stack(r.stack_user_data.data.begin(),
+                                r.stack_user_data.data.begin() + r.stack_user_data.data.size());
+        std::vector<uint64_t> unwind_ips = UnwindCallChain(*sample->thread, regs, stack);
+        if (!unwind_ips.empty()) {
+          ips.push_back(PERF_CONTEXT_USER);
+          ips.insert(ips.end(), unwind_ips.begin(), unwind_ips.end());
+        }
+      }
+
       std::vector<SampleEntry*> callchain;
       callchain.push_back(sample);
-      const std::vector<uint64_t>& ips = r.callchain_data.ips;
+
       bool first_ip = true;
       for (auto& ip : ips) {
         if (ip >= PERF_CONTEXT_MAX) {
@@ -551,11 +570,11 @@ void ReportCommand::ProcessSampleRecord(const SampleRecord& r) {
           }
         } else {
           if (first_ip) {
+            first_ip = false;
             // Remove duplication with sampled ip.
             if (ip == r.ip_data.ip) {
               continue;
             }
-            first_ip = false;
           }
           SampleEntry* sample =
               sample_tree_->AddCallChainSample(r.tid_data.pid, r.tid_data.tid, ip, r.time_data.time,
@@ -563,6 +582,7 @@ void ReportCommand::ProcessSampleRecord(const SampleRecord& r) {
           callchain.push_back(sample);
         }
       }
+
       if (print_callgraph_) {
         std::set<SampleEntry*> added_set;
         if (!callgraph_show_callee_) {
