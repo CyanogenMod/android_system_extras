@@ -31,6 +31,7 @@
 
 #include <stdint.h>
 #include <string>
+#include <vector>
 
 enum ArchType {
   ARCH_X86_32,
@@ -40,11 +41,35 @@ enum ArchType {
   ARCH_UNSUPPORTED,
 };
 
+constexpr ArchType GetBuildArch() {
+#if defined(__i386__)
+  return ARCH_X86_32;
+#elif defined(__x86_64__)
+  return ARCH_X86_64;
+#elif defined(__aarch64__)
+  return ARCH_ARM64;
+#elif defined(__arm__)
+  return ARCH_ARM;
+#else
+  return ARCH_UNSUPPORTED;
+#endif
+}
+
 ArchType GetCurrentArch();
 bool SetCurrentArch(const std::string& arch);
 
 uint64_t GetSupportedRegMask();
 
 std::string GetRegName(size_t reg);
+
+struct RegSet {
+  uint64_t valid_mask;
+  uint64_t data[64];
+};
+
+RegSet CreateRegSet(uint64_t valid_mask, const std::vector<uint64_t>& valid_regs);
+
+bool GetRegValue(const RegSet& regs, size_t regno, uint64_t* value);
+bool GetSpRegValue(const RegSet& regs, uint64_t* value);
 
 #endif  // SIMPLE_PERF_PERF_REGS_H_

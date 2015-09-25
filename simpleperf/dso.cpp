@@ -150,6 +150,11 @@ struct SymbolComparator {
   }
 };
 
+
+std::string Dso::GetAccessiblePath() const {
+  return symfs_dir_ + path_;
+}
+
 const Symbol* Dso::FindSymbol(uint64_t offset_in_dso) {
   if (!is_loaded_) {
     is_loaded_ = true;
