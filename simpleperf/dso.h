@@ -60,9 +60,15 @@ struct Dso {
   static std::unique_ptr<Dso> CreateDso(DsoType dso_type, const std::string& dso_path = "");
 
   ~Dso();
+
+  // Return the path recorded in perf.data.
   const std::string& Path() const {
     return path_;
   }
+
+  // Return the accessible path. It may be the same as Path(), or
+  // return the path with prefix set by SetSymFsDir().
+  std::string GetAccessiblePath() const;
 
   const Symbol* FindSymbol(uint64_t offset_in_dso);
 
