@@ -21,20 +21,6 @@
 #include <base/stringprintf.h>
 #include <base/strings.h>
 
-constexpr ArchType GetBuildArch() {
-#if defined(__i386__)
-  return ARCH_X86_32;
-#elif defined(__x86_64__)
-  return ARCH_X86_64;
-#elif defined(__aarch64__)
-  return ARCH_ARM64;
-#elif defined(__arm__)
-  return ARCH_ARM;
-#else
-  return ARCH_UNSUPPORTED;
-#endif
-}
-
 static ArchType current_arch = GetBuildArch();
 
 ArchType GetCurrentArch() {
@@ -120,7 +106,43 @@ std::string GetRegName(size_t reg) {
       CHECK(it != arm64_reg_map.end()) << "unknown reg " << reg;
       return it->second;
     }
-    case ARCH_UNSUPPORTED:
+    default:
       return "unknown";
   }
+}
+
+RegSet CreateRegSet(uint64_t valid_mask, const std::vector<uint64_t>& valid_regs) {
+  RegSet regs;
+  regs.valid_mask = valid_mask;
+  for (int i = 0, j = 0; i < 64; ++i) {
+    if ((valid_mask >> i) & 1) {
+      regs.data[i] = valid_regs[j++];
+    }
+  }
+  return regs;
+}
+
+bool GetRegValue(const RegSet& regs, size_t regno, uint64_t* value) {
+  CHECK_LT(regno, 64U);
+  if ((regs.valid_mask >> regno) & 1) {
+    *value = regs.data[regno];
+    return true;
+  }
+  return false;
+}
+
+bool GetSpRegValue(const RegSet& regs, uint64_t* value) {
+  size_t regno;
+#if defined(__i386__)
+  regno = PERF_REG_X86_SP;
+#elif defined(__x86_64__)
+  regno = PERF_REG_X86_SP;
+#elif defined(__aarch64__)
+  regno = PERF_REG_ARM64_SP;
+#elif defined(__arm__)
+  regno = PERF_REG_ARM_SP;
+#else
+  return false;
+#endif
+  return GetRegValue(regs, regno, value);
 }
