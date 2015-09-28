@@ -31,6 +31,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include <utils/Compat.h>
 #include <mincrypt/rsa.h>
 #include <openssl/sha.h>
 #include <fec/io.h>
