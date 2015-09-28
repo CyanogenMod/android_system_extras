@@ -38,6 +38,8 @@ LOCAL_STATIC_LIBRARIES := \
     $(common_static_libraries)
 include $(BUILD_STATIC_LIBRARY)
 
+ifeq ($(HOST_OS),linux)
+
 include $(CLEAR_VARS)
 LOCAL_CFLAGS := $(common_cflags) -D_GNU_SOURCE -DFEC_NO_KLOG
 LOCAL_C_INCLUDES := $(common_c_includes)
@@ -52,5 +54,7 @@ LOCAL_STATIC_LIBRARIES := \
     libsquashfs_utils_host \
     $(common_static_libraries)
 include $(BUILD_HOST_STATIC_LIBRARY)
+
+endif # HOST_OS == linux
 
 include $(LOCAL_PATH)/test/Android.mk

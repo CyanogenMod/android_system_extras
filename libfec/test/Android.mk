@@ -1,5 +1,7 @@
 LOCAL_PATH:= $(call my-dir)
 
+ifeq ($(HOST_OS),linux)
+
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
 LOCAL_SANITIZE := integer
@@ -26,3 +28,5 @@ LOCAL_STATIC_LIBRARIES := libfec_rs_host
 LOCAL_CFLAGS := -Wall -Werror -D_GNU_SOURCE
 LOCAL_C_INCLUDES += external/fec
 include $(BUILD_HOST_EXECUTABLE)
+
+endif # HOST_OS == linux
