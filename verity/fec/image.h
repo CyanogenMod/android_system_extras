@@ -17,6 +17,7 @@
 #ifndef __FEC_H__
 #define __FEC_H__
 
+#include <utils/Compat.h>
 #include <fec/io.h>
 #include <fec/ecc.h>
 
