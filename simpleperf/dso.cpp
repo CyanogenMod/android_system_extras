@@ -150,7 +150,6 @@ struct SymbolComparator {
   }
 };
 
-
 std::string Dso::GetAccessiblePath() const {
   return symfs_dir_ + path_;
 }
@@ -228,8 +227,22 @@ bool Dso::LoadKernel() {
         return false;
       }
     }
+
     ProcessKernelSymbols("/proc/kallsyms",
                          std::bind(&KernelSymbolCallback, std::placeholders::_1, this));
+    bool allZero = true;
+    for (auto& symbol : symbols_) {
+      if (symbol.addr != 0) {
+        allZero = false;
+        break;
+      }
+    }
+    if (allZero) {
+      LOG(WARNING) << "Symbol addresses in /proc/kallsyms are all zero. Check "
+                      "/proc/sys/kernel/kptr_restrict if possible.";
+      symbols_.clear();
+      return false;
+    }
   }
   return true;
 }
