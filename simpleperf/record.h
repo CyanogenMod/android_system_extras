@@ -141,10 +141,10 @@ struct Record {
   }
 
   void Dump(size_t indent = 0) const;
+  virtual std::vector<char> BinaryFormat() const = 0;
 
  protected:
-  virtual void DumpData(size_t) const {
-  }
+  virtual void DumpData(size_t) const = 0;
 };
 
 struct MmapRecord : public Record {
@@ -156,11 +156,11 @@ struct MmapRecord : public Record {
   } data;
   std::string filename;
 
-  MmapRecord() {  // For storage in std::vector.
+  MmapRecord() {  // For CreateMmapRecord.
   }
 
   MmapRecord(const perf_event_attr& attr, const perf_event_header* pheader);
-  std::vector<char> BinaryFormat() const;
+  std::vector<char> BinaryFormat() const override;
 
  protected:
   void DumpData(size_t indent) const override;
@@ -184,6 +184,7 @@ struct Mmap2Record : public Record {
   }
 
   Mmap2Record(const perf_event_attr& attr, const perf_event_header* pheader);
+  std::vector<char> BinaryFormat() const override;
 
  protected:
   void DumpData(size_t indent) const override;
@@ -199,7 +200,7 @@ struct CommRecord : public Record {
   }
 
   CommRecord(const perf_event_attr& attr, const perf_event_header* pheader);
-  std::vector<char> BinaryFormat() const;
+  std::vector<char> BinaryFormat() const override;
 
  protected:
   void DumpData(size_t indent) const override;
@@ -215,6 +216,7 @@ struct ExitOrForkRecord : public Record {
   ExitOrForkRecord() {
   }
   ExitOrForkRecord(const perf_event_attr& attr, const perf_event_header* pheader);
+  std::vector<char> BinaryFormat() const override;
 
  protected:
   void DumpData(size_t indent) const override;
@@ -232,7 +234,6 @@ struct ForkRecord : public ExitOrForkRecord {
   ForkRecord(const perf_event_attr& attr, const perf_event_header* pheader)
       : ExitOrForkRecord(attr, pheader) {
   }
-  std::vector<char> BinaryFormat() const;
 };
 
 struct SampleRecord : public Record {
@@ -254,6 +255,8 @@ struct SampleRecord : public Record {
   PerfSampleStackUserType stack_user_data;      // Valid if PERF_SAMPLE_STACK_USER.
 
   SampleRecord(const perf_event_attr& attr, const perf_event_header* pheader);
+  std::vector<char> BinaryFormat() const override;
+  void AdjustSizeBasedOnData();
 
  protected:
   void DumpData(size_t indent) const override;
@@ -269,7 +272,19 @@ struct BuildIdRecord : public Record {
   }
 
   BuildIdRecord(const perf_event_header* pheader);
-  std::vector<char> BinaryFormat() const;
+  std::vector<char> BinaryFormat() const override;
+
+ protected:
+  void DumpData(size_t indent) const override;
+};
+
+// UnknownRecord is used for unknown record types, it makes sure all unknown records
+// are not changed when modifying perf.data.
+struct UnknownRecord : public Record {
+  std::vector<char> data;
+
+  UnknownRecord(const perf_event_header* pheader);
+  std::vector<char> BinaryFormat() const override;
 
  protected:
   void DumpData(size_t indent) const override;
