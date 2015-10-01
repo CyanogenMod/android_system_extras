@@ -23,12 +23,12 @@
 
 #include "thread_tree.h"
 
-#define SetUContextReg(dst, perf_regno) \
-  do { \
-    uint64_t value; \
+#define SetUContextReg(dst, perf_regno)          \
+  do {                                           \
+    uint64_t value;                              \
     if (GetRegValue(regs, perf_regno, &value)) { \
-      dst = value; \
-    } \
+      dst = value;                               \
+    }                                            \
   } while (0)
 
 static ucontext_t BuildUContextFromRegs(const RegSet& regs __attribute__((unused))) {
@@ -94,8 +94,7 @@ static ucontext_t BuildUContextFromRegs(const RegSet& regs __attribute__((unused
   return ucontext;
 }
 
-std::vector<uint64_t> UnwindCallChain(const ThreadEntry& thread,
-                                      const RegSet& regs,
+std::vector<uint64_t> UnwindCallChain(const ThreadEntry& thread, const RegSet& regs,
                                       const std::vector<char>& stack) {
   std::vector<uint64_t> result;
   if (GetCurrentArch() != GetBuildArch()) {
