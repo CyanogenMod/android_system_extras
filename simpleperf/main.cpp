@@ -33,7 +33,7 @@ static std::map<std::string, android::base::LogSeverity> log_severity_map = {
 int main(int argc, char** argv) {
   InitLogging(argv, android::base::StderrLogger);
   std::vector<std::string> args;
-  android::base::LogSeverity log_severity = android::base::ERROR;
+  android::base::LogSeverity log_severity = android::base::WARNING;
 
   if (argc == 1) {
     args.push_back("help");

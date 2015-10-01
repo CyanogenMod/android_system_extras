@@ -24,6 +24,6 @@
 struct ThreadEntry;
 
 std::vector<uint64_t> UnwindCallChain(const ThreadEntry& thread, const RegSet& regs,
-                            const std::vector<char>& stack);
+                                      const std::vector<char>& stack);
 
 #endif  // SIMPLE_PERF_DWARF_UNWIND_H_
