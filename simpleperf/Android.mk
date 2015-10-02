@@ -16,7 +16,7 @@
 
 LOCAL_PATH := $(call my-dir)
 
-simpleperf_common_cppflags := -std=c++11 -Wall -Wextra -Werror -Wunused \
+simpleperf_common_cppflags := -Wall -Wextra -Werror -Wunused \
 
 simpleperf_cppflags_target := $(simpleperf_common_cppflags) \
 
@@ -247,3 +247,5 @@ LOCAL_MODULE := simpleperf_unit_test
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_HOST_NATIVE_TEST)
 endif
+
+include $(call first-makefiles-under,$(LOCAL_PATH))
