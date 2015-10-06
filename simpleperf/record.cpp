@@ -57,6 +57,13 @@ void MoveToBinaryFormat(const T& data, char*& p) {
   p += sizeof(T);
 }
 
+template <class T>
+void MoveToBinaryFormat(const T* data_p, size_t n, char*& p) {
+  size_t size = n * sizeof(T);
+  memcpy(p, data_p, size);
+  p += size;
+}
+
 SampleId::SampleId() {
   memset(this, 0, sizeof(SampleId));
 }
@@ -180,12 +187,6 @@ MmapRecord::MmapRecord(const perf_event_attr& attr, const perf_event_header* phe
   sample_id.ReadFromBinaryFormat(attr, p, end);
 }
 
-void MmapRecord::DumpData(size_t indent) const {
-  PrintIndented(indent, "pid %u, tid %u, addr 0x%" PRIx64 ", len 0x%" PRIx64 "\n", data.pid,
-                data.tid, data.addr, data.len);
-  PrintIndented(indent, "pgoff 0x%" PRIx64 ", filename %s\n", data.pgoff, filename.c_str());
-}
-
 std::vector<char> MmapRecord::BinaryFormat() const {
   std::vector<char> buf(header.size);
   char* p = buf.data();
@@ -197,6 +198,12 @@ std::vector<char> MmapRecord::BinaryFormat() const {
   return buf;
 }
 
+void MmapRecord::DumpData(size_t indent) const {
+  PrintIndented(indent, "pid %u, tid %u, addr 0x%" PRIx64 ", len 0x%" PRIx64 "\n", data.pid,
+                data.tid, data.addr, data.len);
+  PrintIndented(indent, "pgoff 0x%" PRIx64 ", filename %s\n", data.pgoff, filename.c_str());
+}
+
 Mmap2Record::Mmap2Record(const perf_event_attr& attr, const perf_event_header* pheader)
     : Record(pheader) {
   const char* p = reinterpret_cast<const char*>(pheader + 1);
@@ -206,6 +213,17 @@ Mmap2Record::Mmap2Record(const perf_event_attr& attr, const perf_event_header* p
   p += ALIGN(filename.size() + 1, 8);
   CHECK_LE(p, end);
   sample_id.ReadFromBinaryFormat(attr, p, end);
+}
+
+std::vector<char> Mmap2Record::BinaryFormat() const {
+  std::vector<char> buf(header.size);
+  char* p = buf.data();
+  MoveToBinaryFormat(header, p);
+  MoveToBinaryFormat(data, p);
+  strcpy(p, filename.c_str());
+  p += ALIGN(filename.size() + 1, 8);
+  sample_id.WriteToBinaryFormat(p);
+  return buf;
 }
 
 void Mmap2Record::DumpData(size_t indent) const {
@@ -229,10 +247,6 @@ CommRecord::CommRecord(const perf_event_attr& attr, const perf_event_header* phe
   sample_id.ReadFromBinaryFormat(attr, p, end);
 }
 
-void CommRecord::DumpData(size_t indent) const {
-  PrintIndented(indent, "pid %u, tid %u, comm %s\n", data.pid, data.tid, comm.c_str());
-}
-
 std::vector<char> CommRecord::BinaryFormat() const {
   std::vector<char> buf(header.size);
   char* p = buf.data();
@@ -244,6 +258,10 @@ std::vector<char> CommRecord::BinaryFormat() const {
   return buf;
 }
 
+void CommRecord::DumpData(size_t indent) const {
+  PrintIndented(indent, "pid %u, tid %u, comm %s\n", data.pid, data.tid, comm.c_str());
+}
+
 ExitOrForkRecord::ExitOrForkRecord(const perf_event_attr& attr, const perf_event_header* pheader)
     : Record(pheader) {
   const char* p = reinterpret_cast<const char*>(pheader + 1);
@@ -253,18 +271,18 @@ ExitOrForkRecord::ExitOrForkRecord(const perf_event_attr& attr, const perf_event
   sample_id.ReadFromBinaryFormat(attr, p, end);
 }
 
-void ExitOrForkRecord::DumpData(size_t indent) const {
-  PrintIndented(indent, "pid %u, ppid %u, tid %u, ptid %u\n", data.pid, data.ppid, data.tid,
-                data.ptid);
-}
-
-std::vector<char> ForkRecord::BinaryFormat() const {
+std::vector<char> ExitOrForkRecord::BinaryFormat() const {
   std::vector<char> buf(header.size);
   char* p = buf.data();
   MoveToBinaryFormat(header, p);
   MoveToBinaryFormat(data, p);
   sample_id.WriteToBinaryFormat(p);
   return buf;
+}
+
+void ExitOrForkRecord::DumpData(size_t indent) const {
+  PrintIndented(indent, "pid %u, ppid %u, tid %u, ptid %u\n", data.pid, data.ppid, data.tid,
+                data.ptid);
 }
 
 SampleRecord::SampleRecord(const perf_event_attr& attr, const perf_event_header* pheader)
@@ -347,6 +365,76 @@ SampleRecord::SampleRecord(const perf_event_attr& attr, const perf_event_header*
   if (p < end) {
     LOG(DEBUG) << "Record has " << end - p << " bytes left\n";
   }
+}
+
+std::vector<char> SampleRecord::BinaryFormat() const {
+  std::vector<char> buf(header.size);
+  char* p = buf.data();
+  MoveToBinaryFormat(header, p);
+  if (sample_type & PERF_SAMPLE_IP) {
+    MoveToBinaryFormat(ip_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_TID) {
+    MoveToBinaryFormat(tid_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_TIME) {
+    MoveToBinaryFormat(time_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_ADDR) {
+    MoveToBinaryFormat(addr_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_ID) {
+    MoveToBinaryFormat(id_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_STREAM_ID) {
+    MoveToBinaryFormat(stream_id_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_CPU) {
+    MoveToBinaryFormat(cpu_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_PERIOD) {
+    MoveToBinaryFormat(period_data, p);
+  }
+  if (sample_type & PERF_SAMPLE_CALLCHAIN) {
+    uint64_t nr = callchain_data.ips.size();
+    MoveToBinaryFormat(nr, p);
+    MoveToBinaryFormat(callchain_data.ips.data(), nr, p);
+  }
+  if (sample_type & PERF_SAMPLE_RAW) {
+    uint32_t size = raw_data.data.size();
+    MoveToBinaryFormat(size, p);
+    MoveToBinaryFormat(raw_data.data.data(), size, p);
+  }
+  if (sample_type & PERF_SAMPLE_BRANCH_STACK) {
+    uint64_t nr = branch_stack_data.stack.size();
+    MoveToBinaryFormat(nr, p);
+    MoveToBinaryFormat(branch_stack_data.stack.data(), nr, p);
+  }
+  if (sample_type & PERF_SAMPLE_REGS_USER) {
+    MoveToBinaryFormat(regs_user_data.abi, p);
+    if (regs_user_data.abi != 0) {
+      MoveToBinaryFormat(regs_user_data.regs.data(), regs_user_data.regs.size(), p);
+    }
+  }
+  if (sample_type & PERF_SAMPLE_STACK_USER) {
+    uint64_t size = stack_user_data.data.size();
+    MoveToBinaryFormat(size, p);
+    if (size != 0) {
+      MoveToBinaryFormat(stack_user_data.data.data(), size, p);
+      MoveToBinaryFormat(stack_user_data.dyn_size, p);
+    }
+  }
+
+  // If record command does stack unwinding, sample records' size may be decreased.
+  // So we can't trust header.size here, and should adjust buffer size based on real need.
+  buf.resize(p - buf.data());
+  return buf;
+}
+
+void SampleRecord::AdjustSizeBasedOnData() {
+  size_t size = BinaryFormat().size();
+  LOG(DEBUG) << "SampleRecord size is changed from " << header.size << " to " << size;
+  header.size = size;
 }
 
 void SampleRecord::DumpData(size_t indent) const {
@@ -432,12 +520,6 @@ BuildIdRecord::BuildIdRecord(const perf_event_header* pheader) : Record(pheader)
   CHECK_EQ(p, end);
 }
 
-void BuildIdRecord::DumpData(size_t indent) const {
-  PrintIndented(indent, "pid %u\n", pid);
-  PrintIndented(indent, "build_id %s\n", build_id.ToString().c_str());
-  PrintIndented(indent, "filename %s\n", filename.c_str());
-}
-
 std::vector<char> BuildIdRecord::BinaryFormat() const {
   std::vector<char> buf(header.size);
   char* p = buf.data();
@@ -448,6 +530,29 @@ std::vector<char> BuildIdRecord::BinaryFormat() const {
   strcpy(p, filename.c_str());
   p += ALIGN(filename.size() + 1, 64);
   return buf;
+}
+
+void BuildIdRecord::DumpData(size_t indent) const {
+  PrintIndented(indent, "pid %u\n", pid);
+  PrintIndented(indent, "build_id %s\n", build_id.ToString().c_str());
+  PrintIndented(indent, "filename %s\n", filename.c_str());
+}
+
+UnknownRecord::UnknownRecord(const perf_event_header* pheader) : Record(pheader) {
+  const char* p = reinterpret_cast<const char*>(pheader + 1);
+  const char* end = reinterpret_cast<const char*>(pheader) + pheader->size;
+  data.insert(data.end(), p, end);
+}
+
+std::vector<char> UnknownRecord::BinaryFormat() const {
+  std::vector<char> buf(header.size);
+  char* p = buf.data();
+  MoveToBinaryFormat(header, p);
+  MoveToBinaryFormat(data.data(), data.size(), p);
+  return buf;
+}
+
+void UnknownRecord::DumpData(size_t) const {
 }
 
 static std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
@@ -466,7 +571,7 @@ static std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
     case PERF_RECORD_SAMPLE:
       return std::unique_ptr<Record>(new SampleRecord(attr, pheader));
     default:
-      return std::unique_ptr<Record>(new Record(pheader));
+      return std::unique_ptr<Record>(new UnknownRecord(pheader));
   }
 }
 

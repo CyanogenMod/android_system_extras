@@ -50,6 +50,7 @@ class RecordFileWriter {
 
   // Read data section that has been written, for further processing.
   bool ReadDataSection(std::vector<std::unique_ptr<Record>>* records);
+  bool WriteDataSection(const std::vector<std::unique_ptr<Record>>& records);
 
   bool WriteFeatureHeader(size_t feature_count);
   bool WriteBuildIdFeature(const std::vector<BuildIdRecord>& build_id_records);
