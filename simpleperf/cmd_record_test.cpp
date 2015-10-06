@@ -121,6 +121,16 @@ TEST(record_cmd, dwarf_callchain_sampling) {
   }
 }
 
+TEST(record_cmd, no_unwind_option) {
+  if (IsDwarfCallChainSamplingSupported()) {
+    ASSERT_TRUE(RecordCmd()->Run({"--call-graph", "dwarf", "--no-unwind", "sleep", "1"}));
+  } else {
+    GTEST_LOG_(INFO)
+        << "This test does nothing as dwarf callchain sampling is not supported on this device.";
+  }
+  ASSERT_FALSE(RecordCmd()->Run({"--no-unwind", "sleep", "1"}));
+}
+
 TEST(record_cmd, existing_processes) {
   std::vector<std::unique_ptr<Workload>> workloads;
   CreateProcesses(2, &workloads);

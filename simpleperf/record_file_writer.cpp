@@ -155,6 +155,28 @@ bool RecordFileWriter::ReadDataSection(std::vector<std::unique_ptr<Record>>* rec
   return true;
 }
 
+bool RecordFileWriter::WriteDataSection(const std::vector<std::unique_ptr<Record>>& records) {
+  // Truncate data section written before.
+  if (ftruncate(fileno(record_fp_), data_section_offset_) != 0) {
+    PLOG(ERROR) << "ftruncate() failed";
+    return false;
+  }
+  uint64_t file_end;
+  if (!SeekFileEnd(&file_end)) {
+    return false;
+  }
+  CHECK_EQ(data_section_offset_, file_end);
+  uint64_t old_size = data_section_size_;
+  data_section_size_ = 0;
+  for (auto& r : records) {
+    if (!WriteData(r->BinaryFormat())) {
+      return false;
+    }
+  }
+  LOG(DEBUG) << "data section is changed from " << old_size << " to " << data_section_size_;
+  return true;
+}
+
 bool RecordFileWriter::SeekFileEnd(uint64_t* file_end) {
   if (fseek(record_fp_, 0, SEEK_END) == -1) {
     PLOG(ERROR) << "fseek() failed";

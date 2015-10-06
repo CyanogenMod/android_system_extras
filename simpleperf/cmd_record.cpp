@@ -28,6 +28,7 @@
 #include <base/strings.h>
 
 #include "command.h"
+#include "dwarf_unwind.h"
 #include "environment.h"
 #include "event_selection_set.h"
 #include "event_type.h"
@@ -90,6 +91,9 @@ class RecordCommand : public Command {
             "                 any_call, any_ret, ind_call.\n"
             "    --no-inherit\n"
             "                 Don't record created child threads/processes.\n"
+            "    --no-unwind  If `--call-graph dwarf` option is used, then the user's stack will\n"
+            "                 be unwound by default. Use this option to disable the unwinding of\n"
+            "                 the user's stack.\n"
             "    -o record_file_name    Set record file name, default is perf.data.\n"
             "    -p pid1,pid2,...\n"
             "                 Record events on existing processes. Mutually exclusive with -a.\n"
@@ -102,6 +106,7 @@ class RecordCommand : public Command {
         fp_callchain_sampling_(false),
         dwarf_callchain_sampling_(false),
         dump_stack_size_in_dwarf_sampling_(8192),
+        unwind_dwarf_callchain_(true),
         child_inherit_(true),
         perf_mmap_pages_(256),
         record_filename_("perf.data") {
@@ -122,6 +127,7 @@ class RecordCommand : public Command {
   bool WriteData(const char* data, size_t size);
   bool DumpKernelAndModuleMmaps();
   bool DumpThreadCommAndMmaps(bool all_threads, const std::vector<pid_t>& selected_threads);
+  bool UnwindDwarfCallChain();
   bool DumpAdditionalFeatures(const std::vector<std::string>& args);
   bool DumpBuildIdFeature();
   bool GetHitFiles(std::set<std::string>* kernel_modules, std::set<std::string>* user_files);
@@ -135,6 +141,7 @@ class RecordCommand : public Command {
   bool fp_callchain_sampling_;
   bool dwarf_callchain_sampling_;
   uint32_t dump_stack_size_in_dwarf_sampling_;
+  bool unwind_dwarf_callchain_;
   bool child_inherit_;
   std::vector<pid_t> monitored_threads_;
   std::vector<EventTypeAndModifier> measured_event_types_;
@@ -225,7 +232,14 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
     poll(&pollfds[0], pollfds.size(), -1);
   }
 
-  // 6. Dump additional features, and close record file.
+  // 6. Unwind dwarf callchain.
+  if (unwind_dwarf_callchain_) {
+    if (!UnwindDwarfCallChain()) {
+      return false;
+    }
+  }
+
+  // 7. Dump additional features, and close record file.
   if (!DumpAdditionalFeatures(args)) {
     return false;
   }
@@ -322,6 +336,8 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       }
     } else if (args[i] == "--no-inherit") {
       child_inherit_ = false;
+    } else if (args[i] == "--no-unwind") {
+      unwind_dwarf_callchain_ = false;
     } else if (args[i] == "-o") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
@@ -345,6 +361,14 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
       ReportUnknownOption(args, i);
       return false;
     }
+  }
+
+  if (!dwarf_callchain_sampling_) {
+    if (!unwind_dwarf_callchain_) {
+      LOG(ERROR) << "--no-unwind is only used with `--call-graph dwarf` option.";
+      return false;
+    }
+    unwind_dwarf_callchain_ = false;
   }
 
   monitored_threads_.insert(monitored_threads_.end(), tid_set.begin(), tid_set.end());
@@ -530,6 +554,38 @@ bool RecordCommand::DumpThreadCommAndMmaps(bool all_threads,
     }
   }
   return true;
+}
+
+bool RecordCommand::UnwindDwarfCallChain() {
+  std::vector<std::unique_ptr<Record>> records;
+  if (!record_file_writer_->ReadDataSection(&records)) {
+    return false;
+  }
+  ThreadTree thread_tree;
+  for (auto& record : records) {
+    BuildThreadTree(*record, &thread_tree);
+    if (record->header.type == PERF_RECORD_SAMPLE) {
+      SampleRecord& r = *static_cast<SampleRecord*>(record.get());
+      if ((r.sample_type & PERF_SAMPLE_CALLCHAIN) && (r.sample_type & PERF_SAMPLE_REGS_USER) &&
+          (r.regs_user_data.reg_mask != 0) && (r.sample_type & PERF_SAMPLE_STACK_USER) &&
+          (!r.stack_user_data.data.empty())) {
+        ThreadEntry* thread = thread_tree.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
+        RegSet regs = CreateRegSet(r.regs_user_data.reg_mask, r.regs_user_data.regs);
+        std::vector<char>& stack = r.stack_user_data.data;
+        std::vector<uint64_t> unwind_ips = UnwindCallChain(*thread, regs, stack);
+        r.callchain_data.ips.push_back(PERF_CONTEXT_USER);
+        r.callchain_data.ips.insert(r.callchain_data.ips.end(), unwind_ips.begin(),
+                                    unwind_ips.end());
+        r.regs_user_data.abi = 0;
+        r.regs_user_data.reg_mask = 0;
+        r.regs_user_data.regs.clear();
+        r.stack_user_data.data.clear();
+        r.stack_user_data.dyn_size = 0;
+        r.AdjustSizeBasedOnData();
+      }
+    }
+  }
+  return record_file_writer_->WriteDataSection(records);
 }
 
 bool RecordCommand::DumpAdditionalFeatures(const std::vector<std::string>& args) {
