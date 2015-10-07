@@ -22,6 +22,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <base/macros.h>
 
@@ -68,10 +69,6 @@ class EventFd {
   // the start address and size of the data.
   size_t GetAvailableMmapData(char** pdata);
 
-  // Discard how much data we have read, so the kernel can reuse this part of mapped area to store
-  // new data.
-  void DiscardMmapData(size_t discard_size);
-
   // Prepare pollfd for poll() to wait on available mmap_data.
   void PreparePollForMmapData(pollfd* poll_fd);
 
@@ -89,6 +86,10 @@ class EventFd {
   // Give information about this perf_event_file, like (event_name, tid, cpu).
   std::string Name() const;
 
+  // Discard how much data we have read, so the kernel can reuse this part of mapped area to store
+  // new data.
+  void DiscardMmapData(size_t discard_size);
+
   int perf_event_fd_;
   mutable uint64_t id_;
   const std::string event_name_;
@@ -101,6 +102,11 @@ class EventFd {
   char* mmap_data_buffer_;  // Starts from the second page of mmap_area, containing records written
                             // by then kernel.
   size_t mmap_data_buffer_size_;
+
+  // As mmap_data_buffer is a ring buffer, it is possible that one record is wrapped at the
+  // end of the buffer. So we need to copy records from mmap_data_buffer to data_process_buffer
+  // before processing them.
+  static std::vector<char> data_process_buffer_;
 
   DISALLOW_COPY_AND_ASSIGN(EventFd);
 };

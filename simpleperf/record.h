@@ -19,6 +19,7 @@
 
 #include <sys/types.h>
 
+#include <queue>
 #include <string>
 #include <vector>
 
@@ -142,6 +143,7 @@ struct Record {
 
   void Dump(size_t indent = 0) const;
   virtual std::vector<char> BinaryFormat() const = 0;
+  virtual uint64_t Timestamp() const;
 
  protected:
   virtual void DumpData(size_t) const = 0;
@@ -257,6 +259,7 @@ struct SampleRecord : public Record {
   SampleRecord(const perf_event_attr& attr, const perf_event_header* pheader);
   std::vector<char> BinaryFormat() const override;
   void AdjustSizeBasedOnData();
+  uint64_t Timestamp() const override;
 
  protected:
   void DumpData(size_t indent) const override;
@@ -288,6 +291,41 @@ struct UnknownRecord : public Record {
 
  protected:
   void DumpData(size_t indent) const override;
+};
+
+// RecordCache is a cache used when receiving records from the kernel.
+// It sorts received records based on type and timestamp, and pops records
+// in sorted order. Records from the kernel need to be sorted because
+// records may come from different cpus at the same time, and it is affected
+// by the order in which we collect records from different cpus.
+// RecordCache pushes records and pops sorted record online. It uses two checks to help
+// ensure that records are popped in order. Each time we pop a record A, it is the earliest record
+// among all records in the cache. In addition, we have checks for min_cache_size and
+// min_time_diff. For min_cache_size check, we check if the cache size >= min_cache_size,
+// which is based on the assumption that if we have received (min_cache_size - 1) records
+// after record A, we are not likely to receive a record earlier than A. For min_time_diff
+// check, we check if record A is generated min_time_diff ns earlier than the latest
+// record, which is based on the assumption that if we have received a record for time t,
+// we are not likely to receive a record for time (t - min_time_diff) or earlier.
+class RecordCache {
+ public:
+  RecordCache(const perf_event_attr& attr, size_t min_cache_size, uint64_t min_time_diff_in_ns);
+  ~RecordCache();
+  void Push(const char* data, size_t size);
+  std::unique_ptr<Record> Pop();
+  std::vector<std::unique_ptr<Record>> PopAll();
+
+ private:
+  struct RecordComparator {
+    bool operator()(const Record* r1, const Record* r2);
+  };
+
+  const perf_event_attr attr_;
+  bool has_timestamp_;
+  size_t min_cache_size_;
+  uint64_t min_time_diff_in_ns_;
+  uint64_t last_time_;
+  std::priority_queue<Record*, std::vector<Record*>, RecordComparator> queue_;
 };
 
 std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(const perf_event_attr& attr,
