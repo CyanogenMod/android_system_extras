@@ -38,7 +38,7 @@ static int input_cb(int fd, unsigned int epevents, void *data)
         return -1;
     }
 
-    if (ev.type == EV_KEY) {
+    if (ev.type == EV_KEY && ev.value == 1) {
         *key_code = ev.code;
     }
 
