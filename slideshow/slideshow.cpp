@@ -87,7 +87,7 @@ int main(int argc, char **argv)
     long int timeout = NEXT_TIMEOUT_MS;
     time_t start;
 
-    while ((opt = getopt(argc, argv, "t")) != -1) {
+    while ((opt = getopt(argc, argv, "t:")) != -1) {
         switch (opt) {
         case 't':
             timeout = strtol(optarg, NULL, 0);
