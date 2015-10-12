@@ -70,7 +70,10 @@ struct Dso {
   // return the path with prefix set by SetSymFsDir().
   std::string GetAccessiblePath() const;
 
-  const Symbol* FindSymbol(uint64_t offset_in_dso);
+  // Return the minimum virtual address in program header.
+  uint64_t MinVirtualAddress();
+
+  const Symbol* FindSymbol(uint64_t vaddr_in_dso);
 
  private:
   static BuildId GetExpectedBuildId(const std::string& filename);
@@ -95,6 +98,7 @@ struct Dso {
 
   const DsoType type_;
   const std::string path_;
+  uint64_t min_vaddr_;
   std::vector<Symbol> symbols_;
   bool is_loaded_;
 };
