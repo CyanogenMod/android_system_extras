@@ -267,16 +267,22 @@ static void read_freq_stats(int cpu) {
 
     sprintf(filename, "/sys/devices/system/cpu/cpu%d/cpufreq/stats/time_in_state", cpu);
     file = fopen(filename, "r");
-    if (!file) die("Could not open %s\n", filename);
     for (i = 0; i < new_cpus[cpu].freq_count; i++) {
-        fscanf(file, "%u %lu\n", &new_cpus[cpu].freqs[i].freq,
+        if (file) {
+            fscanf(file, "%u %lu\n", &new_cpus[cpu].freqs[i].freq,
                &new_cpus[cpu].freqs[i].time);
+        } else {
+            /* The CPU has been off lined for some reason */
+            new_cpus[cpu].freqs[i].freq = old_cpus[cpu].freqs[i].freq;
+            new_cpus[cpu].freqs[i].time = old_cpus[cpu].freqs[i].time;
+        }
         if (aggregate_freq_stats) {
             new_total_cpu.freqs[i].freq = new_cpus[cpu].freqs[i].freq;
             new_total_cpu.freqs[i].time += new_cpus[cpu].freqs[i].time;
         }
     }
-    fclose(file);
+    if (file)
+        fclose(file);
 }
 
 /*
