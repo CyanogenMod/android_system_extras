@@ -118,13 +118,19 @@ int main(int argc, char **argv)
     while (optind < argc - 1) {
         draw(argv[optind++]);
 
-        if (ev_wait(timeout) == 0) {
-            ev_dispatch();
+        start = time(NULL);
+        long int timeout_remaining = timeout;
+        do {
+            if (ev_wait(timeout_remaining) == 0) {
+                ev_dispatch();
 
-            if (key_code != -1) {
-                input = true;
+                if (key_code != -1) {
+                    input = true;
+                    break;
+                }
             }
-        }
+            timeout_remaining -= (long int)(time(NULL) - start) * 1000;
+        } while (timeout_remaining > 0);
     };
 
     /* if there was user input while showing the images, display the last
