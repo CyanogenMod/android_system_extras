@@ -20,10 +20,11 @@
 #include <time.h>
 #include <linux/input.h>
 #include <cutils/klog.h>
+#include <utils/SystemClock.h>
 #include "minui/minui.h"
 
 #define NEXT_TIMEOUT_MS 5000
-#define LAST_TIMEOUT_S  30
+#define LAST_TIMEOUT_MS 30000
 
 #define LOGE(x...) do { KLOG_ERROR("slideshow", x); } while (0)
 
@@ -85,7 +86,7 @@ int main(int argc, char **argv)
     int input = false;
     int opt;
     long int timeout = NEXT_TIMEOUT_MS;
-    time_t start;
+    int64_t start;
 
     while ((opt = getopt(argc, argv, "t:")) != -1) {
         switch (opt) {
@@ -118,7 +119,7 @@ int main(int argc, char **argv)
     while (optind < argc - 1) {
         draw(argv[optind++]);
 
-        start = time(NULL);
+        start = android::uptimeMillis();
         long int timeout_remaining = timeout;
         do {
             if (ev_wait(timeout_remaining) == 0) {
@@ -129,16 +130,17 @@ int main(int argc, char **argv)
                     break;
                 }
             }
-            timeout_remaining -= (long int)(time(NULL) - start) * 1000;
+            timeout_remaining -= android::uptimeMillis() - start;
         } while (timeout_remaining > 0);
     };
 
     /* if there was user input while showing the images, display the last
-     * image and wait until the power button is pressed or LAST_TIMEOUT_S
+     * image and wait until the power button is pressed or LAST_TIMEOUT_MS
      * has elapsed */
 
     if (input) {
-        start = time(NULL);
+        start = android::uptimeMillis();
+
         draw(argv[optind]);
 
         do {
@@ -146,7 +148,7 @@ int main(int argc, char **argv)
                 ev_dispatch();
             }
 
-            if (time(NULL) - start >= LAST_TIMEOUT_S) {
+            if (android::uptimeMillis() - start >= LAST_TIMEOUT_MS) {
                 break;
             }
         } while (key_code != KEY_POWER);
