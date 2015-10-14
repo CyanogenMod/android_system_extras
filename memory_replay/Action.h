@@ -26,7 +26,7 @@ class Action {
   Action() {}
   virtual ~Action() {}
 
-  virtual void Execute(Pointers* pointers) = 0;
+  virtual uint64_t Execute(Pointers* pointers) = 0;
 
   bool IsError() { return is_error_; };
 
