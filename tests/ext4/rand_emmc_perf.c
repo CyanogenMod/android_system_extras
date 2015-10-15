@@ -147,7 +147,7 @@ static void perf_test(int fd, int write_mode, off64_t max_blocks)
 {
     struct timeval start, end, res;
     char buf[TST_BLK_SIZE] = { 0 };
-    int iops = 0;
+    long long iops = 0;
     int msecs;
 
     res.tv_sec = 0;
@@ -177,7 +177,7 @@ static void perf_test(int fd, int write_mode, off64_t max_blocks)
     timersub(&end, &start, &res);
 
     msecs = (res.tv_sec * 1000) + (res.tv_usec / 1000);
-    printf("%d %dbyte iops/sec\n", iops * 1000 / msecs, TST_BLK_SIZE);
+    printf("%.0f %dbyte iops/sec\n", (float)iops * 1000 / msecs, TST_BLK_SIZE);
 }
 
 int main(int argc, char *argv[])
