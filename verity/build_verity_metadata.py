@@ -44,7 +44,7 @@ def build_verity_table(block_device, data_blocks, root_hash, salt):
                 BLOCK_SIZE,
                 BLOCK_SIZE,
                 data_blocks,
-                data_blocks + (METADATA_SIZE / BLOCK_SIZE),
+                data_blocks,
                 root_hash,
                 salt)
     return table
