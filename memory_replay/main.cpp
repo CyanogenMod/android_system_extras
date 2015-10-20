@@ -36,7 +36,7 @@
 static char g_buffer[65535];
 
 size_t GetMaxAllocs(int fd) {
-  lseek(fd, SEEK_SET, 0);
+  lseek(fd, 0, SEEK_SET);
   LineBuffer line_buf(fd, g_buffer, sizeof(g_buffer));
   char* line;
   size_t line_len;
@@ -67,7 +67,7 @@ size_t GetMaxAllocs(int fd) {
 }
 
 void ProcessDump(int fd, size_t max_allocs, size_t max_threads) {
-  lseek(fd, SEEK_SET, 0);
+  lseek(fd, 0, SEEK_SET);
   Pointers pointers(max_allocs);
   Threads threads(&pointers, max_threads);
 
