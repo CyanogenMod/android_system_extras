@@ -28,6 +28,7 @@ include $(BUILD_SYSTEM)/base_rules.mk
 # interaction will not work if this is not set correctly.
 $(LOCAL_BUILT_MODULE): BRILLO_PRODUCT_ID ?= ""
 $(LOCAL_BUILT_MODULE):
+	$(hide)mkdir -p $(dir $@)
 	echo $(BRILLO_PRODUCT_ID) > $@
 
 include $(CLEAR_VARS)
@@ -47,6 +48,7 @@ endif
 # Append BUILD_NUMBER if it is a number or a build timestamp otherwise.
 # Use DATE to generate the timestamp based on BUILD_DATETIME.
 $(LOCAL_BUILT_MODULE):
+	$(hide)mkdir -p $(dir $@)
 ifeq ($(shell echo $(BUILD_NUMBER) | grep -E '[^0-9]'),)
 	echo $(BRILLO_PRODUCT_VERSION).$(BUILD_NUMBER) > $@
 else
