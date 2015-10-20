@@ -57,7 +57,7 @@ TEST_F(NativeInfoTest, no_matching) {
       "Name:           [anon:thread signal stack]\n";
   ASSERT_TRUE(TEMP_FAILURE_RETRY(
       write(tmp_file_->fd, smaps_data.c_str(), smaps_data.size())) != -1);
-  ASSERT_TRUE(lseek(tmp_file_->fd, SEEK_SET, 0) != off_t(-1));
+  ASSERT_TRUE(lseek(tmp_file_->fd, 0, SEEK_SET) != off_t(-1));
 
   size_t pss_bytes = 1;
   size_t va_bytes = 1;
@@ -118,7 +118,7 @@ TEST_F(NativeInfoTest, multiple_anons) {
       "Name:\n";
   ASSERT_TRUE(TEMP_FAILURE_RETRY(
       write(tmp_file_->fd, smaps_data.c_str(), smaps_data.size())) != -1);
-  ASSERT_TRUE(lseek(tmp_file_->fd, SEEK_SET, 0) != off_t(-1));
+  ASSERT_TRUE(lseek(tmp_file_->fd, 0, SEEK_SET) != off_t(-1));
 
   size_t pss_bytes = 1;
   size_t va_bytes = 1;
@@ -179,7 +179,7 @@ TEST_F(NativeInfoTest, multiple_heaps) {
       "Name:\n";
   ASSERT_TRUE(TEMP_FAILURE_RETRY(
       write(tmp_file_->fd, smaps_data.c_str(), smaps_data.size())) != -1);
-  ASSERT_TRUE(lseek(tmp_file_->fd, SEEK_SET, 0) != off_t(-1));
+  ASSERT_TRUE(lseek(tmp_file_->fd, 0, SEEK_SET) != off_t(-1));
 
   size_t pss_bytes = 1;
   size_t va_bytes = 1;
@@ -256,7 +256,7 @@ TEST_F(NativeInfoTest, mix_heap_anon) {
       "Name:\n";
   ASSERT_TRUE(TEMP_FAILURE_RETRY(
       write(tmp_file_->fd, smaps_data.c_str(), smaps_data.size())) != -1);
-  ASSERT_TRUE(lseek(tmp_file_->fd, SEEK_SET, 0) != off_t(-1));
+  ASSERT_TRUE(lseek(tmp_file_->fd, 0, SEEK_SET) != off_t(-1));
 
   size_t pss_bytes = 1;
   size_t va_bytes = 1;
