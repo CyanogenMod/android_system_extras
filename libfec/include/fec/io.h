@@ -90,6 +90,8 @@ extern int fec_open(struct fec_handle **f, const char *path, int mode,
 
 extern int fec_close(struct fec_handle *f);
 
+extern int fec_verity_set_status(struct fec_handle *f, bool enabled);
+
 extern int fec_verity_get_metadata(struct fec_handle *f,
         struct fec_verity_metadata *data);
 
@@ -175,6 +177,10 @@ namespace fec {
         bool has_ecc() {
             fec_ecc_metadata data;
             return get_ecc_metadata(data) && data.valid;
+        }
+
+        bool set_verity_status(bool enabled) {
+            return !fec_verity_set_status(handle_.get(), enabled);
         }
 
     private:

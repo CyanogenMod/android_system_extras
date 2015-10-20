@@ -602,3 +602,40 @@ int verity_parse_header(fec_handle *f, uint64_t offset)
 
     return 0;
 }
+
+int fec_verity_set_status(struct fec_handle *f, bool enabled)
+{
+    check(f);
+
+    if (!(f->mode & O_RDWR)) {
+        error("cannot update verity magic: read-only handle");
+        errno = EBADF;
+        return -1;
+    }
+
+    verity_info *v = &f->verity;
+
+    if (!v->metadata_start) {
+        error("cannot update verity magic: no metadata found");
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (v->disabled == !enabled) {
+        return 0; /* nothing to do */
+    }
+
+    uint32_t magic = enabled ? VERITY_MAGIC : VERITY_MAGIC_DISABLE;
+
+    if (!raw_pwrite(f, &magic, sizeof(magic), v->metadata_start)) {
+        error("failed to update verity magic to %08x: %s", magic,
+            strerror(errno));
+        return -1;
+    }
+
+    warn("updated verity magic to %08x (%s)", magic,
+        enabled ? "enabled" : "disabled");
+    v->disabled = !enabled;
+
+    return 0;
+}
