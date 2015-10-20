@@ -1,14 +1,16 @@
-#include <stdlib.h>
 #include <arpa/inet.h>
 #include <linux/if.h>
 #include <netinet/in.h>
+#include <stdlib.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
-
-#include "utils/RWLock.h"
+#include <unistd.h>
 
 #include <atomic>
 #include <mutex>
 #include <thread>
+
+#include "utils/RWLock.h"
 
 // Defined only in ifc_utils.c, in the kernel, and in the NDK.
 #ifndef SIOCKILLADDR
