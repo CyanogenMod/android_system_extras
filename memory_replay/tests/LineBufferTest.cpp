@@ -41,7 +41,7 @@ TEST_F(LineBufferTest, single_line) {
   line_data += "Single line with newline.\n";
   ASSERT_TRUE(TEMP_FAILURE_RETRY(
       write(tmp_file_->fd, line_data.c_str(), line_data.size())) != -1);
-  ASSERT_TRUE(lseek(tmp_file_->fd, SEEK_SET, 0) != off_t(-1));
+  ASSERT_TRUE(lseek(tmp_file_->fd, 0, SEEK_SET) != off_t(-1));
 
   char buffer[100];
   LineBuffer line_buf(tmp_file_->fd, buffer, sizeof(buffer));
@@ -60,7 +60,7 @@ TEST_F(LineBufferTest, single_line_no_newline) {
   line_data += "Single line with no newline.";
   ASSERT_TRUE(TEMP_FAILURE_RETRY(
       write(tmp_file_->fd, line_data.c_str(), line_data.size())) != -1);
-  ASSERT_TRUE(lseek(tmp_file_->fd, SEEK_SET, 0) != off_t(-1));
+  ASSERT_TRUE(lseek(tmp_file_->fd, 0, SEEK_SET) != off_t(-1));
 
   char buffer[100];
   LineBuffer line_buf(tmp_file_->fd, buffer, sizeof(buffer));
@@ -81,7 +81,7 @@ TEST_F(LineBufferTest, single_read) {
   line_data += "Third line is last.\n";
   ASSERT_TRUE(TEMP_FAILURE_RETRY(
       write(tmp_file_->fd, line_data.c_str(), line_data.size())) != -1);
-  ASSERT_TRUE(lseek(tmp_file_->fd, SEEK_SET, 0) != off_t(-1));
+  ASSERT_TRUE(lseek(tmp_file_->fd, 0, SEEK_SET) != off_t(-1));
 
   char buffer[100];
   LineBuffer line_buf(tmp_file_->fd, buffer, sizeof(buffer));
@@ -110,7 +110,7 @@ TEST_F(LineBufferTest, single_read_no_end_newline) {
   line_data += "Third line is last no newline.";
   ASSERT_TRUE(TEMP_FAILURE_RETRY(
       write(tmp_file_->fd, line_data.c_str(), line_data.size())) != -1);
-  ASSERT_TRUE(lseek(tmp_file_->fd, SEEK_SET, 0) != off_t(-1));
+  ASSERT_TRUE(lseek(tmp_file_->fd, 0, SEEK_SET) != off_t(-1));
 
   char buffer[100];
   LineBuffer line_buf(tmp_file_->fd, buffer, sizeof(buffer));
@@ -140,7 +140,7 @@ TEST_F(LineBufferTest, one_line_per_read) {
   line_data += "The fourth line.\n";
   ASSERT_TRUE(TEMP_FAILURE_RETRY(
       write(tmp_file_->fd, line_data.c_str(), line_data.size())) != -1);
-  ASSERT_TRUE(lseek(tmp_file_->fd, SEEK_SET, 0) != off_t(-1));
+  ASSERT_TRUE(lseek(tmp_file_->fd, 0, SEEK_SET) != off_t(-1));
 
   char buffer[24];
   LineBuffer line_buf(tmp_file_->fd, buffer, sizeof(buffer));
@@ -175,7 +175,7 @@ TEST_F(LineBufferTest, multiple_line_per_read_multiple_reads) {
   line_data += "The fourth line.\n";
   ASSERT_TRUE(TEMP_FAILURE_RETRY(
       write(tmp_file_->fd, line_data.c_str(), line_data.size())) != -1);
-  ASSERT_TRUE(lseek(tmp_file_->fd, SEEK_SET, 0) != off_t(-1));
+  ASSERT_TRUE(lseek(tmp_file_->fd, 0, SEEK_SET) != off_t(-1));
 
   char buffer[60];
   LineBuffer line_buf(tmp_file_->fd, buffer, sizeof(buffer));
@@ -210,7 +210,7 @@ TEST_F(LineBufferTest, line_larger_than_buffer) {
   line_data += "The fourth line.\n";
   ASSERT_TRUE(TEMP_FAILURE_RETRY(
       write(tmp_file_->fd, line_data.c_str(), line_data.size())) != -1);
-  ASSERT_TRUE(lseek(tmp_file_->fd, SEEK_SET, 0) != off_t(-1));
+  ASSERT_TRUE(lseek(tmp_file_->fd, 0, SEEK_SET) != off_t(-1));
 
   char buffer[25];
   LineBuffer line_buf(tmp_file_->fd, buffer, sizeof(buffer));
