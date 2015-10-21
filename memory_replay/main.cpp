@@ -147,6 +147,10 @@ void ProcessDump(int fd, size_t max_allocs, size_t max_threads) {
   // is leaked and everything is accounted for during a run.
   threads.FinishAll();
   pointers.FreeAll();
+
+  // Print out the total time making all allocation calls.
+  printf("Total Allocation/Free Time: %" PRIu64 "ns %0.2fs\n",
+         threads.total_time_nsecs(), threads.total_time_nsecs()/1000000000.0);
 }
 
 constexpr size_t DEFAULT_MAX_THREADS = 512;

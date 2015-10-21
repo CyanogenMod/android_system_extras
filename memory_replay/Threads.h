@@ -36,6 +36,7 @@ class Threads {
 
   size_t num_threads() { return num_threads_; }
   size_t max_threads() { return max_threads_; }
+  uint64_t total_time_nsecs() { return total_time_nsecs_; }
 
  private:
   Pointers* pointers_ = nullptr;
@@ -43,6 +44,7 @@ class Threads {
   size_t data_size_ = 0;
   size_t max_threads_ = 0;
   size_t num_threads_= 0;
+  uint64_t total_time_nsecs_ = 0;
 
   Thread* FindEmptyEntry(pid_t tid);
   size_t GetHashEntry(pid_t tid);
