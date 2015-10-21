@@ -37,6 +37,7 @@ class Thread {
   void ClearPending();
 
   Action* CreateAction(uintptr_t key_pointer, const char* type, const char* line);
+  void AddTimeNsecs(uint64_t nsecs) { total_time_nsecs_ += nsecs; }
 
   void set_pointers(Pointers* pointers) { pointers_ = pointers; }
   Pointers* pointers() { return pointers_; }
@@ -50,6 +51,7 @@ class Thread {
 
   pthread_t thread_id_;
   pid_t tid_ = 0;
+  uint64_t total_time_nsecs_ = 0;
 
   Pointers* pointers_ = nullptr;
 

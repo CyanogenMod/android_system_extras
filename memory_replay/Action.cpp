@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/param.h>
+#include <time.h>
 
 #include <new>
 
@@ -28,13 +29,20 @@
 #include "Threads.h"
 #include "Pointers.h"
 
+static uint64_t nanotime() {
+  struct timespec t;
+  t.tv_sec = t.tv_nsec = 0;
+  clock_gettime(CLOCK_MONOTONIC, &t);
+  return static_cast<uint64_t>(t.tv_sec) * 1000000000LL + t.tv_nsec;
+}
+
 class EndThreadAction : public Action {
  public:
   EndThreadAction() {}
 
   bool EndThread() override { return true; }
 
-  void Execute(Pointers*) override {}
+  uint64_t Execute(Pointers*) override { return 0; }
 };
 
 class AllocAction : public Action {
@@ -54,10 +62,15 @@ class MallocAction : public AllocAction {
     }
   }
 
-  void Execute(Pointers* pointers) override {
+  uint64_t Execute(Pointers* pointers) override {
+    uint64_t time_nsecs = nanotime();
     void* memory = malloc(size_);
+    time_nsecs = nanotime() - time_nsecs;
+
     memset(memory, 1, size_);
     pointers->Add(key_pointer_, memory);
+
+    return time_nsecs;
   }
 };
 
@@ -69,10 +82,15 @@ class CallocAction : public AllocAction {
     }
   }
 
-  void Execute(Pointers* pointers) override {
+  uint64_t Execute(Pointers* pointers) override {
+    uint64_t time_nsecs = nanotime();
     void* memory = calloc(n_elements_, size_);
+    time_nsecs = nanotime() - time_nsecs;
+
     memset(memory, 0, n_elements_ * size_);
     pointers->Add(key_pointer_, memory);
+
+    return time_nsecs;
   }
 
  private:
@@ -89,14 +107,20 @@ class ReallocAction : public AllocAction {
 
   bool DoesFree() override { return old_pointer_ != 0; }
 
-  void Execute(Pointers* pointers) override {
+  uint64_t Execute(Pointers* pointers) override {
     void* old_memory = nullptr;
     if (old_pointer_ != 0) {
       old_memory = pointers->Remove(old_pointer_);
     }
+
+    uint64_t time_nsecs = nanotime();
     void* memory = realloc(old_memory, size_);
+    time_nsecs = nanotime() - time_nsecs;
+
     memset(memory, 1, size_);
     pointers->Add(key_pointer_, memory);
+
+    return time_nsecs;
   }
 
  private:
@@ -111,10 +135,15 @@ class MemalignAction : public AllocAction {
     }
   }
 
-  void Execute(Pointers* pointers) override {
+  uint64_t Execute(Pointers* pointers) override {
+    uint64_t time_nsecs = nanotime();
     void* memory = memalign(align_, size_);
+    time_nsecs = nanotime() - time_nsecs;
+
     memset(memory, 1, size_);
     pointers->Add(key_pointer_, memory);
+
+    return time_nsecs;
   }
 
  private:
@@ -128,11 +157,14 @@ class FreeAction : public AllocAction {
 
   bool DoesFree() override { return key_pointer_ != 0; }
 
-  void Execute(Pointers* pointers) override {
+  uint64_t Execute(Pointers* pointers) override {
     if (key_pointer_) {
       void* memory = pointers->Remove(key_pointer_);
+      uint64_t time_nsecs = nanotime();
       free(memory);
+      return nanotime() - time_nsecs;
     }
+    return 0;
   }
 };
 
