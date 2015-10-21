@@ -26,6 +26,7 @@ LOCAL_CFLAGS := -Wall -Wextra -Werror
 LOCAL_MODULE_TAGS := debug
 LOCAL_MODULE := memory_replay
 LOCAL_MODULE_HOST_OS := linux
+LOCAL_LDLIBS := -lrt
 include $(BUILD_HOST_EXECUTABLE)
 
 memory_replay_test_src_files := \
@@ -67,7 +68,11 @@ LOCAL_MODULE := memory_replay_tests
 LOCAL_MODULE_HOST_OS := linux
 
 LOCAL_SHARED_LIBRARIES := libbase
+LOCAL_LDLIBS := -lrt
 
+LOCAL_MULTILIB := both
+LOCAL_MODULE_STEM_32 := $(LOCAL_MODULE)32
+LOCAL_MODULE_STEM_64 := $(LOCAL_MODULE)64
 include $(BUILD_HOST_NATIVE_TEST)
 
 memory_replay_src_files :=
