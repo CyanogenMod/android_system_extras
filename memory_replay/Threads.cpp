@@ -18,6 +18,8 @@
 #include <errno.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -33,7 +35,7 @@ void* ThreadRunner(void* data) {
   while (true) {
     thread->WaitForPending();
     Action* action = thread->GetAction();
-    action->Execute(thread->pointers());
+    thread->AddTimeNsecs(action->Execute(thread->pointers()));
     bool end_thread = action->EndThread();
     thread->ClearPending();
     if (end_thread) {
@@ -82,6 +84,7 @@ Thread* Threads::CreateThread(pid_t tid) {
   }
   thread->tid_ = tid;
   thread->pointers_ = pointers_;
+  thread->total_time_nsecs_ = 0;
   if (pthread_create(&thread->thread_id_, nullptr, ThreadRunner, thread) == -1) {
     err(1, "Failed to create thread %d: %s\n", tid, strerror(errno));
   }
@@ -135,7 +138,12 @@ Thread* Threads::FindEmptyEntry(pid_t tid) {
 }
 
 void Threads::Finish(Thread* thread) {
-  pthread_join(thread->thread_id_, nullptr);
+  int ret = pthread_join(thread->thread_id_, nullptr);
+  if (ret != 0) {
+    fprintf(stderr, "pthread_join failed: %s\n", strerror(ret));
+    exit(1);
+  }
+  total_time_nsecs_ += thread->total_time_nsecs_;
   thread->tid_ = 0;
   num_threads_--;
 }
