@@ -272,7 +272,6 @@ static bool ReadMmapEventDataForFd(std::unique_ptr<EventFd>& event_fd,
       return false;
     }
     *have_data = true;
-    event_fd->DiscardMmapData(size);
   }
   return true;
 }
