@@ -54,3 +54,49 @@ TEST_F(RecordTest, CommRecordMatchBinary) {
   CommRecord record = CreateCommRecord(event_attr, 1, 2, "CommRecord");
   CheckRecordMatchBinary(record);
 }
+
+TEST_F(RecordTest, RecordCache_smoke) {
+  event_attr.sample_id_all = 1;
+  event_attr.sample_type |= PERF_SAMPLE_TIME;
+  RecordCache cache(event_attr, 2, 2);
+  MmapRecord r1 = CreateMmapRecord(event_attr, true, 1, 1, 0x100, 0x200, 0x300, "mmap_record1");
+  MmapRecord r2 = r1;
+  MmapRecord r3 = r1;
+  MmapRecord r4 = r1;
+  r1.sample_id.time_data.time = 3;
+  r2.sample_id.time_data.time = 1;
+  r3.sample_id.time_data.time = 4;
+  r4.sample_id.time_data.time = 6;
+  std::vector<char> buf1 = r1.BinaryFormat();
+  std::vector<char> buf2 = r2.BinaryFormat();
+  std::vector<char> buf3 = r3.BinaryFormat();
+  std::vector<char> buf4 = r4.BinaryFormat();
+  // Push r1.
+  cache.Push(buf1.data(), buf1.size());
+  ASSERT_EQ(nullptr, cache.Pop());
+  // Push r2.
+  cache.Push(buf2.data(), buf2.size());
+  // Pop r2.
+  std::unique_ptr<Record> popped_r = cache.Pop();
+  ASSERT_TRUE(popped_r != nullptr);
+  CheckRecordEqual(r2, *popped_r);
+  ASSERT_EQ(nullptr, cache.Pop());
+  // Push r3.
+  cache.Push(buf3.data(), buf3.size());
+  ASSERT_EQ(nullptr, cache.Pop());
+  // Push r4.
+  cache.Push(buf4.data(), buf4.size());
+  // Pop r1.
+  popped_r = cache.Pop();
+  ASSERT_TRUE(popped_r != nullptr);
+  CheckRecordEqual(r1, *popped_r);
+  // Pop r3.
+  popped_r = cache.Pop();
+  ASSERT_TRUE(popped_r != nullptr);
+  CheckRecordEqual(r3, *popped_r);
+  ASSERT_EQ(nullptr, cache.Pop());
+  // Pop r4.
+  std::vector<std::unique_ptr<Record>> last_records = cache.PopAll();
+  ASSERT_EQ(1u, last_records.size());
+  CheckRecordEqual(r4, *last_records[0]);
+}
