@@ -18,7 +18,10 @@
 
 #include <stdio.h>
 #include <string.h>
+
 #include <algorithm>
+#include <limits>
+
 #include <base/file.h>
 #include <base/logging.h>
 
@@ -168,10 +171,9 @@ void ParseSymbolsFromELFFile(const llvm::object::ELFFile<ELFT>* elf,
       continue;
     }
     symbol.vaddr = elf_symbol.st_value;
-    symbol.start_in_file = elf_symbol.st_value - shdr->sh_addr + shdr->sh_offset;
-    if ((symbol.start_in_file & 1) != 0 && is_arm) {
+    if ((symbol.vaddr & 1) != 0 && is_arm) {
       // Arm sets bit 0 to mark it as thumb code, remove the flag.
-      symbol.start_in_file &= ~1;
+      symbol.vaddr &= ~1;
     }
     symbol.len = elf_symbol.st_size;
     int type = elf_symbol.getType();
@@ -196,18 +198,18 @@ void ParseSymbolsFromELFFile(const llvm::object::ELFFile<ELFT>* elf,
   }
 }
 
-bool ParseSymbolsFromElfFile(const std::string& filename, const BuildId& expected_build_id,
-                             std::function<void(const ElfFileSymbol&)> callback) {
-  auto owning_binary = llvm::object::createBinary(llvm::StringRef(filename));
+static llvm::object::ObjectFile* GetObjectFile(
+    llvm::ErrorOr<llvm::object::OwningBinary<llvm::object::Binary>>& owning_binary,
+    const std::string& filename, const BuildId& expected_build_id) {
   if (owning_binary.getError()) {
     PLOG(DEBUG) << "can't open file '" << filename << "'";
-    return false;
+    return nullptr;
   }
   llvm::object::Binary* binary = owning_binary.get().getBinary();
   auto obj = llvm::dyn_cast<llvm::object::ObjectFile>(binary);
   if (obj == nullptr) {
     LOG(DEBUG) << filename << " is not an object file";
-    return false;
+    return nullptr;
   }
   if (!expected_build_id.IsEmpty()) {
     BuildId real_build_id;
@@ -217,8 +219,18 @@ bool ParseSymbolsFromElfFile(const std::string& filename, const BuildId& expecte
                << "): expected " << expected_build_id.ToString() << ", real "
                << real_build_id.ToString();
     if (!result) {
-      return false;
+      return nullptr;
     }
+  }
+  return obj;
+}
+
+bool ParseSymbolsFromElfFile(const std::string& filename, const BuildId& expected_build_id,
+                             std::function<void(const ElfFileSymbol&)> callback) {
+  auto owning_binary = llvm::object::createBinary(llvm::StringRef(filename));
+  llvm::object::ObjectFile* obj = GetObjectFile(owning_binary, filename, expected_build_id);
+  if (obj == nullptr) {
+    return false;
   }
 
   if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(obj)) {
@@ -230,4 +242,47 @@ bool ParseSymbolsFromElfFile(const std::string& filename, const BuildId& expecte
     return false;
   }
   return true;
+}
+
+template <class ELFT>
+bool ReadMinExecutableVirtualAddress(const llvm::object::ELFFile<ELFT>* elf, uint64_t* p_vaddr) {
+  bool has_vaddr = false;
+  uint64_t min_addr = std::numeric_limits<uint64_t>::max();
+  for (auto it = elf->begin_program_headers(); it != elf->end_program_headers(); ++it) {
+    if ((it->p_type == llvm::ELF::PT_LOAD) && (it->p_flags & llvm::ELF::PF_X)) {
+      if (it->p_vaddr < min_addr) {
+        min_addr = it->p_vaddr;
+        has_vaddr = true;
+      }
+    }
+  }
+  if (has_vaddr) {
+    *p_vaddr = min_addr;
+  }
+  return has_vaddr;
+}
+
+bool ReadMinExecutableVirtualAddressFromElfFile(const std::string& filename,
+                                                const BuildId& expected_build_id,
+                                                uint64_t* min_vaddr) {
+  auto owning_binary = llvm::object::createBinary(llvm::StringRef(filename));
+  llvm::object::ObjectFile* obj = GetObjectFile(owning_binary, filename, expected_build_id);
+  if (obj == nullptr) {
+    return false;
+  }
+
+  bool result = false;
+  if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(obj)) {
+    result = ReadMinExecutableVirtualAddress(elf->getELFFile(), min_vaddr);
+  } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(obj)) {
+    result = ReadMinExecutableVirtualAddress(elf->getELFFile(), min_vaddr);
+  } else {
+    LOG(ERROR) << "unknown elf format in file" << filename;
+    return false;
+  }
+
+  if (!result) {
+    LOG(ERROR) << "no program header in file " << filename;
+  }
+  return result;
 }
