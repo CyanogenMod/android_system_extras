@@ -29,7 +29,6 @@ static const std::string linker_prefix = "__dl_";
 
 struct ElfFileSymbol {
   uint64_t vaddr;
-  uint64_t start_in_file;
   uint64_t len;
   bool is_func;
   bool is_label;
@@ -39,6 +38,10 @@ struct ElfFileSymbol {
 
 bool ParseSymbolsFromElfFile(const std::string& filename, const BuildId& expected_build_id,
                              std::function<void(const ElfFileSymbol&)> callback);
+
+bool ReadMinExecutableVirtualAddressFromElfFile(const std::string& filename,
+                                                const BuildId& expected_build_id,
+                                                uint64_t* min_addr);
 
 // Expose the following functions for unit tests.
 bool IsArmMappingSymbol(const char* name);
