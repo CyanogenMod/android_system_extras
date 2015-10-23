@@ -31,6 +31,16 @@ struct MapEntry {
   uint64_t pgoff;
   uint64_t time;  // Map creation time.
   Dso* dso;
+
+  MapEntry(uint64_t start_addr, uint64_t len, uint64_t pgoff, uint64_t time, Dso* dso)
+      : start_addr(start_addr), len(len), pgoff(pgoff), time(time), dso(dso) {
+  }
+  MapEntry() {
+  }
+
+  uint64_t get_end_addr() const {
+    return start_addr + len;
+  }
 };
 
 struct MapComparator {
@@ -48,13 +58,8 @@ class ThreadTree {
  public:
   ThreadTree() : unknown_symbol_("unknown", 0, std::numeric_limits<unsigned long long>::max()) {
     unknown_dso_ = Dso::CreateDso(DSO_ELF_FILE, "unknown");
-    unknown_map_ = MapEntry{
-        0,                                               // start_addr
-        std::numeric_limits<unsigned long long>::max(),  // len
-        0,                                               // pgoff
-        0,                                               // time
-        unknown_dso_.get(),                              // dso
-    };
+    unknown_map_ =
+        MapEntry(0, std::numeric_limits<unsigned long long>::max(), 0, 0, unknown_dso_.get());
   }
 
   void AddThread(int pid, int tid, const std::string& comm);
@@ -73,6 +78,8 @@ class ThreadTree {
  private:
   Dso* FindKernelDsoOrNew(const std::string& filename);
   Dso* FindUserDsoOrNew(const std::string& filename);
+  MapEntry* AllocateMap(const MapEntry& value);
+  void FixOverlappedMap(std::set<MapEntry*, MapComparator>* map_set, const MapEntry* map);
 
   std::unordered_map<int, std::unique_ptr<ThreadEntry>> thread_tree_;
   std::vector<std::unique_ptr<std::string>> thread_comm_storage_;
