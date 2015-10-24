@@ -75,6 +75,8 @@ class ThreadTree {
     return &unknown_map_;
   }
 
+  void Clear();
+
  private:
   Dso* FindKernelDsoOrNew(const std::string& filename);
   Dso* FindUserDsoOrNew(const std::string& filename);

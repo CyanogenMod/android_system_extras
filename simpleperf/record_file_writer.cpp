@@ -129,54 +129,6 @@ bool RecordFileWriter::Write(const void* buf, size_t len) {
   return true;
 }
 
-bool RecordFileWriter::ReadDataSection(std::vector<std::unique_ptr<Record>>* records) {
-  if (fflush(record_fp_) != 0) {
-    PLOG(ERROR) << "fflush() failed";
-    return false;
-  }
-  uint64_t file_size;
-  if (!SeekFileEnd(&file_size)) {
-    return false;
-  }
-  size_t mmap_len = static_cast<size_t>(file_size);
-  void* mmap_addr = mmap(nullptr, mmap_len, PROT_READ, MAP_SHARED, fileno(record_fp_), 0);
-  if (mmap_addr == MAP_FAILED) {
-    PLOG(ERROR) << "mmap() failed";
-    return false;
-  }
-  const char* data_section = reinterpret_cast<char*>(mmap_addr) + data_section_offset_;
-  std::vector<std::unique_ptr<Record>> result =
-      ReadRecordsFromBuffer(event_attr_, data_section, data_section_size_);
-  if (munmap(mmap_addr, mmap_len) == -1) {
-    PLOG(ERROR) << "munmap() failed";
-    return false;
-  }
-  *records = std::move(result);
-  return true;
-}
-
-bool RecordFileWriter::WriteDataSection(const std::vector<std::unique_ptr<Record>>& records) {
-  // Truncate data section written before.
-  if (ftruncate(fileno(record_fp_), data_section_offset_) != 0) {
-    PLOG(ERROR) << "ftruncate() failed";
-    return false;
-  }
-  uint64_t file_end;
-  if (!SeekFileEnd(&file_end)) {
-    return false;
-  }
-  CHECK_EQ(data_section_offset_, file_end);
-  uint64_t old_size = data_section_size_;
-  data_section_size_ = 0;
-  for (auto& r : records) {
-    if (!WriteData(r->BinaryFormat())) {
-      return false;
-    }
-  }
-  LOG(DEBUG) << "data section is changed from " << old_size << " to " << data_section_size_;
-  return true;
-}
-
 bool RecordFileWriter::SeekFileEnd(uint64_t* file_end) {
   if (fseek(record_fp_, 0, SEEK_END) == -1) {
     PLOG(ERROR) << "fseek() failed";

@@ -66,12 +66,6 @@ TEST_F(RecordFileTest, smoke) {
                                             0x3000, "mmap_record_example");
   ASSERT_TRUE(writer->WriteData(mmap_record.BinaryFormat()));
 
-  // Check data section that has been written.
-  std::vector<std::unique_ptr<Record>> records;
-  ASSERT_TRUE(writer->ReadDataSection(&records));
-  ASSERT_EQ(1u, records.size());
-  CheckRecordEqual(mmap_record, *records[0]);
-
   // Write feature section.
   ASSERT_TRUE(writer->WriteFeatureHeader(1));
   char p[BuildId::Size()];
@@ -86,29 +80,22 @@ TEST_F(RecordFileTest, smoke) {
   // Read from a record file.
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(filename_);
   ASSERT_TRUE(reader != nullptr);
-  const FileHeader* file_header = reader->FileHeader();
-  ASSERT_TRUE(file_header != nullptr);
-  std::vector<const FileAttr*> file_attrs = reader->AttrSection();
+  const std::vector<FileAttr>& file_attrs = reader->AttrSection();
   ASSERT_EQ(1u, file_attrs.size());
-  ASSERT_EQ(0, memcmp(&file_attrs[0]->attr, attr_ids_[0].attr, sizeof(perf_event_attr)));
-  std::vector<uint64_t> ids = reader->IdsForAttr(file_attrs[0]);
+  ASSERT_EQ(0, memcmp(&file_attrs[0].attr, attr_ids_[0].attr, sizeof(perf_event_attr)));
+  std::vector<uint64_t> ids;
+  ASSERT_TRUE(reader->ReadIdsForAttr(file_attrs[0], &ids));
   ASSERT_EQ(ids, attr_ids_[0].ids);
 
   // Read and check data section.
-  records = reader->DataSection();
+  std::vector<std::unique_ptr<Record>> records = reader->DataSection();
   ASSERT_EQ(1u, records.size());
   CheckRecordEqual(mmap_record, *records[0]);
 
   // Read and check feature section.
-  ASSERT_TRUE(file_header->features[FEAT_BUILD_ID / 8] & (1 << (FEAT_BUILD_ID % 8)));
-  std::map<int, SectionDesc> sections = reader->FeatureSectionDescriptors();
-  ASSERT_EQ(1u, sections.size());
-  ASSERT_TRUE(sections.find(FEAT_BUILD_ID) != sections.end());
-  const perf_event_header* header = reinterpret_cast<const perf_event_header*>(
-      reader->DataAtOffset(sections[FEAT_BUILD_ID].offset));
-  ASSERT_TRUE(header != nullptr);
-  ASSERT_EQ(sections[FEAT_BUILD_ID].size, header->size);
-  CheckRecordEqual(build_id_record, BuildIdRecord(header));
+  std::vector<BuildIdRecord> build_id_records = reader->ReadBuildIdFeature();
+  ASSERT_EQ(1u, build_id_records.size());
+  CheckRecordEqual(build_id_record, build_id_records[0]);
 
   ASSERT_TRUE(reader->Close());
 }
@@ -165,11 +152,12 @@ TEST_F(RecordFileTest, record_more_than_one_attr) {
   // Read from a record file.
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(filename_);
   ASSERT_TRUE(reader != nullptr);
-  std::vector<const FileAttr*> file_attrs = reader->AttrSection();
+  const std::vector<FileAttr>& file_attrs = reader->AttrSection();
   ASSERT_EQ(3u, file_attrs.size());
   for (size_t i = 0; i < file_attrs.size(); ++i) {
-    ASSERT_EQ(0, memcmp(&file_attrs[i]->attr, attr_ids_[i].attr, sizeof(perf_event_attr)));
-    std::vector<uint64_t> ids = reader->IdsForAttr(file_attrs[i]);
+    ASSERT_EQ(0, memcmp(&file_attrs[i].attr, attr_ids_[i].attr, sizeof(perf_event_attr)));
+    std::vector<uint64_t> ids;
+    ASSERT_TRUE(reader->ReadIdsForAttr(file_attrs[i], &ids));
     ASSERT_EQ(ids, attr_ids_[i].ids);
   }
 }
