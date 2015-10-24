@@ -25,6 +25,7 @@ static std::string vold_command(std::string const& command)
     KLOG_INFO(TAG, "Running command %s\n", command.c_str());
     int sock = -1;
 
+#ifdef TARGET_USES_LOGD
     while (true) {
         sock = socket_local_client("cryptd",
                                    ANDROID_SOCKET_NAMESPACE_RESERVED,
@@ -34,6 +35,7 @@ static std::string vold_command(std::string const& command)
         }
         usleep(10000);
     }
+#endif
 
     if (sock < 0) {
         KLOG_INFO(TAG, "Cannot open vold, failing command (%s)\n", strerror(errno));
