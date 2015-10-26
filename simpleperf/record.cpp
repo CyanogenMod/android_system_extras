@@ -583,26 +583,8 @@ static std::unique_ptr<Record> ReadRecordFromBuffer(const perf_event_attr& attr,
   }
 }
 
-static bool IsRecordHappensBefore(const Record* r1, const Record* r2) {
-  bool is_r1_sample = (r1->header.type == PERF_RECORD_SAMPLE);
-  bool is_r2_sample = (r2->header.type == PERF_RECORD_SAMPLE);
-  uint64_t time1 = r1->Timestamp();
-  uint64_t time2 = r2->Timestamp();
-  // The record with smaller time happens first.
-  if (time1 != time2) {
-    return time1 < time2;
-  }
-  // If happening at the same time, make non-sample records before sample records,
-  // because non-sample records may contain useful information to parse sample records.
-  if (is_r1_sample != is_r2_sample) {
-    return is_r1_sample ? false : true;
-  }
-  // Otherwise, don't care of the order.
-  return false;
-}
-
-static std::vector<std::unique_ptr<Record>> ReadUnsortedRecordsFromBuffer(
-    const perf_event_attr& attr, const char* buf, size_t buf_size) {
+std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(const perf_event_attr& attr,
+                                                           const char* buf, size_t buf_size) {
   std::vector<std::unique_ptr<Record>> result;
   const char* p = buf;
   const char* end = buf + buf_size;
@@ -616,16 +598,20 @@ static std::vector<std::unique_ptr<Record>> ReadUnsortedRecordsFromBuffer(
   return result;
 }
 
-std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(const perf_event_attr& attr,
-                                                           const char* buf, size_t buf_size) {
-  std::vector<std::unique_ptr<Record>> result = ReadUnsortedRecordsFromBuffer(attr, buf, buf_size);
-  if ((attr.sample_type & PERF_SAMPLE_TIME) && attr.sample_id_all) {
-    std::sort(result.begin(), result.end(),
-              [](const std::unique_ptr<Record>& r1, const std::unique_ptr<Record>& r2) {
-                return IsRecordHappensBefore(r1.get(), r2.get());
-              });
+std::unique_ptr<Record> ReadRecordFromFile(const perf_event_attr& attr, FILE* fp) {
+  std::vector<char> buf(sizeof(perf_event_header));
+  perf_event_header* header = reinterpret_cast<perf_event_header*>(&buf[0]);
+  if (fread(header, sizeof(perf_event_header), 1, fp) != 1) {
+    PLOG(ERROR) << "Failed to read record file";
+    return nullptr;
   }
-  return result;
+  buf.resize(header->size);
+  header = reinterpret_cast<perf_event_header*>(&buf[0]);
+  if (fread(&buf[sizeof(perf_event_header)], buf.size() - sizeof(perf_event_header), 1, fp) != 1) {
+    PLOG(ERROR) << "Failed to read record file";
+    return nullptr;
+  }
+  return ReadRecordFromBuffer(attr, header);
 }
 
 MmapRecord CreateMmapRecord(const perf_event_attr& attr, bool in_kernel, uint32_t pid, uint32_t tid,
@@ -688,8 +674,26 @@ BuildIdRecord CreateBuildIdRecord(bool in_kernel, pid_t pid, const BuildId& buil
   return record;
 }
 
+bool IsRecordHappensBefore(const Record* r1, const Record* r2) {
+  bool is_r1_sample = (r1->header.type == PERF_RECORD_SAMPLE);
+  bool is_r2_sample = (r2->header.type == PERF_RECORD_SAMPLE);
+  uint64_t time1 = r1->Timestamp();
+  uint64_t time2 = r2->Timestamp();
+  // The record with smaller time happens first.
+  if (time1 != time2) {
+    return time1 < time2;
+  }
+  // If happening at the same time, make non-sample records before sample records,
+  // because non-sample records may contain useful information to parse sample records.
+  if (is_r1_sample != is_r2_sample) {
+    return is_r1_sample ? false : true;
+  }
+  // Otherwise, don't care of the order.
+  return false;
+}
+
 bool RecordCache::RecordComparator::operator()(const Record* r1, const Record* r2) {
-  return IsRecordHappensBefore(r2, r1);
+  return !IsRecordHappensBefore(r1, r2);
 }
 
 RecordCache::RecordCache(const perf_event_attr& attr, size_t min_cache_size,
@@ -707,7 +711,7 @@ RecordCache::~RecordCache() {
 }
 
 void RecordCache::Push(const char* data, size_t size) {
-  std::vector<std::unique_ptr<Record>> records = ReadUnsortedRecordsFromBuffer(attr_, data, size);
+  std::vector<std::unique_ptr<Record>> records = ReadRecordsFromBuffer(attr_, data, size);
   if (has_timestamp_) {
     for (const auto& r : records) {
       last_time_ = std::max(last_time_, r->Timestamp());
@@ -716,6 +720,10 @@ void RecordCache::Push(const char* data, size_t size) {
   for (auto& r : records) {
     queue_.push(r.release());
   }
+}
+
+void RecordCache::Push(std::unique_ptr<Record> record) {
+  queue_.push(record.release());
 }
 
 std::unique_ptr<Record> RecordCache::Pop() {
