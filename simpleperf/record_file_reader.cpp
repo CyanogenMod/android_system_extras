@@ -32,131 +32,182 @@
 using namespace PerfFileFormat;
 
 std::unique_ptr<RecordFileReader> RecordFileReader::CreateInstance(const std::string& filename) {
-  int fd = open(filename.c_str(), O_RDONLY | O_CLOEXEC);
-  if (fd == -1) {
+  FILE* fp = fopen(filename.c_str(), "reb");
+  if (fp == nullptr) {
     PLOG(ERROR) << "failed to open record file '" << filename << "'";
     return nullptr;
   }
-  auto reader = std::unique_ptr<RecordFileReader>(new RecordFileReader(filename, fd));
-  if (!reader->MmapFile()) {
+  auto reader = std::unique_ptr<RecordFileReader>(new RecordFileReader(filename, fp));
+  if (!reader->ReadHeader() || !reader->ReadAttrSection() ||
+      !reader->ReadFeatureSectionDescriptors()) {
     return nullptr;
   }
   return reader;
 }
 
-RecordFileReader::RecordFileReader(const std::string& filename, int fd)
-    : filename_(filename), record_fd_(fd), mmap_addr_(nullptr), mmap_len_(0) {
+RecordFileReader::RecordFileReader(const std::string& filename, FILE* fp)
+    : filename_(filename), record_fp_(fp) {
 }
 
 RecordFileReader::~RecordFileReader() {
-  if (record_fd_ != -1) {
+  if (record_fp_ != nullptr) {
     Close();
   }
 }
 
 bool RecordFileReader::Close() {
   bool result = true;
-  if (munmap(const_cast<char*>(mmap_addr_), mmap_len_) == -1) {
-    PLOG(ERROR) << "failed to munmap() record file '" << filename_ << "'";
-    result = false;
-  }
-  if (close(record_fd_) == -1) {
+  if (fclose(record_fp_) != 0) {
     PLOG(ERROR) << "failed to close record file '" << filename_ << "'";
     result = false;
   }
-  record_fd_ = -1;
+  record_fp_ = nullptr;
   return result;
 }
 
-bool RecordFileReader::MmapFile() {
-  off_t file_size = lseek(record_fd_, 0, SEEK_END);
-  if (file_size == -1) {
+bool RecordFileReader::ReadHeader() {
+  if (fread(&header_, sizeof(header_), 1, record_fp_) != 1) {
+    PLOG(ERROR) << "failed to read file " << filename_;
     return false;
   }
-  size_t mmap_len = file_size;
-  void* mmap_addr = mmap(nullptr, mmap_len, PROT_READ, MAP_SHARED, record_fd_, 0);
-  if (mmap_addr == MAP_FAILED) {
-    PLOG(ERROR) << "failed to mmap() record file '" << filename_ << "'";
-    return false;
-  }
-
-  mmap_addr_ = reinterpret_cast<const char*>(mmap_addr);
-  mmap_len_ = mmap_len;
   return true;
 }
 
-const FileHeader* RecordFileReader::FileHeader() {
-  return reinterpret_cast<const struct FileHeader*>(mmap_addr_);
-}
-
-std::vector<const FileAttr*> RecordFileReader::AttrSection() {
-  std::vector<const FileAttr*> result;
-  const struct FileHeader* header = FileHeader();
-  size_t attr_count = header->attrs.size / header->attr_size;
-  const FileAttr* attr = reinterpret_cast<const FileAttr*>(mmap_addr_ + header->attrs.offset);
+bool RecordFileReader::ReadAttrSection() {
+  size_t attr_count = header_.attrs.size / header_.attr_size;
+  if (header_.attr_size != sizeof(FileAttr)) {
+    LOG(WARNING) << "attr size (" << header_.attr_size << ") in " << filename_
+                 << " doesn't match expected size (" << sizeof(FileAttr) << ")";
+    return false;
+  }
+  if (attr_count == 0) {
+    LOG(ERROR) << "no attr in file " << filename_;
+    return false;
+  }
+  if (fseek(record_fp_, header_.attrs.offset, SEEK_SET) != 0) {
+    PLOG(ERROR) << "failed to fseek()";
+    return false;
+  }
   for (size_t i = 0; i < attr_count; ++i) {
-    result.push_back(attr++);
+    std::vector<char> buf(header_.attr_size);
+    if (fread(&buf[0], buf.size(), 1, record_fp_) != 1) {
+      PLOG(ERROR) << "failed to read " << filename_;
+      return false;
+    }
+    // The size of perf_event_attr is changing between different linux kernel versions.
+    // Make sure we copy correct data to memory.
+    FileAttr attr;
+    memset(&attr, 0, sizeof(attr));
+    size_t section_desc_size = sizeof(attr.ids);
+    size_t perf_event_attr_size = header_.attr_size - section_desc_size;
+    memcpy(&attr.attr, &buf[0], std::min(sizeof(attr.attr), perf_event_attr_size));
+    memcpy(&attr.ids, &buf[perf_event_attr_size], section_desc_size);
+    file_attrs_.push_back(attr);
   }
-  return result;
+  return true;
 }
 
-std::vector<uint64_t> RecordFileReader::IdsForAttr(const FileAttr* attr) {
-  std::vector<uint64_t> result;
-  size_t id_count = attr->ids.size / sizeof(uint64_t);
-  const uint64_t* id = reinterpret_cast<const uint64_t*>(mmap_addr_ + attr->ids.offset);
-  for (size_t i = 0; i < id_count; ++i) {
-    result.push_back(*id++);
-  }
-  return result;
-}
-
-std::vector<std::unique_ptr<Record>> RecordFileReader::DataSection() {
-  const struct FileHeader* header = FileHeader();
-  auto file_attrs = AttrSection();
-  CHECK(file_attrs.size() > 0);
-  return ReadRecordsFromBuffer(file_attrs[0]->attr, mmap_addr_ + header->data.offset,
-                               header->data.size);
-}
-
-const std::map<int, SectionDesc>& RecordFileReader::FeatureSectionDescriptors() {
-  if (feature_sections_.empty()) {
-    std::vector<int> features;
-    const struct FileHeader* header = FileHeader();
-    for (size_t i = 0; i < sizeof(header->features); ++i) {
-      for (size_t j = 0; j < 8; ++j) {
-        if (header->features[i] & (1 << j)) {
-          features.push_back(i * 8 + j);
-        }
+bool RecordFileReader::ReadFeatureSectionDescriptors() {
+  std::vector<int> features;
+  for (size_t i = 0; i < sizeof(header_.features); ++i) {
+    for (size_t j = 0; j < 8; ++j) {
+      if (header_.features[i] & (1 << j)) {
+        features.push_back(i * 8 + j);
       }
     }
-    uint64_t feature_section_offset = header->data.offset + header->data.size;
-    const SectionDesc* p = reinterpret_cast<const SectionDesc*>(mmap_addr_ + feature_section_offset);
-    for (auto& feature : features) {
-      feature_sections_.insert(std::make_pair(feature, *p));
-      ++p;
-    }
   }
-  return feature_sections_;
+  uint64_t feature_section_offset = header_.data.offset + header_.data.size;
+  if (fseek(record_fp_, feature_section_offset, SEEK_SET) != 0) {
+    PLOG(ERROR) << "failed to fseek()";
+    return false;
+  }
+  for (const auto& id : features) {
+    SectionDesc desc;
+    if (fread(&desc, sizeof(desc), 1, record_fp_) != 1) {
+      PLOG(ERROR) << "failed to read " << filename_;
+      return false;
+    }
+    feature_section_descriptors_.emplace(id, desc);
+  }
+  return true;
 }
 
-bool RecordFileReader::GetFeatureSection(int feature, const char** pstart, const char** pend) {
+bool RecordFileReader::ReadIdsForAttr(const FileAttr& attr, std::vector<uint64_t>* ids) {
+  size_t id_count = attr.ids.size / sizeof(uint64_t);
+  if (fseek(record_fp_, attr.ids.offset, SEEK_SET) != 0) {
+    PLOG(ERROR) << "failed to fseek()";
+    return false;
+  }
+  ids->resize(id_count);
+  if (fread(ids->data(), attr.ids.size, 1, record_fp_) != 1) {
+    PLOG(ERROR) << "failed to read file " << filename_;
+    return false;
+  }
+  return true;
+}
+
+bool RecordFileReader::ReadDataSection(std::function<bool(std::unique_ptr<Record>)> callback,
+                                       bool sorted) {
+  if (fseek(record_fp_, header_.data.offset, SEEK_SET) != 0) {
+    PLOG(ERROR) << "failed to fseek()";
+    return false;
+  }
+  RecordCache cache(file_attrs_[0].attr);
+  for (size_t nbytes_read = 0; nbytes_read < header_.data.size;) {
+    std::unique_ptr<Record> record = ReadRecordFromFile(file_attrs_[0].attr, record_fp_);
+    if (record == nullptr) {
+      return false;
+    }
+    nbytes_read += record->size();
+    if (sorted) {
+      cache.Push(std::move(record));
+      record = cache.Pop();
+      if (record != nullptr) {
+        if (!callback(std::move(record))) {
+          return false;
+        }
+      }
+    } else {
+      if (!callback(std::move(record))) {
+        return false;
+      }
+    }
+  }
+  std::vector<std::unique_ptr<Record>> records = cache.PopAll();
+  for (auto& record : records) {
+    if (!callback(std::move(record))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool RecordFileReader::ReadFeatureSection(int feature, std::vector<char>* data) {
   const std::map<int, SectionDesc>& section_map = FeatureSectionDescriptors();
   auto it = section_map.find(feature);
   if (it == section_map.end()) {
     return false;
   }
   SectionDesc section = it->second;
-  *pstart = DataAtOffset(section.offset);
-  *pend = DataAtOffset(section.offset + section.size);
+  data->resize(section.size);
+  if (fseek(record_fp_, section.offset, SEEK_SET) != 0) {
+    PLOG(ERROR) << "failed to fseek()";
+    return false;
+  }
+  if (fread(data->data(), data->size(), 1, record_fp_) != 1) {
+    PLOG(ERROR) << "failed to read " << filename_;
+    return false;
+  }
   return true;
 }
 
 std::vector<std::string> RecordFileReader::ReadCmdlineFeature() {
-  const char* p;
-  const char* end;
-  if (!GetFeatureSection(FEAT_CMDLINE, &p, &end)) {
+  std::vector<char> buf;
+  if (!ReadFeatureSection(FEAT_CMDLINE, &buf)) {
     return std::vector<std::string>();
   }
+  const char* p = buf.data();
+  const char* end = buf.data() + buf.size();
   std::vector<std::string> cmdline;
   uint32_t arg_count;
   MoveFromBinaryFormat(arg_count, p);
@@ -172,11 +223,12 @@ std::vector<std::string> RecordFileReader::ReadCmdlineFeature() {
 }
 
 std::vector<BuildIdRecord> RecordFileReader::ReadBuildIdFeature() {
-  const char* p;
-  const char* end;
-  if (!GetFeatureSection(FEAT_BUILD_ID, &p, &end)) {
+  std::vector<char> buf;
+  if (!ReadFeatureSection(FEAT_BUILD_ID, &buf)) {
     return std::vector<BuildIdRecord>();
   }
+  const char* p = buf.data();
+  const char* end = buf.data() + buf.size();
   std::vector<BuildIdRecord> result;
   while (p < end) {
     const perf_event_header* header = reinterpret_cast<const perf_event_header*>(p);
@@ -191,13 +243,23 @@ std::vector<BuildIdRecord> RecordFileReader::ReadBuildIdFeature() {
 }
 
 std::string RecordFileReader::ReadFeatureString(int feature) {
-  const char* p;
-  const char* end;
-  if (!GetFeatureSection(feature, &p, &end)) {
+  std::vector<char> buf;
+  if (!ReadFeatureSection(feature, &buf)) {
     return std::string();
   }
+  const char* p = buf.data();
+  const char* end = buf.data() + buf.size();
   uint32_t len;
   MoveFromBinaryFormat(len, p);
   CHECK_LE(p + len, end);
   return p;
+}
+
+std::vector<std::unique_ptr<Record>> RecordFileReader::DataSection() {
+  std::vector<std::unique_ptr<Record>> records;
+  ReadDataSection([&](std::unique_ptr<Record> record) {
+    records.push_back(std::move(record));
+    return true;
+  });
+  return records;
 }

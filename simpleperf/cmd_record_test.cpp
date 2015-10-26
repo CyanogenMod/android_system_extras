@@ -79,9 +79,8 @@ TEST(record_cmd, dump_build_id_feature) {
   ASSERT_TRUE(RecordCmd()->Run({"sleep", "1"}));
   std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance("perf.data");
   ASSERT_TRUE(reader != nullptr);
-  const FileHeader* file_header = reader->FileHeader();
-  ASSERT_TRUE(file_header != nullptr);
-  ASSERT_TRUE(file_header->features[FEAT_BUILD_ID / 8] & (1 << (FEAT_BUILD_ID % 8)));
+  const FileHeader& file_header = reader->FileHeader();
+  ASSERT_TRUE(file_header.features[FEAT_BUILD_ID / 8] & (1 << (FEAT_BUILD_ID % 8)));
   ASSERT_GT(reader->FeatureSectionDescriptors().size(), 0u);
 }
 

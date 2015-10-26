@@ -174,16 +174,16 @@ TEST(sample_tree, overlapped_map) {
   sample_tree.AddSample(1, 1, 5, 0, 0, false);          // Hit map 1.
   thread_tree.AddThreadMap(1, 1, 5, 20, 0, 0, "map2");  // Add map 2.
   sample_tree.AddSample(1, 1, 6, 0, 0, false);          // Hit map 2.
-  sample_tree.AddSample(1, 1, 4, 0, 0, false);          // Hit unknown map.
+  sample_tree.AddSample(1, 1, 4, 0, 0, false);          // Hit map 1.
   thread_tree.AddThreadMap(1, 1, 2, 7, 0, 0, "map3");   // Add map 3.
   sample_tree.AddSample(1, 1, 7, 0, 0, false);          // Hit map 3.
-  sample_tree.AddSample(1, 1, 10, 0, 0, false);         // Hit unknown map.
+  sample_tree.AddSample(1, 1, 10, 0, 0, false);         // Hit map 2.
 
   std::vector<ExpectedSampleInMap> expected_samples = {
-      {1, 1, "thread1", "map1", 1, 1},
+      {1, 1, "thread1", "map1", 1, 2},
       {1, 1, "thread1", "map2", 5, 1},
+      {1, 1, "thread1", "map2", 9, 1},
       {1, 1, "thread1", "map3", 2, 1},
-      {1, 1, "thread1", "unknown", 0, 2},
   };
   VisitSampleTree(&sample_tree, expected_samples);
 }

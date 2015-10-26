@@ -129,16 +129,17 @@ class RecordCommand : public Command {
   bool ParseOptions(const std::vector<std::string>& args, std::vector<std::string>* non_option_args);
   bool AddMeasuredEventType(const std::string& event_type_name);
   bool SetEventSelection();
-  bool CreateRecordFile();
+  bool CreateAndInitRecordFile();
+  std::unique_ptr<RecordFileWriter> CreateRecordFile(const std::string& filename);
   bool DumpKernelAndModuleMmaps();
   bool DumpThreadCommAndMmaps(bool all_threads, const std::vector<pid_t>& selected_threads);
   bool CollectRecordsFromKernel(const char* data, size_t size);
   bool ProcessRecord(Record* record);
   void UnwindRecord(Record* record);
-  bool PostUnwind();
+  bool PostUnwind(const std::vector<std::string>& args);
   bool DumpAdditionalFeatures(const std::vector<std::string>& args);
   bool DumpBuildIdFeature();
-  bool GetHitFiles(std::set<std::string>* kernel_modules, std::set<std::string>* user_files);
+  void CollectHitFileInfo(const Record* record);
 
   bool use_sample_freq_;    // Use sample_freq_ when true, otherwise using sample_period_.
   uint64_t sample_freq_;    // Sample 'sample_freq_' times per second.
@@ -163,6 +164,9 @@ class RecordCommand : public Command {
   ThreadTree thread_tree_;
   std::string record_filename_;
   std::unique_ptr<RecordFileWriter> record_file_writer_;
+
+  std::set<std::string> hit_kernel_modules_;
+  std::set<std::string> hit_user_files_;
 
   std::unique_ptr<SignalHandlerRegister> signal_handler_register_;
 };
@@ -218,7 +222,7 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   event_selection_set_.PreparePollForEventFiles(&pollfds);
 
   // 4. Create perf.data.
-  if (!CreateRecordFile()) {
+  if (!CreateAndInitRecordFile()) {
     return false;
   }
 
@@ -231,8 +235,8 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   if (workload != nullptr && !workload->Start()) {
     return false;
   }
-  record_cache_.reset(new RecordCache(
-      *event_selection_set_.FindEventAttrByType(measured_event_types_[0]), 1000u, 1000000u));
+  record_cache_.reset(
+      new RecordCache(*event_selection_set_.FindEventAttrByType(measured_event_types_[0])));
   auto callback = std::bind(&RecordCommand::CollectRecordsFromKernel, this, std::placeholders::_1,
                             std::placeholders::_2);
   while (true) {
@@ -251,20 +255,21 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
     }
   }
 
-  // 6. Unwind dwarf callchain.
-  if (post_unwind_) {
-    if (!PostUnwind()) {
-      return false;
-    }
-  }
-
-  // 7. Dump additional features, and close record file.
+  // 6. Dump additional features, and close record file.
   if (!DumpAdditionalFeatures(args)) {
     return false;
   }
   if (!record_file_writer_->Close()) {
     return false;
   }
+
+  // 7. Unwind dwarf callchain.
+  if (post_unwind_) {
+    if (!PostUnwind(args)) {
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -453,10 +458,24 @@ bool RecordCommand::SetEventSelection() {
   return true;
 }
 
-bool RecordCommand::CreateRecordFile() {
-  record_file_writer_ = RecordFileWriter::CreateInstance(record_filename_);
+bool RecordCommand::CreateAndInitRecordFile() {
+  record_file_writer_ = CreateRecordFile(record_filename_);
   if (record_file_writer_ == nullptr) {
     return false;
+  }
+  if (!DumpKernelAndModuleMmaps()) {
+    return false;
+  }
+  if (!DumpThreadCommAndMmaps(system_wide_collection_, monitored_threads_)) {
+    return false;
+  }
+  return true;
+}
+
+std::unique_ptr<RecordFileWriter> RecordCommand::CreateRecordFile(const std::string& filename) {
+  std::unique_ptr<RecordFileWriter> writer = RecordFileWriter::CreateInstance(filename);
+  if (writer == nullptr) {
+    return nullptr;
   }
 
   std::vector<AttrWithId> attr_ids;
@@ -472,17 +491,10 @@ bool RecordCommand::CreateRecordFile() {
     }
     attr_ids.push_back(attr_id);
   }
-  if (!record_file_writer_->WriteAttrSection(attr_ids)) {
-    return false;
+  if (!writer->WriteAttrSection(attr_ids)) {
+    return nullptr;
   }
-
-  if (!DumpKernelAndModuleMmaps()) {
-    return false;
-  }
-  if (!DumpThreadCommAndMmaps(system_wide_collection_, monitored_threads_)) {
-    return false;
-  }
-  return true;
+  return writer;
 }
 
 bool RecordCommand::DumpKernelAndModuleMmaps() {
@@ -598,6 +610,8 @@ bool RecordCommand::CollectRecordsFromKernel(const char* data, size_t size) {
 }
 
 bool RecordCommand::ProcessRecord(Record* record) {
+  BuildThreadTree(*record, &thread_tree_);
+  CollectHitFileInfo(record);
   if (unwind_dwarf_callchain_ && !post_unwind_) {
     UnwindRecord(record);
   }
@@ -606,8 +620,7 @@ bool RecordCommand::ProcessRecord(Record* record) {
 }
 
 void RecordCommand::UnwindRecord(Record* record) {
-  BuildThreadTree(*record, &thread_tree_);
-  if (record->header.type == PERF_RECORD_SAMPLE) {
+  if (record->type() == PERF_RECORD_SAMPLE) {
     SampleRecord& r = *static_cast<SampleRecord*>(record);
     if ((r.sample_type & PERF_SAMPLE_CALLCHAIN) && (r.sample_type & PERF_SAMPLE_REGS_USER) &&
         (r.regs_user_data.reg_mask != 0) && (r.sample_type & PERF_SAMPLE_STACK_USER) &&
@@ -628,15 +641,43 @@ void RecordCommand::UnwindRecord(Record* record) {
   }
 }
 
-bool RecordCommand::PostUnwind() {
-  std::vector<std::unique_ptr<Record>> records;
-  if (!record_file_writer_->ReadDataSection(&records)) {
+bool RecordCommand::PostUnwind(const std::vector<std::string>& args) {
+  thread_tree_.Clear();
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(record_filename_);
+  if (reader == nullptr) {
     return false;
   }
-  for (auto& r : records) {
-    UnwindRecord(r.get());
+  std::string tmp_filename = record_filename_ + ".tmp";
+  record_file_writer_ = CreateRecordFile(tmp_filename);
+  if (record_file_writer_ == nullptr) {
+    return false;
   }
-  return record_file_writer_->WriteDataSection(records);
+  bool result = reader->ReadDataSection(
+      [this](std::unique_ptr<Record> record) {
+        BuildThreadTree(*record, &thread_tree_);
+        UnwindRecord(record.get());
+        return record_file_writer_->WriteData(record->BinaryFormat());
+      },
+      false);
+  if (!result) {
+    return false;
+  }
+  if (!DumpAdditionalFeatures(args)) {
+    return false;
+  }
+  if (!record_file_writer_->Close()) {
+    return false;
+  }
+
+  if (unlink(record_filename_.c_str()) != 0) {
+    PLOG(ERROR) << "failed to remove " << record_filename_;
+    return false;
+  }
+  if (rename(tmp_filename.c_str(), record_filename_.c_str()) != 0) {
+    PLOG(ERROR) << "failed to rename " << tmp_filename << " to " << record_filename_;
+    return false;
+  }
+  return true;
 }
 
 bool RecordCommand::DumpAdditionalFeatures(const std::vector<std::string>& args) {
@@ -675,15 +716,10 @@ bool RecordCommand::DumpAdditionalFeatures(const std::vector<std::string>& args)
 }
 
 bool RecordCommand::DumpBuildIdFeature() {
-  std::set<std::string> kernel_modules;
-  std::set<std::string> user_files;
-  if (!GetHitFiles(&kernel_modules, &user_files)) {
-    return false;
-  }
   std::vector<BuildIdRecord> build_id_records;
   BuildId build_id;
   // Add build_ids for kernel/modules.
-  for (auto& filename : kernel_modules) {
+  for (auto& filename : hit_kernel_modules_) {
     if (filename == DEFAULT_KERNEL_FILENAME_FOR_BUILD_ID) {
       if (!GetKernelBuildId(&build_id)) {
         LOG(DEBUG) << "can't read build_id for kernel";
@@ -705,7 +741,7 @@ bool RecordCommand::DumpBuildIdFeature() {
     }
   }
   // Add build_ids for user elf files.
-  for (auto& filename : user_files) {
+  for (auto& filename : hit_user_files_) {
     if (filename == DEFAULT_EXECNAME_FOR_THREAD_MMAP) {
       continue;
     }
@@ -721,28 +757,18 @@ bool RecordCommand::DumpBuildIdFeature() {
   return true;
 }
 
-bool RecordCommand::GetHitFiles(std::set<std::string>* kernel_modules,
-                                std::set<std::string>* user_files) {
-  std::vector<std::unique_ptr<Record>> records;
-  if (!record_file_writer_->ReadDataSection(&records)) {
-    return false;
-  }
-  ThreadTree thread_tree;
-  for (auto& record : records) {
-    BuildThreadTree(*record, &thread_tree);
-    if (record->header.type == PERF_RECORD_SAMPLE) {
-      auto r = *static_cast<const SampleRecord*>(record.get());
-      bool in_kernel = ((r.header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL);
-      const ThreadEntry* thread = thread_tree.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
-      const MapEntry* map = thread_tree.FindMap(thread, r.ip_data.ip, in_kernel);
-      if (in_kernel) {
-        kernel_modules->insert(map->dso->Path());
-      } else {
-        user_files->insert(map->dso->Path());
-      }
+void RecordCommand::CollectHitFileInfo(const Record* record) {
+  if (record->type() == PERF_RECORD_SAMPLE) {
+    auto r = *static_cast<const SampleRecord*>(record);
+    bool in_kernel = ((r.header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL);
+    const ThreadEntry* thread = thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
+    const MapEntry* map = thread_tree_.FindMap(thread, r.ip_data.ip, in_kernel);
+    if (in_kernel) {
+      hit_kernel_modules_.insert(map->dso->Path());
+    } else {
+      hit_user_files_.insert(map->dso->Path());
     }
   }
-  return true;
 }
 
 __attribute__((constructor)) static void RegisterRecordCommand() {
