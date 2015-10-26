@@ -90,33 +90,34 @@ bool DumpRecordCommand::ParseOptions(const std::vector<std::string>& args) {
 static const std::string GetFeatureName(int feature);
 
 void DumpRecordCommand::DumpFileHeader() {
-  const FileHeader* header = record_file_reader_->FileHeader();
+  const FileHeader& header = record_file_reader_->FileHeader();
   printf("magic: ");
   for (size_t i = 0; i < 8; ++i) {
-    printf("%c", header->magic[i]);
+    printf("%c", header.magic[i]);
   }
   printf("\n");
-  printf("header_size: %" PRId64 "\n", header->header_size);
-  if (header->header_size != sizeof(*header)) {
-    PLOG(WARNING) << "record file header size doesn't match expected header size "
-                  << sizeof(*header);
+  printf("header_size: %" PRId64 "\n", header.header_size);
+  if (header.header_size != sizeof(header)) {
+    PLOG(WARNING) << "record file header size " << header.header_size
+                  << "doesn't match expected header size " << sizeof(header);
   }
-  printf("attr_size: %" PRId64 "\n", header->attr_size);
-  if (header->attr_size != sizeof(FileAttr)) {
-    PLOG(WARNING) << "record file attr size doesn't match expected attr size " << sizeof(FileAttr);
+  printf("attr_size: %" PRId64 "\n", header.attr_size);
+  if (header.attr_size != sizeof(FileAttr)) {
+    PLOG(WARNING) << "record file attr size " << header.attr_size
+                  << " doesn't match expected attr size " << sizeof(FileAttr);
   }
-  printf("attrs[file section]: offset %" PRId64 ", size %" PRId64 "\n", header->attrs.offset,
-         header->attrs.size);
-  printf("data[file section]: offset %" PRId64 ", size %" PRId64 "\n", header->data.offset,
-         header->data.size);
+  printf("attrs[file section]: offset %" PRId64 ", size %" PRId64 "\n", header.attrs.offset,
+         header.attrs.size);
+  printf("data[file section]: offset %" PRId64 ", size %" PRId64 "\n", header.data.offset,
+         header.data.size);
   printf("event_types[file section]: offset %" PRId64 ", size %" PRId64 "\n",
-         header->event_types.offset, header->event_types.size);
+         header.event_types.offset, header.event_types.size);
 
   std::vector<int> features;
   for (size_t i = 0; i < FEAT_MAX_NUM; ++i) {
     size_t j = i / 8;
     size_t k = i % 8;
-    if ((header->features[j] & (1 << k)) != 0) {
+    if ((header.features[j] & (1 << k)) != 0) {
       features.push_back(i);
     }
   }
@@ -153,17 +154,20 @@ static const std::string GetFeatureName(int feature) {
 }
 
 void DumpRecordCommand::DumpAttrSection() {
-  std::vector<const FileAttr*> attrs = record_file_reader_->AttrSection();
+  const std::vector<FileAttr>& attrs = record_file_reader_->AttrSection();
   for (size_t i = 0; i < attrs.size(); ++i) {
-    auto& attr = attrs[i];
+    const auto& attr = attrs[i];
     printf("file_attr %zu:\n", i + 1);
-    DumpPerfEventAttr(attr->attr, 1);
-    printf("  ids[file_section]: offset %" PRId64 ", size %" PRId64 "\n", attr->ids.offset,
-           attr->ids.size);
-    std::vector<uint64_t> ids = record_file_reader_->IdsForAttr(attr);
-    if (ids.size() > 0) {
+    DumpPerfEventAttr(attr.attr, 1);
+    printf("  ids[file_section]: offset %" PRId64 ", size %" PRId64 "\n", attr.ids.offset,
+           attr.ids.size);
+    std::vector<uint64_t> ids;
+    if (!record_file_reader_->ReadIdsForAttr(attr, &ids)) {
+      return;
+    }
+    if (!ids.empty()) {
       printf("  ids:");
-      for (auto& id : ids) {
+      for (const auto& id : ids) {
         printf(" %" PRId64, id);
       }
       printf("\n");
@@ -172,17 +176,17 @@ void DumpRecordCommand::DumpAttrSection() {
 }
 
 void DumpRecordCommand::DumpDataSection() {
-  std::vector<std::unique_ptr<Record>> records = record_file_reader_->DataSection();
-  for (auto& record : records) {
+  record_file_reader_->ReadDataSection([](std::unique_ptr<Record> record) {
     record->Dump();
-  }
+    return true;
+  });
 }
 
 void DumpRecordCommand::DumpFeatureSection() {
   std::map<int, SectionDesc> section_map = record_file_reader_->FeatureSectionDescriptors();
-  for (auto& pair : section_map) {
+  for (const auto& pair : section_map) {
     int feature = pair.first;
-    SectionDesc& section = pair.second;
+    const auto& section = pair.second;
     printf("feature section for %s: offset %" PRId64 ", size %" PRId64 "\n",
            GetFeatureName(feature).c_str(), section.offset, section.size);
     if (feature == FEAT_BUILD_ID) {

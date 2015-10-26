@@ -18,6 +18,8 @@
 #define SIMPLE_PERF_RECORD_FILE_H_
 
 #include <stdio.h>
+
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -47,10 +49,6 @@ class RecordFileWriter {
   bool WriteData(const std::vector<char>& data) {
     return WriteData(data.data(), data.size());
   }
-
-  // Read data section that has been written, for further processing.
-  bool ReadDataSection(std::vector<std::unique_ptr<Record>>* records);
-  bool WriteDataSection(const std::vector<std::unique_ptr<Record>>& records);
 
   bool WriteFeatureHeader(size_t feature_count);
   bool WriteBuildIdFeature(const std::vector<BuildIdRecord>& build_id_records);
@@ -97,31 +95,42 @@ class RecordFileReader {
 
   ~RecordFileReader();
 
-  const PerfFileFormat::FileHeader* FileHeader();
-  std::vector<const PerfFileFormat::FileAttr*> AttrSection();
-  std::vector<uint64_t> IdsForAttr(const PerfFileFormat::FileAttr* attr);
-  std::vector<std::unique_ptr<Record>> DataSection();
-  const std::map<int, PerfFileFormat::SectionDesc>& FeatureSectionDescriptors();
-  const char* DataAtOffset(uint64_t offset) {
-    return mmap_addr_ + offset;
+  const PerfFileFormat::FileHeader& FileHeader() const {
+    return header_;
   }
+
+  const std::vector<PerfFileFormat::FileAttr>& AttrSection() const {
+    return file_attrs_;
+  }
+
+  const std::map<int, PerfFileFormat::SectionDesc>& FeatureSectionDescriptors() const {
+    return feature_section_descriptors_;
+  }
+
+  bool ReadIdsForAttr(const PerfFileFormat::FileAttr& attr, std::vector<uint64_t>* ids);
+  // If sorted is true, sort records before passing them to callback function.
+  bool ReadDataSection(std::function<bool(std::unique_ptr<Record>)> callback, bool sorted = true);
   std::vector<std::string> ReadCmdlineFeature();
   std::vector<BuildIdRecord> ReadBuildIdFeature();
   std::string ReadFeatureString(int feature);
   bool Close();
 
+  // For testing only.
+  std::vector<std::unique_ptr<Record>> DataSection();
+
  private:
-  RecordFileReader(const std::string& filename, int fd);
-  bool MmapFile();
-  bool GetFeatureSection(int feature, const char** pstart, const char** pend);
+  RecordFileReader(const std::string& filename, FILE* fp);
+  bool ReadHeader();
+  bool ReadAttrSection();
+  bool ReadFeatureSectionDescriptors();
+  bool ReadFeatureSection(int feature, std::vector<char>* data);
 
   const std::string filename_;
-  int record_fd_;
+  FILE* record_fp_;
 
-  const char* mmap_addr_;
-  size_t mmap_len_;
-
-  std::map<int, PerfFileFormat::SectionDesc> feature_sections_;
+  PerfFileFormat::FileHeader header_;
+  std::vector<PerfFileFormat::FileAttr> file_attrs_;
+  std::map<int, PerfFileFormat::SectionDesc> feature_section_descriptors_;
 
   DISALLOW_COPY_AND_ASSIGN(RecordFileReader);
 };
