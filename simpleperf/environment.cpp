@@ -21,6 +21,7 @@
 #include <stdlib.h>
 
 #include <limits>
+#include <set>
 #include <unordered_map>
 #include <vector>
 
@@ -43,27 +44,29 @@ std::vector<int> GetOnlineCpus() {
   LineReader reader(fp);
   char* line;
   if ((line = reader.ReadLine()) != nullptr) {
-    result = GetOnlineCpusFromString(line);
+    result = GetCpusFromString(line);
   }
   CHECK(!result.empty()) << "can't get online cpu information";
   return result;
 }
 
-std::vector<int> GetOnlineCpusFromString(const std::string& s) {
-  std::vector<int> result;
+std::vector<int> GetCpusFromString(const std::string& s) {
+  std::set<int> cpu_set;
   bool have_dash = false;
   const char* p = s.c_str();
   char* endp;
+  int last_cpu;
   long cpu;
   // Parse line like: 0,1-3, 5, 7-8
   while ((cpu = strtol(p, &endp, 10)) != 0 || endp != p) {
-    if (have_dash && result.size() > 0) {
-      for (int t = result.back() + 1; t < cpu; ++t) {
-        result.push_back(t);
+    if (have_dash && !cpu_set.empty()) {
+      for (int t = last_cpu + 1; t < cpu; ++t) {
+        cpu_set.insert(t);
       }
     }
     have_dash = false;
-    result.push_back(cpu);
+    cpu_set.insert(cpu);
+    last_cpu = cpu;
     p = endp;
     while (!isdigit(*p) && *p != '\0') {
       if (*p == '-') {
@@ -72,7 +75,7 @@ std::vector<int> GetOnlineCpusFromString(const std::string& s) {
       ++p;
     }
   }
-  return result;
+  return std::vector<int>(cpu_set.begin(), cpu_set.end());
 }
 
 bool ProcessKernelSymbols(const std::string& symbol_file,

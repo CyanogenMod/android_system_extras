@@ -166,18 +166,29 @@ void EventSelectionSet::SetInherit(bool enable) {
   }
 }
 
-bool EventSelectionSet::OpenEventFilesForAllCpus() {
-  return OpenEventFilesForThreadsOnAllCpus({-1});
+static bool CheckIfCpusOnline(const std::vector<int>& cpus) {
+  std::vector<int> online_cpus = GetOnlineCpus();
+  for (const auto& cpu : cpus) {
+    if (std::find(online_cpus.begin(), online_cpus.end(), cpu) == online_cpus.end()) {
+      LOG(ERROR) << "cpu " << cpu << " is not online.";
+      return false;
+    }
+  }
+  return true;
 }
 
-bool EventSelectionSet::OpenEventFilesForThreads(const std::vector<pid_t>& threads) {
-  return OpenEventFiles(threads, {-1});
+bool EventSelectionSet::OpenEventFilesForCpus(const std::vector<int>& cpus) {
+  return OpenEventFilesForThreadsOnCpus({-1}, cpus);
 }
 
-bool EventSelectionSet::OpenEventFilesForThreadsOnAllCpus(const std::vector<pid_t>& threads) {
-  std::vector<int> cpus = GetOnlineCpus();
-  if (cpus.empty()) {
-    return false;
+bool EventSelectionSet::OpenEventFilesForThreadsOnCpus(const std::vector<pid_t>& threads,
+                                                       std::vector<int> cpus) {
+  if (!cpus.empty()) {
+    if (!CheckIfCpusOnline(cpus)) {
+      return false;
+    }
+  } else {
+    cpus = GetOnlineCpus();
   }
   return OpenEventFiles(threads, cpus);
 }

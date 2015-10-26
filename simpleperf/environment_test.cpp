@@ -21,10 +21,11 @@
 
 #include "environment.h"
 
-TEST(environment, GetOnlineCpusFromString) {
-  ASSERT_EQ(GetOnlineCpusFromString(""), std::vector<int>());
-  ASSERT_EQ(GetOnlineCpusFromString("0-2"), std::vector<int>({0, 1, 2}));
-  ASSERT_EQ(GetOnlineCpusFromString("0,2-3"), std::vector<int>({0, 2, 3}));
+TEST(environment, GetCpusFromString) {
+  ASSERT_EQ(GetCpusFromString(""), std::vector<int>());
+  ASSERT_EQ(GetCpusFromString("0-2"), std::vector<int>({0, 1, 2}));
+  ASSERT_EQ(GetCpusFromString("0,2-3"), std::vector<int>({0, 2, 3}));
+  ASSERT_EQ(GetCpusFromString("1,0-3,3,4"), std::vector<int>({0, 1, 2, 3, 4}));
 }
 
 static bool FindKernelSymbol(const KernelSymbol& sym1, const KernelSymbol& sym2) {

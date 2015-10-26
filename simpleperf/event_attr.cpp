@@ -87,7 +87,8 @@ perf_event_attr CreateDefaultPerfEventAttr(const EventType& event_type) {
   // PerfCounter in event_fd.h.
   attr.read_format =
       PERF_FORMAT_TOTAL_TIME_ENABLED | PERF_FORMAT_TOTAL_TIME_RUNNING | PERF_FORMAT_ID;
-  attr.sample_type |= PERF_SAMPLE_IP | PERF_SAMPLE_TID | PERF_SAMPLE_TIME | PERF_SAMPLE_PERIOD;
+  attr.sample_type |=
+      PERF_SAMPLE_IP | PERF_SAMPLE_TID | PERF_SAMPLE_TIME | PERF_SAMPLE_PERIOD | PERF_SAMPLE_CPU;
 
   if (attr.type == PERF_TYPE_TRACEPOINT) {
     attr.sample_freq = 0;
