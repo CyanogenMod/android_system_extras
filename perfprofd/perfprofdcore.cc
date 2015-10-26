@@ -828,6 +828,15 @@ static void init(ConfigReader &config)
             config.getConfigFilePath());
   }
 
+  // Children of init inherit an artificially low OOM score -- this is not
+  // desirable for perfprofd (its OOM score should be on par with
+  // other user processes).
+  std::stringstream oomscore_path;
+  oomscore_path << "/proc/" << getpid() << "/oom_score_adj";
+  if (!android::base::WriteStringToFile("0", oomscore_path.str())) {
+    W_ALOGE("unable to write to %s", oomscore_path.str().c_str());
+  }
+
   set_seed(config);
   cleanup_destination_dir(config);
 
