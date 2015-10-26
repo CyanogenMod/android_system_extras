@@ -284,6 +284,7 @@ class ReportCommand : public Command {
   bool ParseOptions(const std::vector<std::string>& args);
   bool ReadEventAttrFromRecordFile();
   void ReadSampleTreeFromRecordFile();
+  void ProcessRecord(std::unique_ptr<Record> record);
   void ProcessSampleRecord(const SampleRecord& r);
   bool ReadFeaturesFromRecordFile();
   int CompareSampleEntry(const SampleEntry& sample1, const SampleEntry& sample2);
@@ -494,12 +495,12 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
 }
 
 bool ReportCommand::ReadEventAttrFromRecordFile() {
-  std::vector<const PerfFileFormat::FileAttr*> attrs = record_file_reader_->AttrSection();
+  const std::vector<PerfFileFormat::FileAttr>& attrs = record_file_reader_->AttrSection();
   if (attrs.size() != 1) {
     LOG(ERROR) << "record file contains " << attrs.size() << " attrs";
     return false;
   }
-  event_attr_ = attrs[0]->attr;
+  event_attr_ = attrs[0].attr;
   if (use_branch_address_ && (event_attr_.sample_type & PERF_SAMPLE_BRANCH_STACK) == 0) {
     LOG(ERROR) << record_filename_ << " is not recorded with branch stack sampling option.";
     return false;
@@ -508,13 +509,17 @@ bool ReportCommand::ReadEventAttrFromRecordFile() {
 }
 
 void ReportCommand::ReadSampleTreeFromRecordFile() {
-  std::vector<std::unique_ptr<Record>> records = record_file_reader_->DataSection();
   thread_tree_.AddThread(0, 0, "swapper");
-  for (auto& record : records) {
-    BuildThreadTree(*record, &thread_tree_);
-    if (record->header.type == PERF_RECORD_SAMPLE) {
-      ProcessSampleRecord(*static_cast<const SampleRecord*>(record.get()));
-    }
+  record_file_reader_->ReadDataSection([this](std::unique_ptr<Record> record) {
+    ProcessRecord(std::move(record));
+    return true;
+  });
+}
+
+void ReportCommand::ProcessRecord(std::unique_ptr<Record> record) {
+  BuildThreadTree(*record, &thread_tree_);
+  if (record->header.type == PERF_RECORD_SAMPLE) {
+    ProcessSampleRecord(*static_cast<const SampleRecord*>(record.get()));
   }
 }
 

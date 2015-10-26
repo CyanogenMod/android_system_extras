@@ -28,8 +28,11 @@ bool MapComparator::operator()(const MapEntry* map1, const MapEntry* map2) const
   if (map1->start_addr != map2->start_addr) {
     return map1->start_addr < map2->start_addr;
   }
-  if (map1->get_end_addr() != map2->get_end_addr()) {
-    return map1->get_end_addr() < map2->get_end_addr();
+  // Compare map->len instead of map->get_end_addr() here. Because we set map's len
+  // to std::numeric_limits<uint64_t>::max() in FindMapByAddr(), which makes
+  // map->get_end_addr() overflow.
+  if (map1->len != map2->len) {
+    return map1->len < map2->len;
   }
   if (map1->time != map2->time) {
     return map1->time < map2->time;
@@ -192,6 +195,16 @@ const Symbol* ThreadTree::FindSymbol(const MapEntry* map, uint64_t ip) {
     symbol = &unknown_symbol_;
   }
   return symbol;
+}
+
+void ThreadTree::Clear() {
+  thread_tree_.clear();
+  thread_comm_storage_.clear();
+  kernel_map_tree_.clear();
+  map_storage_.clear();
+  kernel_dso_.reset();
+  module_dso_tree_.clear();
+  user_dso_tree_.clear();
 }
 
 void BuildThreadTree(const Record& record, ThreadTree* thread_tree) {
