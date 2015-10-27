@@ -17,7 +17,7 @@
 import contextlib
 import fcntl
 import os
-import socket
+from socket import *  # pylint: disable=wildcard-import
 import struct
 import threading
 import time
@@ -60,27 +60,27 @@ def TcpAcceptAndReceive(listening_sock, buffer_size=DEFAULT_BUFFER_SIZE):
     _ = connection.recv(buffer_size)
 
 
-def ExchangeMessage(addr_family, ip_addr, tcp_port,
-                    message=DEFAULT_TEST_MESSAGE):
+def ExchangeMessage(addr_family, ip_addr):
   """Creates a listening socket, accepts a connection and sends data to it.
 
   Args:
     addr_family: The address family (e.g. AF_INET6).
     ip_addr: The IP address (IPv4 or IPv6 depending on the addr_family).
     tcp_port: The TCP port to listen on.
-    message: The message to send on the socket.
   """
-  test_addr = (ip_addr, tcp_port)
+  # Bind to a random port and connect to it.
+  test_addr = (ip_addr, 0)
   with contextlib.closing(
-      socket.socket(addr_family, socket.SOCK_STREAM)) as listening_socket:
+      socket(addr_family, SOCK_STREAM)) as listening_socket:
     listening_socket.bind(test_addr)
+    test_addr = listening_socket.getsockname()
     listening_socket.listen(1)
     with RunInBackground(threading.Thread(target=TcpAcceptAndReceive,
                                           args=(listening_socket,))):
       with contextlib.closing(
-          socket.socket(addr_family, socket.SOCK_STREAM)) as client_socket:
+          socket(addr_family, SOCK_STREAM)) as client_socket:
         client_socket.connect(test_addr)
-        client_socket.send(message)
+        client_socket.send(DEFAULT_TEST_MESSAGE)
 
 
 def KillAddrIoctl(addr_family):
