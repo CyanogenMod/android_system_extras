@@ -475,6 +475,10 @@ class IPRoute(object):
     nlattr = self._NlAttrU32(FRA_FWMARK, fwmark)
     return self._Rule(version, is_add, RTN_UNICAST, table, nlattr, priority)
 
+  def IifRule(self, version, is_add, iif, table, priority):
+    nlattr = self._NlAttrInterfaceName(FRA_IIFNAME, iif)
+    return self._Rule(version, is_add, RTN_UNICAST, table, nlattr, priority)
+
   def OifRule(self, version, is_add, oif, table, priority):
     nlattr = self._NlAttrInterfaceName(FRA_OIFNAME, oif)
     return self._Rule(version, is_add, RTN_UNICAST, table, nlattr, priority)
