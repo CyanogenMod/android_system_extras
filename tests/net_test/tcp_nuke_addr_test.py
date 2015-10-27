@@ -25,10 +25,14 @@ import threading
 import time
 import unittest
 
+import csocket
+import cstruct
 import net_test
 
-IPV4_LOOPBACK_ADDR = '127.0.0.1'
-IPV6_LOOPBACK_ADDR = '::1'
+IPV4_LOOPBACK_ADDR = "127.0.0.1"
+IPV6_LOOPBACK_ADDR = "::1"
+LOOPBACK_DEV = "lo"
+LOOPBACK_IFINDEX = 1
 
 SIOCKILLADDR = 0x8939
 
@@ -36,9 +40,12 @@ DEFAULT_TCP_PORT = 8001
 DEFAULT_BUFFER_SIZE = 20
 DEFAULT_TEST_MESSAGE = "TCP NUKE ADDR TEST"
 DEFAULT_TEST_RUNS = 100
-HASH_TEST_RUNS = 8000
+HASH_TEST_RUNS = 4000
 HASH_TEST_NOFILE = 16384
 
+
+Ifreq = cstruct.Struct("Ifreq", "=16s16s", "name data")
+In6Ifreq = cstruct.Struct("In6Ifreq", "=16sIi", "addr prefixlen ifindex")
 
 @contextlib.contextmanager
 def RunInBackground(thread):
@@ -99,11 +106,12 @@ def KillAddrIoctl(addr_family):
     ValueError: If the address family is invalid for the ioctl.
   """
   if addr_family == AF_INET6:
-    ifreq = struct.pack('BBBBBBBBBBBBBBBBIi',
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-                        128, 1)
+    addr = inet_pton(AF_INET6, IPV6_LOOPBACK_ADDR)
+    ifreq = In6Ifreq((addr, 128, LOOPBACK_IFINDEX)).Pack()
   elif addr_family == AF_INET:
-    raise NotImplementedError('Support for IPv4 not implemented yet.')
+    addr = inet_pton(AF_INET, IPV4_LOOPBACK_ADDR)
+    sockaddr = csocket.SockaddrIn((AF_INET, 0, addr)).Pack()
+    ifreq = Ifreq((LOOPBACK_DEV, sockaddr)).Pack()
   else:
     raise ValueError('Address family %r not supported.' % addr_family)
   datagram_socket = socket(addr_family, SOCK_DGRAM)
@@ -126,10 +134,10 @@ class ExceptionalReadThread(threading.Thread):
       self.exception = e
 
 
-def CreateSocketPair():
-  clientsock = socket(AF_INET6, SOCK_STREAM, 0)
-  listensock = socket(AF_INET6, SOCK_STREAM, 0)
-  listensock.bind((IPV6_LOOPBACK_ADDR, 0))
+def CreateSocketPair(family, addr):
+  clientsock = socket(family, SOCK_STREAM, 0)
+  listensock = socket(family, SOCK_STREAM, 0)
+  listensock.bind((addr, 0))
   addr = listensock.getsockname()
   listensock.listen(1)
   clientsock.connect(addr)
@@ -148,6 +156,8 @@ class TcpNukeAddrTest(net_test.NetworkTest):
     for i in xrange(DEFAULT_TEST_RUNS):
       ExchangeMessage(AF_INET6, IPV6_LOOPBACK_ADDR)
       KillAddrIoctl(AF_INET6)
+      ExchangeMessage(AF_INET, IPV4_LOOPBACK_ADDR)
+      KillAddrIoctl(AF_INET)
       # Test passes if kernel does not crash.
 
   def testClosesSockets(self):
@@ -156,7 +166,7 @@ class TcpNukeAddrTest(net_test.NetworkTest):
     threadpairs = []
 
     for i in xrange(DEFAULT_TEST_RUNS):
-      clientsock, acceptedsock = CreateSocketPair()
+      clientsock, acceptedsock = CreateSocketPair(AF_INET6, "::1")
       clientthread = ExceptionalReadThread(clientsock)
       clientthread.start()
       serverthread = ExceptionalReadThread(acceptedsock)
@@ -193,8 +203,10 @@ class TcpNukeAddrHashTest(net_test.NetworkTest):
   def testClosesAllSockets(self):
     socketpairs = []
     for i in xrange(HASH_TEST_RUNS):
-      socketpairs.append(CreateSocketPair())
+      socketpairs.append(CreateSocketPair(AF_INET, IPV4_LOOPBACK_ADDR))
+      socketpairs.append(CreateSocketPair(AF_INET6, IPV6_LOOPBACK_ADDR))
 
+    KillAddrIoctl(AF_INET)
     KillAddrIoctl(AF_INET6)
 
     for socketpair in socketpairs:
