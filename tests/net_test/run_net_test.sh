@@ -18,8 +18,17 @@ OPTIONS="$OPTIONS DEVTMPFS DEVTMPFS_MOUNT"
 # These two break the flo kernel due to differences in -Werror on recent GCC.
 DISABLE_OPTIONS=" CONFIG_REISERFS_FS CONFIG_ANDROID_PMEM"
 
-# How many tap interfaces to create.
-NUMTAPINTERFACES=2
+# How many TAP interfaces to create to provide the VM with real network access
+# via the host. This requires privileges (e.g., root access) on the host.
+#
+# This is not needed to run the tests, but can be used, for example, to allow
+# the VM to update system packages, or to write tests that need access to a
+# real network. The VM does not set up networking by default, but it contains a
+# DHCP client and has the ability to use IPv6 autoconfiguration. This script
+# does not perform any host-level setup beyond configuring tap interfaces;
+# configuring IPv4 NAT and/or IPv6 router advertisements or ND proxying must
+# be done separately.
+NUMTAPINTERFACES=0
 
 # The root filesystem disk image we'll use.
 ROOTFS=net_test.rootfs.20150203
@@ -49,26 +58,28 @@ fi
 echo "Using $ROOTFS"
 cd -
 
-# Create NUMTAPINTERFACES tap interfaces on the host, and prepare UML command
-# line params to use them. The interfaces are called <user>TAP0, <user>TAP1,
-# ..., on the host, and eth0, eth1, ..., in the VM.
-user=${USER:0:10}
-tapinterfaces=
-netconfig=
-for id in $(seq 0 $(( NUMTAPINTERFACES - 1 )) ); do
-  tap=${user}TAP$id
-  tapinterfaces="$tapinterfaces $tap"
-  mac=$(printf fe:fd:00:00:00:%02x $id)
-  netconfig="$netconfig eth$id=tuntap,$tap,$mac"
-done
+# If network access was requested, create NUMTAPINTERFACES tap interfaces on
+# the host, and prepare UML command line params to use them. The interfaces are
+# called <user>TAP0, <user>TAP1, on the host, and eth0, eth1, ..., in the VM.
+if (( $NUMTAPINTERFACES > 0 )); then
+  user=${USER:0:10}
+  tapinterfaces=
+  netconfig=
+  for id in $(seq 0 $(( NUMTAPINTERFACES - 1 )) ); do
+    tap=${user}TAP$id
+    tapinterfaces="$tapinterfaces $tap"
+    mac=$(printf fe:fd:00:00:00:%02x $id)
+    netconfig="$netconfig eth$id=tuntap,$tap,$mac"
+  done
 
-for tap in $tapinterfaces; do
-  if ! ip link list $tap > /dev/null; then
-    echo "Creating tap interface $tap" >&2
-    sudo tunctl -u $USER -t $tap
-    sudo ip link set $tap up
-  fi
-done
+  for tap in $tapinterfaces; do
+    if ! ip link list $tap > /dev/null; then
+      echo "Creating tap interface $tap" >&2
+      sudo tunctl -u $USER -t $tap
+      sudo ip link set $tap up
+    fi
+  done
+fi
 
 if [ -z "$KERNEL_BINARY" ]; then
   # Exporting ARCH=um SUBARCH=x86_64 doesn't seem to work, as it "sometimes"
