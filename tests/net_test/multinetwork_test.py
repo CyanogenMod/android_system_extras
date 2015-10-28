@@ -595,6 +595,7 @@ class RATest(multinetwork_base.MultiNetworkBaseTest):
 
     try:
       CheckIPv6Connectivity(True)
+      self.SetIPv6SysctlOnAllIfaces("accept_ra", 1)
       self.SetSysctl("/proc/sys/net/ipv6/conf/all/forwarding", 1)
       CheckIPv6Connectivity(False)
     finally:
