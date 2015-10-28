@@ -220,6 +220,8 @@ class MultiNetworkBaseTest(net_test.NetworkTest):
     net_test.SetInterfaceHWAddr(iface, cls.MyMacAddress(netid))
     # Disable DAD so we don't have to wait for it.
     cls.SetSysctl("/proc/sys/net/ipv6/conf/%s/accept_dad" % iface, 0)
+    # Set accept_ra to 2, because that's what we use.
+    cls.SetSysctl("/proc/sys/net/ipv6/conf/%s/accept_ra" % iface, 2)
     net_test.SetInterfaceUp(iface)
     net_test.SetNonBlocking(f)
     return f
@@ -324,6 +326,13 @@ class MultiNetworkBaseTest(net_test.NetworkTest):
     if sysctl not in cls.saved_sysctls:
       cls.saved_sysctls[sysctl] = cls.GetSysctl(sysctl)
     open(sysctl, "w").write(str(value) + "\n")
+
+  @classmethod
+  def SetIPv6SysctlOnAllIfaces(cls, sysctl, value):
+    for netid in cls.tuns:
+      iface = cls.GetInterfaceName(netid)
+      name = "/proc/sys/net/ipv6/conf/%s/%s" % (iface, sysctl)
+      cls.SetSysctl(name, value)
 
   @classmethod
   def _RestoreSysctls(cls):
