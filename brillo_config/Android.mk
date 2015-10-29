@@ -46,13 +46,16 @@ $(error Invalid BRILLO_PRODUCT_VERSION "$(BRILLO_PRODUCT_VERSION)", must be \
 endif
 
 # Append BUILD_NUMBER if it is a number or a build timestamp otherwise.
-# Use DATE to generate the timestamp based on BUILD_DATETIME.
+# We don't want to use BUILD_DATETIME_FROM_FILE as this timestamp must be
+# different at every build.
+# If you don' want this to change at every build, you can define BUILD_NUMBER in
+# your product makefile and increase it manually.
 $(LOCAL_BUILT_MODULE):
 	$(hide)mkdir -p $(dir $@)
 ifeq ($(shell echo $(BUILD_NUMBER) | grep -E '[^0-9]'),)
 	echo $(BRILLO_PRODUCT_VERSION).$(BUILD_NUMBER) > $@
 else
-	echo $(BRILLO_PRODUCT_VERSION).$(BUILD_DATETIME_FROM_FILE) > $@
+	echo $(BRILLO_PRODUCT_VERSION).$(BUILD_DATETIME) > $@
 endif
 
 endif
