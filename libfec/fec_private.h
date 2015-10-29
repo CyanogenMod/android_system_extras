@@ -19,7 +19,6 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include <list>
 #include <memory>
 #include <new>
 #include <pthread.h>
@@ -28,7 +27,6 @@
 #include <string.h>
 #include <sys/syscall.h>
 #include <unistd.h>
-#include <unordered_map>
 #include <vector>
 
 #include <utils/Compat.h>
@@ -103,8 +101,6 @@ struct fec_handle {
     int flags; /* additional flags passed to fec_open */
     int mode; /* mode for open(2) */
     pthread_mutex_t mutex;
-    std::list<verity_block_info> lru;
-    std::unordered_map<uint64_t, std::list<verity_block_info>::iterator> cache;
     uint64_t errors;
     uint64_t data_size;
     uint64_t pos;
@@ -131,8 +127,8 @@ extern uint64_t verity_get_size(uint64_t file_size, uint32_t *verity_levels,
 
 extern int verity_parse_header(fec_handle *f, uint64_t offset);
 
-extern bool verity_check_block(fec_handle *f, uint64_t index,
-        const uint8_t *expected, const uint8_t *block);
+extern bool verity_check_block(fec_handle *f, const uint8_t *expected,
+        const uint8_t *block);
 
 /* helper macros */
 #ifndef unlikely
