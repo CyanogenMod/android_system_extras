@@ -136,30 +136,12 @@ static inline int verity_hash(fec_handle *f, const uint8_t *block,
 }
 
 /* computes a verity hash for FEC_BLOCKSIZE bytes from buffer `block' and
-   compres it to the expected value in `expected'; if `index' has a value
-   different from `VERITY_NO_CACHE', uses `f->cache' to cache the results */
-bool verity_check_block(fec_handle *f, uint64_t index, const uint8_t *expected,
+   compares it to the expected value in `expected' */
+bool verity_check_block(fec_handle *f, const uint8_t *expected,
         const uint8_t *block)
 {
     check(f);
-
-    if (index != VERITY_NO_CACHE) {
-        pthread_mutex_lock(&f->mutex);
-        auto cached = f->cache.find(index);
-
-        if (cached != f->cache.end()) {
-            verity_block_info vbi = *(cached->second);
-
-            f->lru.erase(cached->second);
-            f->lru.push_front(vbi);
-            f->cache[index] = f->lru.begin();
-
-            pthread_mutex_unlock(&f->mutex);
-            return vbi.valid;
-        }
-
-        pthread_mutex_unlock(&f->mutex);
-    }
+    check(block);
 
     uint8_t hash[SHA256_DIGEST_LENGTH];
 
@@ -169,26 +151,7 @@ bool verity_check_block(fec_handle *f, uint64_t index, const uint8_t *expected,
     }
 
     check(expected);
-    bool valid = !memcmp(expected, hash, SHA256_DIGEST_LENGTH);
-
-    if (index != VERITY_NO_CACHE) {
-        pthread_mutex_lock(&f->mutex);
-
-        verity_block_info vbi;
-        vbi.index = index;
-        vbi.valid = valid;
-
-        if (f->lru.size() >= VERITY_CACHE_BLOCKS) {
-            f->cache.erase(f->lru.rbegin()->index);
-            f->lru.pop_back();
-        }
-
-        f->lru.push_front(vbi);
-        f->cache[index] = f->lru.begin();
-        pthread_mutex_unlock(&f->mutex);
-    }
-
-    return valid;
+    return !memcmp(expected, hash, SHA256_DIGEST_LENGTH);
 }
 
 /* reads a verity hash and the corresponding data block using error correction,
@@ -244,10 +207,10 @@ static int verify_tree(fec_handle *f, const uint8_t *root)
 
     /* validate the root hash */
     if (!raw_pread(f, data, FEC_BLOCKSIZE, hash_offset) ||
-            !verity_check_block(f, VERITY_NO_CACHE, root, data)) {
+            !verity_check_block(f, root, data)) {
         /* try to correct */
         if (!ecc_read_hashes(f, 0, NULL, hash_offset, data) ||
-                !verity_check_block(f, VERITY_NO_CACHE, root, data)) {
+                !verity_check_block(f, root, data)) {
             error("root hash invalid");
             return -1;
         } else if (f->mode & O_RDWR &&
@@ -312,12 +275,12 @@ static int verify_tree(fec_handle *f, const uint8_t *root)
                 return -1;
             }
 
-            if (!verity_check_block(f, VERITY_NO_CACHE, hash, data)) {
+            if (!verity_check_block(f, hash, data)) {
                 /* try to correct */
                 if (!ecc_read_hashes(f,
                         hash_offset + j * SHA256_DIGEST_LENGTH, hash,
                         data_offset + j * FEC_BLOCKSIZE, data) ||
-                    !verity_check_block(f, VERITY_NO_CACHE, hash, data)) {
+                    !verity_check_block(f, hash, data)) {
                     error("invalid hash tree: hash_offset %" PRIu64 ", "
                         "data_offset %" PRIu64 ", block %u",
                         hash_offset, data_offset, j);

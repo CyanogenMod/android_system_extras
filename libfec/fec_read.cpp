@@ -77,7 +77,7 @@ static inline bool is_erasure(fec_handle *f, uint64_t offset,
 
     uint64_t n = offset / FEC_BLOCKSIZE;
 
-    return !verity_check_block(f, n, &f->verity.hash[n * SHA256_DIGEST_LENGTH],
+    return !verity_check_block(f, &f->verity.hash[n * SHA256_DIGEST_LENGTH],
                 data);
 }
 
@@ -327,7 +327,7 @@ static ssize_t verity_read(fec_handle *f, uint8_t *dest, size_t count,
             return -1;
         }
 
-        if (likely(verity_check_block(f, curr, hash, data))) {
+        if (likely(verity_check_block(f, hash, data))) {
             goto valid;
         }
 
@@ -352,14 +352,14 @@ static ssize_t verity_read(fec_handle *f, uint8_t *dest, size_t count,
            erasure locations is slower */
         if (__ecc_read(f, rs.get(), data, curr_offset, false, ecc_data.get(),
                 errors) == FEC_BLOCKSIZE &&
-            verity_check_block(f, VERITY_NO_CACHE, hash, data)) {
+            verity_check_block(f, hash, data)) {
             goto corrected;
         }
 
         /* try to correct with erasures */
         if (__ecc_read(f, rs.get(), data, curr_offset, true, ecc_data.get(),
                 errors) == FEC_BLOCKSIZE &&
-            verity_check_block(f, VERITY_NO_CACHE, hash, data)) {
+            verity_check_block(f, hash, data)) {
             goto corrected;
         }
 
