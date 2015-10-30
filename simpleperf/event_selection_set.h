@@ -68,9 +68,8 @@ class EventSelectionSet {
   bool EnableDwarfCallChainSampling(uint32_t dump_stack_size);
   void SetInherit(bool enable);
 
-  bool OpenEventFilesForAllCpus();
-  bool OpenEventFilesForThreads(const std::vector<pid_t>& threads);
-  bool OpenEventFilesForThreadsOnAllCpus(const std::vector<pid_t>& threads);
+  bool OpenEventFilesForCpus(const std::vector<int>& cpus);
+  bool OpenEventFilesForThreadsOnCpus(const std::vector<pid_t>& threads, std::vector<int> cpus);
   bool EnableEvents();
   bool ReadCounters(std::vector<CountersInfo>* counters);
   void PreparePollForEventFiles(std::vector<pollfd>* pollfds);
