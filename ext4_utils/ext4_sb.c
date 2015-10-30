@@ -25,9 +25,6 @@ int ext4_parse_sb(struct ext4_super_block *sb, struct fs_info *info)
         if (sb->s_magic != EXT4_SUPER_MAGIC)
                 return -EINVAL;
 
-        if ((sb->s_state & EXT4_VALID_FS) != EXT4_VALID_FS)
-                return -EINVAL;
-
 	info->block_size = 1024 << sb->s_log_block_size;
 	info->blocks_per_group = sb->s_blocks_per_group;
 	info->inodes_per_group = sb->s_inodes_per_group;
