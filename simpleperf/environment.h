@@ -27,6 +27,7 @@
 #include "build_id.h"
 
 std::vector<int> GetOnlineCpus();
+std::vector<int> GetCpusFromString(const std::string& s);
 
 constexpr char DEFAULT_KERNEL_MMAP_NAME[] = "[kernel.kallsyms]_text";
 
@@ -76,8 +77,6 @@ bool GetValidThreadsFromThreadString(const std::string& tid_str, std::set<pid_t>
 bool GetExecPath(std::string* exec_path);
 
 // Expose the following functions for unit tests.
-std::vector<int> GetOnlineCpusFromString(const std::string& s);
-
 struct KernelSymbol {
   uint64_t addr;
   char type;
