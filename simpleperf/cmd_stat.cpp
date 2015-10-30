@@ -55,6 +55,9 @@ class StatCommand : public Command {
                 "Usage: simpleperf stat [options] [command [command-args]]\n"
                 "    Gather performance counter information of running [command].\n"
                 "    -a           Collect system-wide information.\n"
+                "    --cpu cpu_item1,cpu_item2,...\n"
+                "                 Collect information only on the selected cpus. cpu_item can\n"
+                "                 be a cpu number like 1, or a cpu range like 0-3.\n"
                 "    -e event1[:modifier1],event2[:modifier2],...\n"
                 "                 Select the event list to count. Use `simpleperf list` to find\n"
                 "                 all possible event names. Modifiers can be added to define\n"
@@ -89,6 +92,7 @@ class StatCommand : public Command {
   bool system_wide_collection_;
   bool child_inherit_;
   std::vector<pid_t> monitored_threads_;
+  std::vector<int> cpus_;
   std::vector<EventTypeAndModifier> measured_event_types_;
   EventSelectionSet event_selection_set_;
 
@@ -130,11 +134,11 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
 
   // 3. Open perf_event_files.
   if (system_wide_collection_) {
-    if (!event_selection_set_.OpenEventFilesForAllCpus()) {
+    if (!event_selection_set_.OpenEventFilesForCpus(cpus_)) {
       return false;
     }
   } else {
-    if (!event_selection_set_.OpenEventFilesForThreads(monitored_threads_)) {
+    if (!event_selection_set_.OpenEventFilesForThreadsOnCpus(monitored_threads_, cpus_)) {
       return false;
     }
   }
@@ -174,6 +178,11 @@ bool StatCommand::ParseOptions(const std::vector<std::string>& args,
   for (i = 0; i < args.size() && args[i].size() > 0 && args[i][0] == '-'; ++i) {
     if (args[i] == "-a") {
       system_wide_collection_ = true;
+    } else if (args[i] == "--cpu") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      cpus_ = GetCpusFromString(args[i]);
     } else if (args[i] == "-e") {
       if (!NextArgumentOrError(args, &i)) {
         return false;

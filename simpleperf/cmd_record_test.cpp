@@ -167,3 +167,8 @@ TEST(record_cmd, more_than_one_event_types) {
   ASSERT_TRUE(RecordCmd()->Run({"-e", "cpu-cycles,cpu-clock", "sleep", "1"}));
   ASSERT_TRUE(RecordCmd()->Run({"-e", "cpu-cycles", "-e", "cpu-clock", "sleep", "1"}));
 }
+
+TEST(record_cmd, cpu_option) {
+  ASSERT_TRUE(RecordCmd()->Run({"--cpu", "0", "sleep", "1"}));
+  ASSERT_TRUE(RecordCmd()->Run({"--cpu", "0", "-a", "sleep", "1"}));
+}
