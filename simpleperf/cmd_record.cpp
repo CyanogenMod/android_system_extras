@@ -68,6 +68,9 @@ class RecordCommand : public Command {
             "    --call-graph fp | dwarf[,<dump_stack_size>]\n"
             "                 Enable call graph recording. Use frame pointer or dwarf as the\n"
             "                 method to parse call graph in stack. Default is dwarf,8192.\n"
+            "    --cpu cpu_item1,cpu_item2,...\n"
+            "                 Collect samples only on the selected cpus. cpu_item can be cpu\n"
+            "                 number like 1, or cpu range like 0-3.\n"
             "    -e event1[:modifier1],event2[:modifier2],...\n"
             "                 Select the event list to sample. Use `simpleperf list` to find\n"
             "                 all possible event names. Modifiers can be added to define\n"
@@ -154,6 +157,7 @@ class RecordCommand : public Command {
   bool post_unwind_;
   bool child_inherit_;
   std::vector<pid_t> monitored_threads_;
+  std::vector<int> cpus_;
   std::vector<EventTypeAndModifier> measured_event_types_;
   EventSelectionSet event_selection_set_;
 
@@ -207,11 +211,11 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   // 3. Open perf_event_files, create memory mapped buffers for perf_event_files, add prepare poll
   //    for perf_event_files.
   if (system_wide_collection_) {
-    if (!event_selection_set_.OpenEventFilesForAllCpus()) {
+    if (!event_selection_set_.OpenEventFilesForCpus(cpus_)) {
       return false;
     }
   } else {
-    if (!event_selection_set_.OpenEventFilesForThreadsOnAllCpus(monitored_threads_)) {
+    if (!event_selection_set_.OpenEventFilesForThreadsOnCpus(monitored_threads_, cpus_)) {
       return false;
     }
   }
@@ -321,6 +325,11 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         LOG(ERROR) << "unexpected argument for --call-graph option: " << args[i];
         return false;
       }
+    } else if (args[i] == "--cpu") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      cpus_ = GetCpusFromString(args[i]);
     } else if (args[i] == "-e") {
       if (!NextArgumentOrError(args, &i)) {
         return false;
