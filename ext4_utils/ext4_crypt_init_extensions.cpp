@@ -36,7 +36,7 @@ static std::string vold_command(std::string const& command)
     }
 
     if (sock < 0) {
-        KLOG_INFO(TAG, "Cannot open vold, failing command\n");
+        KLOG_INFO(TAG, "Cannot open vold, failing command (%s)\n", strerror(errno));
         return "";
     }
 
@@ -54,7 +54,7 @@ static std::string vold_command(std::string const& command)
     // framework is down, so this is (mostly) OK.
     std::string actual_command = arbitrary_sequence_number + " " + command;
     if (write(sock, actual_command.c_str(), actual_command.size() + 1) < 0) {
-        KLOG_ERROR(TAG, "Cannot write command\n");
+        KLOG_ERROR(TAG, "Cannot write command (%s)\n", strerror(errno));
         return "";
     }
 
@@ -62,7 +62,7 @@ static std::string vold_command(std::string const& command)
 
     int rc = TEMP_FAILURE_RETRY(poll(&poll_sock, 1, vold_command_timeout_ms));
     if (rc < 0) {
-        KLOG_ERROR(TAG, "Error in poll %s\n", strerror(errno));
+        KLOG_ERROR(TAG, "Error in poll (%s)\n", strerror(errno));
         return "";
     }
 
@@ -103,7 +103,7 @@ int e4crypt_create_device_key(const char* dir,
 
     // Make sure folder exists. Use make_dir to set selinux permissions.
     if (ensure_dir_exists(UnencryptedProperties::GetPath(dir).c_str())) {
-        KLOG_ERROR(TAG, "Failed to create %s with error %s\n",
+        KLOG_ERROR(TAG, "Failed to create %s (%s)\n",
                    UnencryptedProperties::GetPath(dir).c_str(),
                    strerror(errno));
         return -1;
@@ -123,7 +123,7 @@ int e4crypt_install_keyring()
                                           KEY_SPEC_SESSION_KEYRING);
 
     if (device_keyring == -1) {
-        KLOG_ERROR(TAG, "Failed to create keyring\n");
+        KLOG_ERROR(TAG, "Failed to create keyring (%s)\n", strerror(errno));
         return -1;
     }
 
@@ -143,19 +143,40 @@ int e4crypt_set_directory_policy(const char* dir)
         return 0;
     }
 
+    // Don't encrypt lost+found - ext4 doesn't like it
+    if (!strcmp(dir, "/data/lost+found")) {
+        return 0;
+    }
+
+    // ext4enc:TODO exclude /data/user with a horrible special case.
+    if (!strcmp(dir, "/data/user")) {
+        return 0;
+    }
+
     UnencryptedProperties props("/data");
     std::string policy = props.Get<std::string>(properties::ref);
     if (policy.empty()) {
+        // ext4enc:TODO why is this OK?
         return 0;
     }
 
     KLOG_INFO(TAG, "Setting policy on %s\n", dir);
     int result = do_policy_set(dir, policy.c_str(), policy.size());
     if (result) {
-        KLOG_ERROR(TAG, "Setting %s policy on %s failed!\n",
-                   policy.c_str(), dir);
+        KLOG_ERROR(TAG, "Setting %02x%02x%02x%02x policy on %s failed!\n",
+                   policy[0], policy[1], policy[2], policy[3], dir);
         return -1;
     }
 
+    return 0;
+}
+
+int e4crypt_set_user_crypto_policies(const char* dir)
+{
+    auto command = std::string() + "cryptfs setusercryptopolicies " + dir;
+    auto result = vold_command(command);
+    // ext4enc:TODO proper error handling
+    KLOG_INFO(TAG, "setusercryptopolicies returned with result %s\n",
+              result.c_str());
     return 0;
 }
