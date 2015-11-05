@@ -343,7 +343,6 @@ int multithread_bandwidth(int argc, char** argv) {
 
     thread_arg_t args[num_threads];
 
-    int i = 0;
     for (int i = 0; i < num_threads; i++) {
         args[i].core = -1;
         args[i].bench = createBandwidthBenchmarkObject(values);

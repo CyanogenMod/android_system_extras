@@ -63,7 +63,6 @@ static void test_mad() {
 
     startTime();
 
-    float total = 0;
     // Do ~1 billion ops
     for (int ct=0; ct < (1000 * (1000 / 20)); ct++) {
         for (int i=0; i < 1000; i++) {
@@ -99,7 +98,6 @@ static void test_fma() {
 
     startTime();
 
-    float total = 0;
     // Do ~1 billion ops
     for (int ct=0; ct < (1000 * (1000 / 80)); ct++) {
         for (int i=0; i < 1000; i++) {
@@ -123,7 +121,7 @@ static void test_fma() {
 }
 #endif
 
-int fp_test(int argc, char** argv) {
+int fp_test(int, char**) {
     test_mad();
 
 #ifdef __ARM_NEON__
@@ -132,7 +130,3 @@ int fp_test(int argc, char** argv) {
 
     return 0;
 }
-
-
-
-
