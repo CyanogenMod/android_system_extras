@@ -272,8 +272,8 @@ public:
 
 protected:
     // Copy using vld1/vst1 instructions.
-    void bench(size_t num_loops) {
 #if defined(__ARM_NEON__)
+    void bench(size_t num_loops) {
         asm volatile(
             "stmfd sp!, {r0,r1,r2,r3,r4}\n"
 
@@ -300,6 +300,8 @@ protected:
 
             "ldmfd sp!, {r0,r1,r2,r3,r4}\n"
         :: "r" (_src), "r" (_dst), "r" (_size), "r" (num_loops) : "r0", "r1", "r2", "r3");
+#else
+    void bench(size_t) {
 #endif
     }
 };
@@ -315,8 +317,8 @@ public:
 
 protected:
     // Copy using vldr/vstr instructions.
-    void bench(size_t num_loops) {
 #if defined(__ARM_NEON__)
+    void bench(size_t num_loops) {
         asm volatile(
             "stmfd sp!, {r0,r1,r2,r3,r4}\n"
 
@@ -357,6 +359,8 @@ protected:
 
             "ldmfd sp!, {r0,r1,r2,r3,r4}\n"
         :: "r" (_src), "r" (_dst), "r" (_size), "r" (num_loops) : "r0", "r1", "r2", "r3");
+#else
+    void bench(size_t) {
 #endif
     }
 };
@@ -372,8 +376,8 @@ public:
 
 protected:
     // Copy using vldmia/vstmia instructions.
-    void bench(size_t num_loops) {
 #if defined(__ARM_NEON__)
+    void bench(size_t num_loops) {
         asm volatile(
             "stmfd sp!, {r0,r1,r2,r3,r4}\n"
 
@@ -398,6 +402,8 @@ protected:
 
             "ldmfd sp!, {r0,r1,r2,r3,r4}\n"
         :: "r" (_src), "r" (_dst), "r" (_size), "r" (num_loops) : "r0", "r1", "r2", "r3");
+#else
+    void bench(size_t) {
 #endif
     }
 };
@@ -585,8 +591,8 @@ public:
 
 protected:
     // Write a given value using vst.
-    void bench(size_t num_loops) {
 #if defined(__ARM_NEON__)
+    void bench(size_t num_loops) {
         asm volatile(
             "stmfd sp!, {r0,r1,r2,r3,r4}\n"
 
@@ -615,6 +621,8 @@ protected:
 
             "ldmfd sp!, {r0,r1,r2,r3,r4}\n"
         :: "r" (_buffer), "r" (_size), "r" (num_loops) : "r0", "r1", "r2");
+#else
+    void bench(size_t) {
 #endif
     }
 };
@@ -630,8 +638,8 @@ public:
 
 protected:
     // Write a given value using vst.
-    void bench(size_t num_loops) {
 #if defined(__ARM_NEON__)
+    void bench(size_t num_loops) {
         asm volatile(
             "stmfd sp!, {r0,r1,r2,r3,r4}\n"
 
@@ -664,6 +672,8 @@ protected:
 
             "ldmfd sp!, {r0,r1,r2,r3,r4}\n"
         :: "r" (_buffer), "r" (_size), "r" (num_loops) : "r0", "r1", "r2");
+#else
+    void bench(size_t) {
 #endif
     }
 };
@@ -679,8 +689,8 @@ public:
 
 protected:
     // Write a given value using vstmia.
-    void bench(size_t num_loops) {
 #if defined(__ARM_NEON__)
+    void bench(size_t num_loops) {
         asm volatile(
             "stmfd sp!, {r0,r1,r2,r3,r4}\n"
 
@@ -709,6 +719,8 @@ protected:
 
             "ldmfd sp!, {r0,r1,r2,r3,r4}\n"
         :: "r" (_buffer), "r" (_size), "r" (num_loops) : "r0", "r1", "r2");
+#else
+    void bench(size_t) {
 #endif
     }
 };
@@ -811,8 +823,8 @@ public:
 
 protected:
     // Write a given value using vst.
-    void bench(size_t num_loops) {
 #if defined(__ARM_NEON__)
+    void bench(size_t num_loops) {
         asm volatile(
             "stmfd sp!, {r0,r1,r2,r3}\n"
 
@@ -834,6 +846,8 @@ protected:
 
             "ldmfd sp!, {r0,r1,r2,r3}\n"
         :: "r" (_buffer), "r" (_size), "r" (num_loops) : "r0", "r1", "r2");
+#else
+    void bench(size_t) {
 #endif
     }
 };
@@ -849,8 +863,8 @@ public:
 
 protected:
     // Write a given value using vst.
-    void bench(size_t num_loops) {
 #if defined(__ARM_NEON__)
+    void bench(size_t num_loops) {
         asm volatile(
             "stmfd sp!, {r0,r1,r2,r3}\n"
 
@@ -876,6 +890,8 @@ protected:
 
             "ldmfd sp!, {r0,r1,r2,r3}\n"
         :: "r" (_buffer), "r" (_size), "r" (num_loops) : "r0", "r1", "r2");
+#else
+    void bench(size_t) {
 #endif
     }
 };
@@ -892,8 +908,8 @@ public:
 
 protected:
     // Write a given value using vstmia.
-    void bench(size_t num_loops) {
 #if defined(__ARM_NEON__)
+    void bench(size_t num_loops) {
         asm volatile(
             "stmfd sp!, {r0,r1,r2,r3}\n"
 
@@ -915,6 +931,8 @@ protected:
 
             "ldmfd sp!, {r0,r1,r2,r3}\n"
         :: "r" (_buffer), "r" (_size), "r" (num_loops) : "r0", "r1", "r2");
+#else
+    void bench(size_t) {
 #endif
     }
 };
