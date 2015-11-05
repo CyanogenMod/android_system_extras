@@ -1,18 +1,24 @@
 # Copyright 2006 The Android Open Source Project
-ifeq ($(TARGET_ARCH),arm)
+ifneq ($(filter $(TARGET_ARCH),arm arm64),)
+
 LOCAL_PATH:= $(call my-dir)
+
 include $(CLEAR_VARS)
-LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
 
-LOCAL_SRC_FILES:= \
-		memtest.cpp.arm \
-		fptest.cpp \
-		thumb.cpp \
-		bandwidth.cpp \
+LOCAL_SRC_FILES := \
+    memtest.cpp \
+    fptest.cpp \
+    thumb.cpp \
+    bandwidth.cpp \
 
-LOCAL_MODULE:= memtest
-LOCAL_MODULE_TAGS := optional
-LOCAL_CFLAGS += -fomit-frame-pointer
+LOCAL_MODULE := memtest
+LOCAL_MODULE_TAGS := debug
+LOCAL_CFLAGS += \
+    -fomit-frame-pointer \
+    -Wall \
+    -Werror \
+
+LOCAL_MULTILIB := 32
 
 include $(BUILD_EXECUTABLE)
 endif
