@@ -24,9 +24,12 @@ LOCAL_MODULE_CLASS := ETC
 LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)/$(OSRELEASED_DIRECTORY)
 include $(BUILD_SYSTEM)/base_rules.mk
 
+# Attempt to populate the product id from a file in the product path.
+LOADED_BRILLO_PRODUCT_ID := $(call cfgtree-get-if-exists,brillo/product_id)
+
 # We don't really have a default value for the product id as the backend
 # interaction will not work if this is not set correctly.
-$(LOCAL_BUILT_MODULE): BRILLO_PRODUCT_ID ?= ""
+$(LOCAL_BUILT_MODULE): BRILLO_PRODUCT_ID ?= "$(LOADED_BRILLO_PRODUCT_ID)"
 $(LOCAL_BUILT_MODULE):
 	$(hide)mkdir -p $(dir $@)
 	echo $(BRILLO_PRODUCT_ID) > $@
