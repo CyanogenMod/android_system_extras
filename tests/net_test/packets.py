@@ -120,11 +120,12 @@ def ACK(version, srcaddr, dstaddr, packet, payload=""):
 def FIN(version, srcaddr, dstaddr, packet):
   ip = _GetIpLayer(version)
   original = packet.getlayer("TCP")
-  was_fin = (original.flags & TCP_FIN) != 0
+  was_syn_or_fin = (original.flags & (TCP_SYN | TCP_FIN)) != 0
+  ack_delta = was_syn_or_fin + len(original.payload)
   return ("TCP FIN",
           ip(src=srcaddr, dst=dstaddr) /
           scapy.TCP(sport=original.dport, dport=original.sport,
-                    ack=original.seq + was_fin, seq=original.ack,
+                    ack=original.seq + ack_delta, seq=original.ack,
                     flags=TCP_ACK | TCP_FIN, window=TCP_WINDOW))
 
 def GRE(version, srcaddr, dstaddr, proto, packet):
