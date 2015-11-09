@@ -86,11 +86,11 @@ class NetlinkSocket(object):
         return name
     return value
 
-  def _Decode(self, command, family, nla_type, nla_data):
+  def _Decode(self, command, msg, nla_type, nla_data):
     """No-op, nonspecific version of decode."""
     return nla_type, nla_data
 
-  def _ParseAttributes(self, command, family, data):
+  def _ParseAttributes(self, command, family, msg, data):
     """Parses and decodes netlink attributes.
 
     Takes a block of NLAttr data structures, decodes them using Decode, and
@@ -99,6 +99,7 @@ class NetlinkSocket(object):
     Args:
       command: An integer, the rtnetlink command being carried out.
       family: The address family.
+      msg: A Struct, the type of the data after the netlink header.
       data: A byte string containing a sequence of NLAttr data structures.
 
     Returns:
@@ -118,7 +119,7 @@ class NetlinkSocket(object):
       nla_data, data = data[:datalen], data[padded_len:]
 
       # If it's an attribute we know about, try to decode it.
-      nla_name, nla_data = self._Decode(command, family, nla.nla_type, nla_data)
+      nla_name, nla_data = self._Decode(command, msg, nla.nla_type, nla_data)
 
       # We only support unique attributes for now.
       if nla_name in attributes:
@@ -194,7 +195,7 @@ class NetlinkSocket(object):
     # Parse the attributes in the nlmsg.
     attrlen = nlmsghdr.length - len(nlmsghdr) - len(nlmsg)
     attributes = self._ParseAttributes(nlmsghdr.type, nlmsg.family,
-                                       data[:attrlen])
+                                       nlmsg, data[:attrlen])
     data = data[attrlen:]
     return (nlmsg, attributes), data
 
