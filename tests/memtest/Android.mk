@@ -20,5 +20,7 @@ LOCAL_CFLAGS += \
 
 LOCAL_MULTILIB := 32
 
+LOCAL_SANITIZE := never
+
 include $(BUILD_EXECUTABLE)
 endif
