@@ -25,7 +25,7 @@ from scapy import all as scapy
 import csocket
 import iproute
 import multinetwork_base
-import multinetwork_test
+import packets
 import net_test
 
 # Setsockopt values.
@@ -311,7 +311,7 @@ class NoNsFromOptimisticTest(MultiInterfaceSourceAddressSelectionTest):
     if net_test.LinuxVersion() >= (3, 18, 0):
       # Older versions will actually choose the optimistic address to
       # originate Neighbor Solications (RFC violation).
-      expected_ns = multinetwork_test.Packets.NS(
+      expected_ns = packets.NS(
           self.test_lladdr,
           onlink_dest,
           self.MyMacAddress(self.test_netid))[1]
