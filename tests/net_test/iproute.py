@@ -25,6 +25,7 @@ import struct
 import sys
 
 import cstruct
+import netlink
 
 
 ### Base netlink constants. See include/uapi/linux/netlink.h.
@@ -203,32 +204,14 @@ def CommandName(command):
     return "RTM_%d" % command
 
 
-def PaddedLength(length):
-  # TODO: This padding is probably overly simplistic.
-  return NLA_ALIGNTO * ((length / NLA_ALIGNTO) + (length % NLA_ALIGNTO != 0))
-
-
-class IPRoute(object):
+class IPRoute(netlink.NetlinkSocket):
   """Provides a tiny subset of iproute functionality."""
 
-  BUFSIZE = 65536
-  DEBUG = False
-  # List of netlink messages to print, e.g., [], ["NEIGH", "ROUTE"], or ["ALL"]
-  NL_DEBUG = []
+  FAMILY = NETLINK_ROUTE
 
   def _Debug(self, s):
     if self.DEBUG:
       print s
-
-  def _NlAttr(self, nla_type, data):
-    datalen = len(data)
-    # Pad the data if it's not a multiple of NLA_ALIGNTO bytes long.
-    padding = "\x00" * (PaddedLength(datalen) - datalen)
-    nla_len = datalen + len(NLAttr)
-    return NLAttr((nla_len, nla_type)).Pack() + data + padding
-
-  def _NlAttrU32(self, nla_type, value):
-    return self._NlAttr(nla_type, struct.pack("=I", value))
 
   def _NlAttrIPAddress(self, nla_type, family, address):
     return self._NlAttr(nla_type, socket.inet_pton(family, address))
@@ -237,14 +220,7 @@ class IPRoute(object):
     return self._NlAttr(nla_type, interface + "\x00")
 
   def _GetConstantName(self, value, prefix):
-    thismodule = sys.modules[__name__]
-    for name in dir(thismodule):
-      if (name.startswith(prefix) and
-          not name.startswith(prefix + "F_") and
-          name.isupper() and
-          getattr(thismodule, name) == value):
-        return name
-    return value
+    return super(IPRoute, self)._GetConstantName(__name__, value, prefix)
 
   def _Decode(self, command, family, nla_type, nla_data):
     """Decodes netlink attributes to Python types.
@@ -327,88 +303,15 @@ class IPRoute(object):
 
     return name, data
 
-  def _ParseAttributes(self, command, family, data):
-    """Parses and decodes netlink attributes.
-
-    Takes a block of NLAttr data structures, decodes them using Decode, and
-    returns the result in a dict keyed by attribute number.
-
-    Args:
-      command: An integer, the rtnetlink command being carried out.
-      family: The address family.
-      data: A byte string containing a sequence of NLAttr data structures.
-
-    Returns:
-      A dictionary mapping attribute types (integers) to decoded values.
-
-    Raises:
-      ValueError: There was a duplicate attribute type.
-    """
-    attributes = {}
-    while data:
-      # Read the nlattr header.
-      nla, data = cstruct.Read(data, NLAttr)
-
-      # Read the data.
-      datalen = nla.nla_len - len(nla)
-      padded_len = PaddedLength(nla.nla_len) - len(nla)
-      nla_data, data = data[:datalen], data[padded_len:]
-
-      # If it's an attribute we know about, try to decode it.
-      nla_name, nla_data = self._Decode(command, family, nla.nla_type, nla_data)
-
-      # We only support unique attributes for now.
-      if nla_name in attributes:
-        raise ValueError("Duplicate attribute %d" % nla_name)
-
-      attributes[nla_name] = nla_data
-      self._Debug("      %s" % str((nla_name, nla_data)))
-
-    return attributes
-
   def __init__(self):
-    # Global sequence number.
-    self.seq = 0
-    self.sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW,
-                              socket.NETLINK_ROUTE)
-    self.sock.connect((0, 0))  # The kernel.
-    self.pid = self.sock.getsockname()[1]
-
-  def _Send(self, msg):
-    # self._Debug(msg.encode("hex"))
-    self.seq += 1
-    self.sock.send(msg)
-
-  def _Recv(self):
-    data = self.sock.recv(self.BUFSIZE)
-    # self._Debug(data.encode("hex"))
-    return data
-
-  def _ExpectDone(self):
-    response = self._Recv()
-    hdr = NLMsgHdr(response)
-    if hdr.type != NLMSG_DONE:
-      raise ValueError("Expected DONE, got type %d" % hdr.type)
-
-  def _ParseAck(self, response):
-    # Find the error code.
-    hdr, data = cstruct.Read(response, NLMsgHdr)
-    if hdr.type == NLMSG_ERROR:
-      error = NLMsgErr(data).error
-      if error:
-        raise IOError(error, os.strerror(-error))
-    else:
-      raise ValueError("Expected ACK, got type %d" % hdr.type)
-
-  def _ExpectAck(self):
-    response = self._Recv()
-    self._ParseAck(response)
+    super(IPRoute, self).__init__()
 
   def _AddressFamily(self, version):
     return {4: socket.AF_INET, 6: socket.AF_INET6}[version]
 
   def _SendNlRequest(self, command, data, flags=0):
     """Sends a netlink request and expects an ack."""
+
     flags |= NLM_F_REQUEST
     if CommandVerb(command) != "GET":
       flags |= NLM_F_ACK
@@ -416,16 +319,7 @@ class IPRoute(object):
       if not flags & NLM_F_REPLACE:
         flags |= (NLM_F_EXCL | NLM_F_CREATE)
 
-    length = len(NLMsgHdr) + len(data)
-    nlmsg = NLMsgHdr((length, command, flags, self.seq, self.pid)).Pack()
-
-    self.MaybeDebugCommand(command, nlmsg + data)
-
-    # Send the message.
-    self._Send(nlmsg + data)
-
-    if flags & NLM_F_ACK:
-      self._ExpectAck()
+    super(IPRoute, self)._SendNlRequest(command, data, flags)
 
   def _Rule(self, version, is_add, rule_type, table, match_nlattr, priority):
     """Python equivalent of "ip rule <add|del> <match_cond> lookup <table>".
@@ -495,36 +389,6 @@ class IPRoute(object):
   def DefaultRule(self, version, is_add, table, priority):
     return self.FwmarkRule(version, is_add, 0, table, priority)
 
-  def _ParseNLMsg(self, data, msgtype):
-    """Parses a Netlink message into a header and a dictionary of attributes."""
-    nlmsghdr, data = cstruct.Read(data, NLMsgHdr)
-    self._Debug("  %s" % nlmsghdr)
-
-    if nlmsghdr.type == NLMSG_ERROR or nlmsghdr.type == NLMSG_DONE:
-      print "done"
-      return (None, None), data
-
-    nlmsg, data = cstruct.Read(data, msgtype)
-    self._Debug("    %s" % nlmsg)
-
-    # Parse the attributes in the nlmsg.
-    attrlen = nlmsghdr.length - len(nlmsghdr) - len(nlmsg)
-    attributes = self._ParseAttributes(nlmsghdr.type, nlmsg.family,
-                                       data[:attrlen])
-    data = data[attrlen:]
-    return (nlmsg, attributes), data
-
-  def _GetMsgList(self, msgtype, data, expect_done):
-    out = []
-    while data:
-      msg, data = self._ParseNLMsg(data, msgtype)
-      if msg is None:
-        break
-      out.append(msg)
-    if expect_done:
-      self._ExpectDone()
-    return out
-
   def CommandToString(self, command, data):
     try:
       name = CommandName(command)
@@ -554,27 +418,6 @@ class IPRoute(object):
   def PrintMessage(self, message):
     hdr = NLMsgHdr(message)
     print self.CommandToString(hdr.type, message)
-
-  def _Dump(self, command, msg, msgtype):
-    """Sends a dump request and returns a list of decoded messages."""
-    # Create a netlink dump request containing the msg.
-    flags = NLM_F_DUMP | NLM_F_REQUEST
-    length = len(NLMsgHdr) + len(msg)
-    nlmsghdr = NLMsgHdr((length, command, flags, self.seq, self.pid))
-
-    # Send the request.
-    self._Send(nlmsghdr.Pack() + msg.Pack())
-
-    # Keep reading netlink messages until we get a NLMSG_DONE.
-    out = []
-    while True:
-      data = self._Recv()
-      response_type = NLMsgHdr(data).type
-      if response_type == NLMSG_DONE:
-        break
-      out.extend(self._GetMsgList(msgtype, data, False))
-
-    return out
 
   def DumpRules(self, version):
     """Returns the IP rules for the specified IP version."""
