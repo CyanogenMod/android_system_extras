@@ -439,7 +439,7 @@ public:
             _buffer = NULL;
         }
 
-        if (_size == 0) {
+        if (size == 0) {
             _size = DEFAULT_SINGLE_BUFFER_SIZE;
         } else {
             _size = size;
