@@ -153,6 +153,9 @@ int e4crypt_set_directory_policy(const char* dir)
     if (!strcmp(dir, "/data/user")) {
         return 0;
     }
+    if (!strcmp(dir, "/data/system_ce")) {
+        return 0;
+    }
 
     UnencryptedProperties props("/data");
     std::string policy = props.Get<std::string>(properties::ref);
