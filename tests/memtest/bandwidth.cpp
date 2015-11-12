@@ -136,7 +136,7 @@ BandwidthBenchmark *createBandwidthBenchmarkObject(arg_t values) {
         return NULL;
     }
 
-    if (!bench->setSize(values["size"].int_value)) {
+    if (!bench->setSize(size)) {
         printf("Failed to allocate buffers for benchmark.\n");
         return NULL;
     }
@@ -394,7 +394,7 @@ bool run_bandwidth_benchmark(int argc, char** argv, const char *name,
         if (!(*it)->canRun()) {
             continue;
         }
-        if (!(*it)->setSize(values["num_warm_loops"].int_value)) {
+        if (!(*it)->setSize(values["size"].int_value)) {
             printf("Failed creating buffer for bandwidth test.\n");
             return false;
         }
