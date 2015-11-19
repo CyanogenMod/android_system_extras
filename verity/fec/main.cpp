@@ -156,7 +156,7 @@ static int get_start(int mode, const char *filename)
             FATAL("no ecc data\n");
         }
 
-        printf("%" PRIu64 "\n", data.start - FEC_BLOCKSIZE);
+        printf("%" PRIu64 "\n", data.start);
     } else {
         fec_verity_metadata data;
 
