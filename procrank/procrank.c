@@ -239,7 +239,7 @@ int main(int argc, char *argv[]) {
 
     printf("%5s  ", "PID");
     if (ws) {
-        printf("%s  %7s  %7s  ", "WRss", "WPss", "WUss");
+        printf("%7s  %7s  %7s  ", "WRss", "WPss", "WUss");
         if (has_swap) {
             printf("%7s  ", "WSwap");
         }
@@ -316,7 +316,7 @@ int main(int argc, char *argv[]) {
     /* Print the total line */
     printf("%5s  ", "");
     if (ws) {
-        printf("%7s  %6" PRIu64 "K  %" PRIu64 "K  ",
+        printf("%7s  %6" PRIu64 "K  %6" PRIu64 "K  ",
             "", total_pss / 1024, total_uss / 1024);
     } else {
         printf("%8s  %7s  %6" PRIu64 "K  %6" PRIu64 "K  ",
