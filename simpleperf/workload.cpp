@@ -113,7 +113,6 @@ static void ChildProcessFn(std::vector<std::string>& args, int start_signal_fd, 
   } else {
     PLOG(ERROR) << "child process failed to receive start_signal, nread = " << nread;
   }
-  exit(1);
 }
 
 bool Workload::Start() {
