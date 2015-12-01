@@ -401,10 +401,19 @@ void reset_ext4fs_info() {
 int make_ext4fs_sparse_fd(int fd, long long len,
 				const char *mountpoint, struct selabel_handle *sehnd)
 {
+	return make_ext4fs_sparse_fd_directory(fd, len, mountpoint, sehnd, NULL);
+}
+
+int make_ext4fs_sparse_fd_directory(int fd, long long len,
+				const char *mountpoint, struct selabel_handle *sehnd,
+				const char *directory)
+{
 	reset_ext4fs_info();
 	info.len = len;
 
-	return make_ext4fs_internal(fd, NULL, NULL, mountpoint, NULL, 0, 1, 0, 0, 0, sehnd, 0, -1, NULL);
+	return make_ext4fs_internal(fd, directory, NULL, mountpoint, NULL,
+	                            0, 1, 0, 0, 0,
+	                            sehnd, 0, -1, NULL);
 }
 
 int make_ext4fs(const char *filename, long long len,
@@ -415,7 +424,7 @@ int make_ext4fs(const char *filename, long long len,
 
 int make_ext4fs_directory(const char *filename, long long len,
                           const char *mountpoint, struct selabel_handle *sehnd,
-				const char *directory)
+                          const char *directory)
 {
 	int fd;
 	int status;
@@ -429,7 +438,9 @@ int make_ext4fs_directory(const char *filename, long long len,
 		return EXIT_FAILURE;
 	}
 
-	status = make_ext4fs_internal(fd, directory, NULL, mountpoint, NULL, 0, 0, 0, 1, 0, sehnd, 0, -1, NULL);
+	status = make_ext4fs_internal(fd, directory, NULL, mountpoint, NULL,
+	                              0, 0, 0, 1, 0,
+	                              sehnd, 0, -1, NULL);
 	close(fd);
 
 	return status;
