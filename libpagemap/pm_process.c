@@ -81,6 +81,10 @@ int pm_process_usage_flags(pm_process_t *proc, pm_memusage_t *usage_out,
         return -1;
 
     pm_memusage_zero(&usage);
+    pm_memusage_pswap_init_handle(&usage, usage_out->p_swap);
+
+    pm_memusage_zero(&map_usage);
+    pm_memusage_pswap_init_handle(&map_usage, usage_out->p_swap);
 
     for (i = 0; i < proc->num_maps; i++) {
         error = pm_map_usage_flags(proc->maps[i], &map_usage, flags_mask,
@@ -185,6 +189,11 @@ int pm_process_workingset(pm_process_t *proc,
 
     if (ws_out) {
         pm_memusage_zero(&ws);
+        pm_memusage_pswap_init_handle(&ws, ws_out->p_swap);
+
+        pm_memusage_zero(&map_ws);
+        pm_memusage_pswap_init_handle(&map_ws, ws_out->p_swap);
+
         for (i = 0; i < proc->num_maps; i++) {
             error = pm_map_workingset(proc->maps[i], &map_ws);
             if (error) return error;
