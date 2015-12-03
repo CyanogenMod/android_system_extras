@@ -231,11 +231,6 @@ bool RecordCommand::Run(const std::vector<std::string>& args) {
   }
 
   // 5. Write records in mmap buffers of perf_event_files to output file while workload is running.
-  if (!event_selection_set_.GetEnableOnExec()) {
-    if (!event_selection_set_.EnableEvents()) {
-      return false;
-    }
-  }
   if (workload != nullptr && !workload->Start()) {
     return false;
   }

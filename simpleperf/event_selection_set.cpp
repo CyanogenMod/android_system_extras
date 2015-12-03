@@ -81,7 +81,17 @@ void EventSelectionSet::UnionSampleType() {
 
 void EventSelectionSet::SetEnableOnExec(bool enable) {
   for (auto& selection : selections_) {
-    selection.event_attr.enable_on_exec = (enable ? 1 : 0);
+    // If sampling is enabled on exec, then it is disabled at startup, otherwise
+    // it should be enabled at startup. Don't use ioctl(PERF_EVENT_IOC_ENABLE)
+    // to enable it after perf_event_open(). Because some android kernels can't
+    // handle ioctl() well when cpu-hotplug happens. See http://b/25193162.
+    if (enable) {
+      selection.event_attr.enable_on_exec = 1;
+      selection.event_attr.disabled = 1;
+    } else {
+      selection.event_attr.enable_on_exec = 0;
+      selection.event_attr.disabled = 0;
+    }
   }
 }
 
@@ -211,17 +221,6 @@ bool EventSelectionSet::OpenEventFiles(const std::vector<pid_t>& threads,
         PLOG(ERROR) << "failed to open perf event file for event_type "
                     << selection.event_type_modifier.name << " for "
                     << (tid == -1 ? "all threads" : android::base::StringPrintf(" thread %d", tid));
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-bool EventSelectionSet::EnableEvents() {
-  for (auto& selection : selections_) {
-    for (auto& event_fd : selection.event_fds) {
-      if (!event_fd->EnableEvent()) {
         return false;
       }
     }

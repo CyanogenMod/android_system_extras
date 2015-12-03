@@ -145,11 +145,6 @@ bool StatCommand::Run(const std::vector<std::string>& args) {
 
   // 4. Count events while workload running.
   auto start_time = std::chrono::steady_clock::now();
-  if (!event_selection_set_.GetEnableOnExec()) {
-    if (!event_selection_set_.EnableEvents()) {
-      return false;
-    }
-  }
   if (workload != nullptr && !workload->Start()) {
     return false;
   }
