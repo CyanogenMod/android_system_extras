@@ -20,8 +20,8 @@
 #include <algorithm>
 #include <unordered_map>
 
-#include <base/logging.h>
-#include <base/stringprintf.h>
+#include <android-base/logging.h>
+#include <android-base/stringprintf.h>
 
 #include "environment.h"
 #include "perf_regs.h"

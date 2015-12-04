@@ -21,7 +21,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include <base/logging.h>
+#include <android-base/logging.h>
 
 std::unique_ptr<Workload> Workload::CreateWorkload(const std::vector<std::string>& args) {
   std::unique_ptr<Workload> workload(new Workload(args));

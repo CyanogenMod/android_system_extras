@@ -26,7 +26,7 @@
 #include <algorithm>
 #include <string>
 
-#include <base/logging.h>
+#include <android-base/logging.h>
 
 void OneTimeFreeAllocator::Clear() {
   for (auto& p : v_) {

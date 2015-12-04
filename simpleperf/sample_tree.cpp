@@ -16,7 +16,7 @@
 
 #include "sample_tree.h"
 
-#include <base/logging.h>
+#include <android-base/logging.h>
 
 #include "environment.h"
 
