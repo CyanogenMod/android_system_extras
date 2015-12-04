@@ -25,8 +25,8 @@
 #include <string>
 #include <vector>
 
-#include <base/logging.h>
-#include <base/strings.h>
+#include <android-base/logging.h>
+#include <android-base/strings.h>
 
 #include "command.h"
 #include "environment.h"

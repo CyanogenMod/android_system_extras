@@ -25,10 +25,10 @@
 #include <unordered_map>
 #include <vector>
 
-#include <base/file.h>
-#include <base/logging.h>
-#include <base/strings.h>
-#include <base/stringprintf.h>
+#include <android-base/file.h>
+#include <android-base/logging.h>
+#include <android-base/strings.h>
+#include <android-base/stringprintf.h>
 
 #include "read_elf.h"
 #include "utils.h"
