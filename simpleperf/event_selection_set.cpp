@@ -16,8 +16,8 @@
 
 #include "event_selection_set.h"
 
-#include <base/logging.h>
-#include <base/stringprintf.h>
+#include <android-base/logging.h>
+#include <android-base/stringprintf.h>
 
 #include "environment.h"
 #include "event_attr.h"

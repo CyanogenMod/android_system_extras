@@ -20,7 +20,7 @@
 
 #include <queue>
 
-#include <base/logging.h>
+#include <android-base/logging.h>
 #include "sample_tree.h"
 
 static bool MatchSampleByName(const SampleEntry* sample1, const SampleEntry* sample2) {
