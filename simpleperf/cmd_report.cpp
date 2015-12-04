@@ -24,9 +24,9 @@
 #include <unordered_set>
 #include <vector>
 
-#include <base/logging.h>
-#include <base/stringprintf.h>
-#include <base/strings.h>
+#include <android-base/logging.h>
+#include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 
 #include "command.h"
 #include "dwarf_unwind.h"

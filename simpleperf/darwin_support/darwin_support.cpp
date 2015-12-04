@@ -15,7 +15,7 @@
  */
 
 // Add fake functions to build successfully on darwin.
-#include <base/logging.h>
+#include <android-base/logging.h>
 
 #include "dwarf_unwind.h"
 #include "environment.h"

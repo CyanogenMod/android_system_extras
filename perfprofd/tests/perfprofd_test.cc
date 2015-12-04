@@ -24,7 +24,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include <base/stringprintf.h>
+#include <android-base/stringprintf.h>
 
 #include "perfprofdcore.h"
 #include "configreader.h"

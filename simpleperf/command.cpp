@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 
-#include <base/logging.h>
+#include <android-base/logging.h>
 
 bool Command::NextArgumentOrError(const std::vector<std::string>& args, size_t* pi) {
   if (*pi + 1 == args.size()) {

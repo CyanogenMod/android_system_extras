@@ -16,7 +16,7 @@
 
 #include <gtest/gtest.h>
 
-#include <base/stringprintf.h>
+#include <android-base/stringprintf.h>
 
 #include "command.h"
 #include "test_util.h"
