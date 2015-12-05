@@ -21,8 +21,18 @@
 #include <stdio.h>
 #include <sys/cdefs.h>
 #include <sys/types.h>
+#include <sys/queue.h>
 
 __BEGIN_DECLS
+
+typedef struct pm_proportional_swap pm_proportional_swap_t;
+
+typedef struct pm_swap_offset pm_swap_offset_t;
+
+struct pm_swap_offset {
+    unsigned int offset;
+    SIMPLEQ_ENTRY(pm_swap_offset) simpleqe;
+};
 
 typedef struct pm_memusage pm_memusage_t;
 
@@ -33,12 +43,32 @@ struct pm_memusage {
     size_t pss;
     size_t uss;
     size_t swap;
+    /* if non NULL then use swap_offset_list to compute proportional swap */
+    pm_proportional_swap_t *p_swap;
+    SIMPLEQ_HEAD(simpleqhead, pm_swap_offset) swap_offset_list;
+};
+
+typedef struct pm_swapusage pm_swapusage_t;
+struct pm_swapusage {
+    size_t proportional;
+    size_t unique;
 };
 
 /* Clears a memusage. */
 void pm_memusage_zero(pm_memusage_t *mu);
 /* Adds one memusage (a) to another (b). */
 void pm_memusage_add(pm_memusage_t *a, pm_memusage_t *b);
+/* Adds a swap offset */
+void pm_memusage_pswap_add_offset(pm_memusage_t *mu, unsigned int offset);
+/* Enable proportional swap computing. */
+void pm_memusage_pswap_init_handle(pm_memusage_t *mu, pm_proportional_swap_t *p_swap);
+/* Computes and return the proportional swap */
+void pm_memusage_pswap_get_usage(pm_memusage_t *mu, pm_swapusage_t *su);
+void pm_memusage_pswap_free(pm_memusage_t *mu);
+/* Initialize a proportional swap computing handle:
+   assumes only 1 swap device, total swap size of this device in bytes to be given as argument */
+pm_proportional_swap_t * pm_memusage_pswap_create(int swap_size);
+void pm_memusage_pswap_destroy(pm_proportional_swap_t *p_swap);
 
 typedef struct pm_kernel   pm_kernel_t;
 typedef struct pm_process  pm_process_t;
