@@ -16,7 +16,7 @@
 
 #include <ctype.h>
 #include <stdlib.h>
-#include <base/strings.h>
+#include <android-base/strings.h>
 #include "fec_private.h"
 
 /* converts a hex nibble into an int */

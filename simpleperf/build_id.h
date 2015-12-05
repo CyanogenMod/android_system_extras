@@ -19,7 +19,7 @@
 
 #include <string.h>
 #include <algorithm>
-#include <base/stringprintf.h>
+#include <android-base/stringprintf.h>
 
 constexpr size_t BUILD_ID_SIZE = 20;
 

@@ -21,7 +21,7 @@
 #include <string>
 #include <unordered_map>
 
-#include <base/logging.h>
+#include <android-base/logging.h>
 
 #include "event_type.h"
 #include "utils.h"
