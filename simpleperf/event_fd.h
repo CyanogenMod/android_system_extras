@@ -53,12 +53,6 @@ class EventFd {
     return cpu_;
   }
 
-  // It tells the kernel to start counting and recording events specified by this file.
-  bool EnableEvent();
-
-  // It tells the kernel to stop counting and recording events specified by this file.
-  bool DisableEvent();
-
   bool ReadCounter(PerfCounter* counter) const;
 
   // Call mmap() for this perf_event_file, so we can read sampled records from mapped area.
