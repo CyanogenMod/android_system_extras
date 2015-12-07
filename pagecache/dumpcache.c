@@ -124,6 +124,7 @@ static int cmpfiles(const void *a, const void *b) {
 
 int main()
 {
+    size_t i;
     g_page_size = getpagesize();
 
     g_files = malloc(INITIAL_NUM_FILES * sizeof(struct file_info*));
@@ -138,9 +139,9 @@ int main()
     qsort(g_files, g_num_files, sizeof(g_files[0]), &cmpfiles);
 
     // Dump entries
-    for (size_t i = 0; i < g_num_files; i++) {
+    for (i = 0; i < g_num_files; i++) {
         struct file_info *info = g_files[i];
-        fprintf(stdout, "%s: %zu cached pages (%.2f MB, %lu%% of total file size.)\n", info->name,
+        fprintf(stdout, "%s: %zu cached pages (%.2f MB, %zu%% of total file size.)\n", info->name,
                 info->num_cached_pages,
                 (float) (info->num_cached_pages * g_page_size) / 1024 / 1024,
                 (100 * info->num_cached_pages * g_page_size) / info->file_size);
