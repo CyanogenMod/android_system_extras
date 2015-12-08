@@ -1,15 +1,12 @@
+#include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <math.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 #include <string.h>
-#include <errno.h>
 #include <unistd.h>
-#include <fcntl.h>
-
-#include <ctype.h>
-#include <stddef.h>
-
-typedef struct mapinfo mapinfo;
 
 struct mapinfo {
     mapinfo *next;
@@ -69,7 +66,7 @@ static int parse_header(const char* line, const mapinfo* prev, mapinfo** mi) {
     }
 
     const int name_size = strlen(name) + 1;
-    struct mapinfo* info = calloc(1, sizeof(mapinfo) + name_size);
+    struct mapinfo* info = reinterpret_cast<mapinfo*>(calloc(1, sizeof(mapinfo) + name_size));
     if (info == NULL) {
         fprintf(stderr, "out of memory\n");
         exit(1);
@@ -212,21 +209,17 @@ static mapinfo *load_maps(int pid, int sort_by_address, int coalesce_by_name)
     return head;
 }
 
-static int verbose = 0;
-static int terse = 0;
-static int addresses = 0;
+static bool verbose = false;
+static bool terse = false;
+static bool addresses = false;
 
 static void print_header()
 {
-    if (addresses) {
-        printf("   start      end ");
-    }
-    printf(" virtual                     shared   shared  private  private\n");
+    const char *addr1 = addresses ? "   start      end " : "";
+    const char *addr2 = addresses ? "    addr     addr " : "";
 
-    if (addresses) {
-        printf("    addr     addr ");
-    }
-    printf("    size      RSS      PSS    clean    dirty    clean    dirty    swap ");
+    printf("%s virtual                     shared   shared  private  private\n", addr1);
+    printf("%s    size      RSS      PSS    clean    dirty    clean    dirty     swap ", addr2);
     if (!verbose && !addresses) {
         printf("   # ");
     }
@@ -245,21 +238,31 @@ static void print_divider()
     printf("------------------------------\n");
 }
 
+static void print_mi(mapinfo *mi, bool total)
+{
+    if (addresses) {
+        if (total) {
+            printf("                  ");
+        } else {
+            printf("%08x %08x ", mi->start, mi->end);
+        }
+    }
+    printf("%8d %8d %8d %8d %8d %8d %8d %8d ", mi->size,
+           mi->rss,
+           mi->pss,
+           mi->shared_clean, mi->shared_dirty,
+           mi->private_clean, mi->private_dirty, mi->swap);
+    if (!verbose && !addresses) {
+        printf("%4d ", mi->count);
+    }
+}
+
 static int show_map(int pid)
 {
-    mapinfo *milist;
-    mapinfo *mi;
-    unsigned shared_dirty = 0;
-    unsigned shared_clean = 0;
-    unsigned private_dirty = 0;
-    unsigned private_clean = 0;
-    unsigned swap = 0;
-    unsigned rss = 0;
-    unsigned pss = 0;
-    unsigned size = 0;
-    unsigned count = 0;
+    mapinfo total;
+    memset(&total, 0, sizeof(total));
 
-    milist = load_maps(pid, addresses, !verbose && !addresses);
+    mapinfo *milist = load_maps(pid, addresses, !verbose && !addresses);
     if (milist == NULL) {
         return 1;
     }
@@ -267,34 +270,24 @@ static int show_map(int pid)
     print_header();
     print_divider();
 
-    for (mi = milist; mi;) {
+    for (mapinfo *mi = milist; mi;) {
         mapinfo* last = mi;
 
-        shared_clean += mi->shared_clean;
-        shared_dirty += mi->shared_dirty;
-        private_clean += mi->private_clean;
-        private_dirty += mi->private_dirty;
-        swap += mi->swap;
-        rss += mi->rss;
-        pss += mi->pss;
-        size += mi->size;
-        count += mi->count;
+        total.shared_clean += mi->shared_clean;
+        total.shared_dirty += mi->shared_dirty;
+        total.private_clean += mi->private_clean;
+        total.private_dirty += mi->private_dirty;
+        total.swap += mi->swap;
+        total.rss += mi->rss;
+        total.pss += mi->pss;
+        total.size += mi->size;
+        total.count += mi->count;
         
         if (terse && !mi->private_dirty) {
             goto out;
         }
 
-        if (addresses) {
-            printf("%08x %08x ", mi->start, mi->end);
-        }
-        printf("%8d %8d %8d %8d %8d %8d %8d %8d", mi->size,
-               mi->rss,
-               mi->pss,
-               mi->shared_clean, mi->shared_dirty,
-               mi->private_clean, mi->private_dirty, mi->swap);
-        if (!verbose && !addresses) {
-            printf("%4d ", mi->count);
-        }
+        print_mi(mi, false);
         printf("%s%s\n", mi->name, mi->is_bss ? " [bss]" : "");
 
 out:
@@ -306,16 +299,7 @@ out:
     print_header();
     print_divider();
 
-    if (addresses) {
-        printf("                  ");
-    }
-    printf("%8d %8d %8d %8d %8d %8d %8d %8d", size,
-            rss, pss,
-            shared_clean, shared_dirty,
-            private_clean, private_dirty, swap);
-    if (!verbose && !addresses) {
-        printf("%4d ", count);
-    }
+    print_mi(&total, true);
     printf("TOTAL\n");
 
     return 0;
@@ -333,15 +317,15 @@ int main(int argc, char *argv[])
     for (argc--, argv++; argc > 0; argc--, argv++) {
         arg = argv[0];
         if (!strcmp(arg,"-v")) {
-            verbose = 1;
+            verbose = true;
             continue;
         }
         if (!strcmp(arg,"-t")) {
-            terse = 1;
+            terse = true;
             continue;
         }
         if (!strcmp(arg,"-a")) {
-            addresses = 1;
+            addresses = true;
             continue;
         }
         if (argc != 1) {
