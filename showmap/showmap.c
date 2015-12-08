@@ -312,7 +312,7 @@ out:
     printf("%8d %8d %8d %8d %8d %8d %8d %8d", size,
             rss, pss,
             shared_clean, shared_dirty,
-            private_clean, private_dirty, mi->swap);
+            private_clean, private_dirty, swap);
     if (!verbose && !addresses) {
         printf("%4d ", count);
     }
