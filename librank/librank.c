@@ -316,6 +316,7 @@ int main(int argc, char *argv[]) {
 
     libraries = malloc(INIT_LIBRARIES * sizeof(struct library_info *));
     libraries_count = 0; libraries_size = INIT_LIBRARIES;
+    pm_memusage_zero(&map_usage);
 
     error = pm_kernel_create(&ker);
     if (error) {
@@ -376,7 +377,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    printf(" %6s   %6s   %6s   %6s   %6s  ", "RSStot", "VSS", "RSS", "PSS", "USS");
+    printf(" %6s   %7s   %6s   %6s   %6s  ", "RSStot", "VSS", "RSS", "PSS", "USS");
 
     if (has_swap) {
         printf(" %6s  ", "Swap");
@@ -390,7 +391,7 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < libraries_count; i++) {
         li = libraries[i];
 
-        printf("%6zdK   %6s   %6s   %6s   %6s  ", li->total_usage.pss / 1024, "", "", "", "");
+        printf("%6zdK   %7s   %6s   %6s   %6s  ", li->total_usage.pss / 1024, "", "", "", "");
         if (has_swap) {
             printf(" %6s  ", "");
         }
@@ -402,7 +403,7 @@ int main(int argc, char *argv[]) {
         for (j = 0; j < li->mappings_count; j++) {
             mi = li->mappings[j];
             pi = mi->proc;
-            printf(   " %6s  %6zdK  %6zdK  %6zdK  %6zdK  ", "",
+            printf(   " %6s  %7zdK  %6zdK  %6zdK  %6zdK  ", "",
                 mi->usage.vss / 1024,
                 mi->usage.rss / 1024,
                 mi->usage.pss / 1024,
