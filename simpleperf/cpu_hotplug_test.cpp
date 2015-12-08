@@ -139,15 +139,10 @@ struct CpuToggleThreadArg {
 };
 
 static void CpuToggleThread(CpuToggleThreadArg* arg) {
-  // Wait until a record command is running.
-  sleep(1);
   while (!arg->end_flag) {
-    SetCpuOnline(arg->toggle_cpu, false);
-    sleep(1);
-    if (arg->end_flag) {
-      break;
-    }
     SetCpuOnline(arg->toggle_cpu, true);
+    sleep(1);
+    SetCpuOnline(arg->toggle_cpu, false);
     sleep(1);
   }
 }
@@ -159,7 +154,12 @@ static bool RecordInChildProcess(int record_cpu, int record_duration_in_second) 
     std::string cpu_str = android::base::StringPrintf("%d", record_cpu);
     std::string record_duration_str = android::base::StringPrintf("%d", record_duration_in_second);
     bool ret = RecordCmd()->Run({"-a", "--cpu", cpu_str, "sleep", record_duration_str});
-    exit(ret ? 0 : 1);
+    extern bool system_wide_perf_event_open_failed;
+    // It is not an error if perf_event_open failed because of cpu-hotplug.
+    if (!ret && !system_wide_perf_event_open_failed) {
+      exit(1);
+    }
+    exit(0);
   }
   int timeout = record_duration_in_second + 10;
   auto end_time = std::chrono::steady_clock::now() + std::chrono::seconds(timeout);
@@ -192,22 +192,32 @@ TEST(cpu_offline, offline_while_recording) {
     GTEST_LOG_(INFO) << "This test does nothing, because there is only one cpu in the system.";
     return;
   }
-
-  const size_t TEST_ITERATION_COUNT = 20u;
-  const int TEST_DURATION_IN_SECOND = 9;
-  for (size_t i = 0; i < TEST_ITERATION_COUNT; ++i) {
-    int test_cpu = GetCpuCount() - 1;
-    SetCpuOnline(test_cpu, true);
-    CpuToggleThreadArg cpu_toggle_arg;
-    cpu_toggle_arg.toggle_cpu = test_cpu;
-    cpu_toggle_arg.end_flag = false;
-    std::thread cpu_toggle_thread(CpuToggleThread, &cpu_toggle_arg);
-
-    ASSERT_TRUE(RecordInChildProcess(test_cpu, TEST_DURATION_IN_SECOND));
-    cpu_toggle_arg.end_flag = true;
-    cpu_toggle_thread.join();
-    GTEST_LOG_(INFO) << "Finish test iteration " << (i + 1) << " successfully.";
+  for (int i = 1; i < GetCpuCount(); ++i) {
+    if (!IsCpuOnline(i)) {
+      SetCpuOnline(i, true);
+    }
   }
+  // Start cpu hotplugger.
+  int test_cpu = GetCpuCount() - 1;
+  CpuToggleThreadArg cpu_toggle_arg;
+  cpu_toggle_arg.toggle_cpu = test_cpu;
+  cpu_toggle_arg.end_flag = false;
+  std::thread cpu_toggle_thread(CpuToggleThread, &cpu_toggle_arg);
+
+  const std::chrono::hours test_duration(10);  // Test for 10 hours.
+  const double RECORD_DURATION_IN_SEC = 2.9;
+  const double SLEEP_DURATION_IN_SEC = 1.3;
+
+  auto end_time = std::chrono::steady_clock::now() + test_duration;
+  size_t iterations = 0;
+  while (std::chrono::steady_clock::now() < end_time) {
+    iterations++;
+    GTEST_LOG_(INFO) << "Test for " << iterations << " times.";
+    ASSERT_TRUE(RecordInChildProcess(test_cpu, RECORD_DURATION_IN_SEC));
+    usleep(static_cast<useconds_t>(SLEEP_DURATION_IN_SEC * 1e6));
+  }
+  cpu_toggle_arg.end_flag = true;
+  cpu_toggle_thread.join();
 }
 
 static std::unique_ptr<EventFd> OpenHardwareEventOnCpu(int cpu) {
