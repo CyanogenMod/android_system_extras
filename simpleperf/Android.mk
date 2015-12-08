@@ -194,7 +194,6 @@ simpleperf_unit_test_src_files_linux := \
   cmd_record_test.cpp \
   cmd_report_test.cpp \
   cmd_stat_test.cpp \
-  cpu_offline_test.cpp \
   environment_test.cpp \
   read_elf_test.cpp \
   record_file_test.cpp \
@@ -244,6 +243,39 @@ LOCAL_SHARED_LIBRARIES := \
 
 LOCAL_MULTILIB := first
 LOCAL_MODULE := simpleperf_unit_test
+LOCAL_MODULE_TAGS := optional
+include $(BUILD_HOST_NATIVE_TEST)
+endif
+
+
+# simpleperf_cpu_hotplug_test
+# =========================================================
+simpleperf_cpu_hotplug_test_src_files := \
+  gtest_main.cpp \
+  cpu_hotplug_test.cpp \
+
+# simpleperf_cpu_hotplug_test target
+include $(CLEAR_VARS)
+LOCAL_CLANG := true
+LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
+LOCAL_SRC_FILES := $(simpleperf_cpu_hotplug_test_src_files)
+LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
+LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
+LOCAL_MULTILIB := first
+LOCAL_MODULE := simpleperf_cpu_hotplug_test
+LOCAL_MODULE_TAGS := optional
+include $(BUILD_NATIVE_TEST)
+
+# simpleperf_cpu_hotplug_test linux host
+ifeq ($(HOST_OS),linux)
+include $(CLEAR_VARS)
+LOCAL_CLANG := true
+LOCAL_CPPFLAGS := $(simpleperf_cppflags_host_linux)
+LOCAL_SRC_FILES := $(simpleperf_cpu_hotplug_test_src_files)
+LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
+LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_host_linux)
+LOCAL_MULTILIB := first
+LOCAL_MODULE := simpleperf_cpu_hotplug_test
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_HOST_NATIVE_TEST)
 endif
