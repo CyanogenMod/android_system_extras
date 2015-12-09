@@ -184,3 +184,16 @@ int e4crypt_set_user_crypto_policies(const char* dir)
               result.c_str());
     return 0;
 }
+
+int e4crypt_create_user_key(userid_t user_id, int serial, bool ephemeral)
+{
+    auto command = std::string() + "cryptfs create_user_key "
+        + std::to_string(user_id) + " "
+        + std::to_string(serial) + " "
+        + (ephemeral ? "1" : "0");
+    auto result = vold_command(command);
+    // ext4enc:TODO proper error handling
+    KLOG_INFO(TAG, "create_user_key returned with result %s\n",
+              result.c_str());
+    return 0;
+}
