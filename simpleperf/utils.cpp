@@ -105,6 +105,16 @@ bool IsDir(const std::string& dirpath) {
   return false;
 }
 
+bool IsRegularFile(const std::string& filename) {
+  struct stat st;
+  if (stat(filename.c_str(), &st) == 0) {
+    if (S_ISREG(st.st_mode)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool RemovePossibleFile(const std::string& filename) {
   struct stat st;
   if (stat(filename.c_str(), &st) == 0) {
