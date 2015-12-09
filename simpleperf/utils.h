@@ -108,6 +108,7 @@ bool IsPowerOfTwo(uint64_t value);
 void GetEntriesInDir(const std::string& dirpath, std::vector<std::string>* files,
                      std::vector<std::string>* subdirs);
 bool IsDir(const std::string& dirpath);
+bool IsRegularFile(const std::string& filename);
 bool RemovePossibleFile(const std::string& filename);
 bool StringToPid(const std::string& s, int* pid);
 
