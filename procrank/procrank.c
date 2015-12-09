@@ -144,6 +144,35 @@ void get_mem_info(uint64_t mem[]) {
     }
 }
 
+static uint64_t get_zram_mem_used() {
+#define ZRAM_SYSFS "/sys/block/zram0/"
+    FILE *f = fopen(ZRAM_SYSFS "mm_stat", "r");
+    if (f) {
+        uint64_t mem_used_total = 0;
+
+        int matched = fscanf(f, "%*d %*d %" SCNu64 " %*d %*d %*d %*d", &mem_used_total);
+        if (matched != 1)
+            fprintf(stderr, "warning: failed to parse " ZRAM_SYSFS "mm_stat\n");
+
+        fclose(f);
+        return mem_used_total;
+    }
+
+    f = fopen(ZRAM_SYSFS "mem_used_total", "r");
+    if (f) {
+        uint64_t mem_used_total = 0;
+
+        int matched = fscanf(f, "%" SCNu64, &mem_used_total);
+        if (matched != 1)
+            fprintf(stderr, "warning: failed to parse " ZRAM_SYSFS "mem_used_total\n");
+
+        fclose(f);
+        return mem_used_total;
+    }
+
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
     pm_kernel_t *ker;
     pm_process_t *proc;
@@ -172,8 +201,6 @@ int main(int argc, char *argv[]) {
 
     uint64_t mem[MEMINFO_COUNT] = { };
     pm_proportional_swap_t *p_swap;
-    int fd, len;
-    char buffer[1024];
     float zram_cr = 0.0;
 
     signal(SIGPIPE, SIG_IGN);
@@ -277,17 +304,12 @@ int main(int argc, char *argv[]) {
     qsort(procs, num_procs, sizeof(procs[0]), compfn);
 
     if (has_swap) {
-        fd = open("/sys/block/zram0/mem_used_total", O_RDONLY);
-        if (fd >= 0) {
-            len = read(fd, buffer, sizeof(buffer)-1);
-            close(fd);
-            if (len > 0) {
-                buffer[len] = 0;
-                mem[MEMINFO_ZRAM_TOTAL] = atoll(buffer)/1024;
-                zram_cr = (float) mem[MEMINFO_ZRAM_TOTAL] /
-                        (mem[MEMINFO_SWAP_TOTAL] - mem[MEMINFO_SWAP_FREE]);
-                has_zram = true;
-            }
+        uint64_t zram_mem_used = get_zram_mem_used();
+        if (zram_mem_used) {
+            mem[MEMINFO_ZRAM_TOTAL] = zram_mem_used/1024;
+            zram_cr = (float) mem[MEMINFO_ZRAM_TOTAL] /
+                    (mem[MEMINFO_SWAP_TOTAL] - mem[MEMINFO_SWAP_FREE]);
+            has_zram = true;
         }
     }
 
