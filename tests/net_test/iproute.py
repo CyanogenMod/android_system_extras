@@ -209,10 +209,6 @@ class IPRoute(netlink.NetlinkSocket):
 
   FAMILY = NETLINK_ROUTE
 
-  def _Debug(self, s):
-    if self.DEBUG:
-      print s
-
   def _NlAttrIPAddress(self, nla_type, family, address):
     return self._NlAttr(nla_type, socket.inet_pton(family, address))
 

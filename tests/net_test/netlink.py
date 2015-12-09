@@ -227,6 +227,10 @@ class NetlinkSocket(object):
       response_type = NLMsgHdr(data).type
       if response_type == NLMSG_DONE:
         break
+      elif response_type == NLMSG_ERROR:
+        # Likely means that the kernel didn't like our dump request.
+        # Parse the error and throw an exception.
+        self._ParseAck(data)
       out.extend(self._GetMsgList(msgtype, data, False))
 
     return out
