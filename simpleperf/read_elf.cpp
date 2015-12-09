@@ -46,7 +46,10 @@ bool IsValidElfPath(const std::string& filename) {
   if (!IsRegularFile(filename)) {
     return false;
   }
-  FILE* fp = fopen(filename.c_str(), "rb");
+  FILE* fp = fopen(filename.c_str(), "reb");
+  if (fp == nullptr) {
+    return false;
+  }
   char buf[4];
   if (fread(buf, 4, 1, fp) != 1) {
     fclose(fp);
