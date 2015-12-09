@@ -18,8 +18,7 @@ LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := mmapPerf
-LOCAL_SRC_FILES_64 := mmapPerf.cpp
-LOCAL_SRC_FILES_32 := unsupported.cpp
+LOCAL_SRC_FILES := mmapPerf.cpp
 LOCAL_CLANG := true
 LOCAL_CFLAGS += -g -Wall -Werror -std=c++11 -Wno-missing-field-initializers -Wno-sign-compare -O3
 LOCAL_FORCE_STATIC_EXECUTABLE := true
