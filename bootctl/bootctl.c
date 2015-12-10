@@ -37,17 +37,18 @@ static void usage(FILE* where, int argc, char* argv[])
             "  %s COMMAND\n"
             "\n"
             "Commands:\n"
-            "  %s hal-info                    - Show info about boot_control HAL used.\n"
-            "  %s get-number-slots            - Prints number of slots.\n"
-            "  %s get-current-slot            - Prints currently running SLOT.\n"
-            "  %s mark-boot-successful        - Mark current slot as GOOD.\n"
-            "  %s set-active-boot-slot SLOT   - On next boot, load and execute SLOT.\n"
-            "  %s set-slot-as-unbootable SLOT - Mark SLOT as invalid.\n"
-            "  %s is-slot-bootable SLOT       - Returns 0 only if SLOT is bootable.\n"
-            "  %s get-suffix SLOT             - Prints suffix for SLOT.\n"
+            "  %s hal-info                       - Show info about boot_control HAL used.\n"
+            "  %s get-number-slots               - Prints number of slots.\n"
+            "  %s get-current-slot               - Prints currently running SLOT.\n"
+            "  %s mark-boot-successful           - Mark current slot as GOOD.\n"
+            "  %s set-active-boot-slot SLOT      - On next boot, load and execute SLOT.\n"
+            "  %s set-slot-as-unbootable SLOT    - Mark SLOT as invalid.\n"
+            "  %s is-slot-bootable SLOT          - Returns 0 only if SLOT is bootable.\n"
+            "  %s is-slot-marked-successful SLOT - Returns 0 only if SLOT is marked GOOD.\n"
+            "  %s get-suffix SLOT                - Prints suffix for SLOT.\n"
             "\n"
             "SLOT parameter is the zero-based slot-number.\n",
-            argv[0], argv[0], argv[0], argv[0], argv[0],
+            argv[0], argv[0], argv[0], argv[0], argv[0], argv[0],
             argv[0], argv[0], argv[0], argv[0], argv[0]);
 }
 
@@ -112,8 +113,13 @@ static int do_set_slot_as_unbootable(boot_control_module_t *module,
 static int do_is_slot_bootable(boot_control_module_t *module, int slot_number)
 {
     int ret = module->isSlotBootable(module, slot_number);
-    if (ret == 0)
+    if (ret == 0) {
         return EX_SOFTWARE;
+    } else if (ret < 0) {
+        fprintf(stderr, "Error calling isSlotBootable(): %s\n",
+                strerror(-ret));
+        return EX_SOFTWARE;
+    }
     return EX_OK;
 }
 
@@ -122,6 +128,24 @@ static int do_get_suffix(boot_control_module_t *module, int slot_number)
 {
     const char* suffix = module->getSuffix(module, slot_number);
     fprintf(stdout, "%s\n", suffix);
+    return EX_OK;
+}
+
+static int do_is_slot_marked_successful(boot_control_module_t *module,
+                                        int slot_number)
+{
+    if (module->isSlotMarkedSuccessful == NULL) {
+        fprintf(stderr, "isSlotMarkedSuccessful() is not implemented by HAL.\n");
+        return EX_UNAVAILABLE;
+    }
+    int ret = module->isSlotMarkedSuccessful(module, slot_number);
+    if (ret == 0) {
+        return EX_SOFTWARE;
+    } else if (ret < 0) {
+        fprintf(stderr, "Error calling isSlotMarkedSuccessful(): %s\n",
+                strerror(-ret));
+        return EX_SOFTWARE;
+    }
     return EX_OK;
 }
 
@@ -177,6 +201,8 @@ int main(int argc, char *argv[])
         return do_is_slot_bootable(module, parse_slot(2, argc, argv));
     } else if (strcmp(argv[1], "get-suffix") == 0) {
         return do_get_suffix(module, parse_slot(2, argc, argv));
+    } else if (strcmp(argv[1], "is-slot-marked-successful") == 0) {
+        return do_is_slot_marked_successful(module, parse_slot(2, argc, argv));
     } else {
         usage(stderr, argc, argv);
         return EX_USAGE;
