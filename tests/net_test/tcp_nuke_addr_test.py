@@ -135,16 +135,12 @@ class ExceptionalReadThread(threading.Thread):
     except Exception, e:
       self.exception = e
 
+# For convenience.
+def CreateIPv4SocketPair():
+  return net_test.CreateSocketPair(AF_INET, SOCK_STREAM, IPV4_LOOPBACK_ADDR)
 
-def CreateSocketPair(family, addr):
-  clientsock = socket(family, SOCK_STREAM, 0)
-  listensock = socket(family, SOCK_STREAM, 0)
-  listensock.bind((addr, 0))
-  addr = listensock.getsockname()
-  listensock.listen(1)
-  clientsock.connect(addr)
-  acceptedsock, _ = listensock.accept()
-  return clientsock, acceptedsock
+def CreateIPv6SocketPair():
+  return net_test.CreateSocketPair(AF_INET6, SOCK_STREAM, IPV6_LOOPBACK_ADDR)
 
 
 class TcpNukeAddrTest(net_test.NetworkTest):
@@ -168,7 +164,7 @@ class TcpNukeAddrTest(net_test.NetworkTest):
     threadpairs = []
 
     for i in xrange(DEFAULT_TEST_RUNS):
-      clientsock, acceptedsock = CreateSocketPair(AF_INET6, IPV6_LOOPBACK_ADDR)
+      clientsock, acceptedsock = CreateIPv6SocketPair()
       clientthread = ExceptionalReadThread(clientsock)
       clientthread.start()
       serverthread = ExceptionalReadThread(acceptedsock)
@@ -201,7 +197,7 @@ class TcpNukeAddrTest(net_test.NetworkTest):
       self.assertTrue(sock.getpeername())
 
   def testAddresses(self):
-    socketpair = CreateSocketPair(AF_INET, IPV4_LOOPBACK_ADDR)
+    socketpair = CreateIPv4SocketPair()
     KillAddrIoctl("::")
     self.assertSocketsNotClosed(socketpair)
     KillAddrIoctl("::1")
@@ -213,7 +209,7 @@ class TcpNukeAddrTest(net_test.NetworkTest):
     KillAddrIoctl("127.0.0.1")
     self.assertSocketsClosed(socketpair)
 
-    socketpair = CreateSocketPair(AF_INET6, IPV6_LOOPBACK_ADDR)
+    socketpair = CreateIPv6SocketPair()
     KillAddrIoctl("0.0.0.0")
     self.assertSocketsNotClosed(socketpair)
     KillAddrIoctl("127.0.0.1")
@@ -239,8 +235,8 @@ class TcpNukeAddrHashTest(net_test.NetworkTest):
   def testClosesAllSockets(self):
     socketpairs = []
     for i in xrange(HASH_TEST_RUNS):
-      socketpairs.append(CreateSocketPair(AF_INET, IPV4_LOOPBACK_ADDR))
-      socketpairs.append(CreateSocketPair(AF_INET6, IPV6_LOOPBACK_ADDR))
+      socketpairs.append(CreateIPv4SocketPair())
+      socketpairs.append(CreateIPv6SocketPair())
 
     KillAddrIoctl(IPV4_LOOPBACK_ADDR)
     KillAddrIoctl(IPV6_LOOPBACK_ADDR)
