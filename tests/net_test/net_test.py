@@ -151,6 +151,17 @@ def RawGRESocket(family):
   return s
 
 
+def CreateSocketPair(family, socktype, addr):
+  clientsock = socket(family, socktype, 0)
+  listensock = socket(family, socktype, 0)
+  listensock.bind((addr, 0))
+  addr = listensock.getsockname()
+  listensock.listen(1)
+  clientsock.connect(addr)
+  acceptedsock, _ = listensock.accept()
+  return clientsock, acceptedsock
+
+
 def GetInterfaceIndex(ifname):
   s = IPv4PingSocket()
   ifr = struct.pack("16si", ifname, 0)
