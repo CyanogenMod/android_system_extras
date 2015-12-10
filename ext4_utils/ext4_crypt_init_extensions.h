@@ -1,5 +1,6 @@
 #include <sys/cdefs.h>
 #include <stdbool.h>
+#include <cutils/multiuser.h>
 
 __BEGIN_DECLS
 
@@ -12,5 +13,6 @@ int e4crypt_set_directory_policy(const char* path);
 bool e4crypt_non_default_key(const char* path);
 int do_policy_set(const char *directory, const char *policy, int policy_length);
 int e4crypt_set_user_crypto_policies(const char* path);
+int e4crypt_create_user_key(userid_t user_id, int serial, bool ephemeral);
 
 __END_DECLS
