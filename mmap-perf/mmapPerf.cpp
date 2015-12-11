@@ -54,17 +54,16 @@ public:
     FileMap(const string &name, size_t size, Hint hint = FILE_MAP_HINT_NONE) : m_name{name}, m_size{size} {
         int fd = open(name.c_str(), O_CREAT | O_RDWR, S_IRWXU);
         if (fd < 0) {
-            cerr << "open failed: " << fd << endl;
-            return;
+            cout << "Error: open failed for " << name << ": " << strerror(errno) << endl;
+            exit(1);
         }
         m_fileFd.set(fd);
         fallocate(m_fileFd.get(), 0, 0, size);
         unlink(name.c_str());
         m_ptr = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, m_fileFd.get(), 0);
         if ((int)(uintptr_t)m_ptr == -1) {
-            cerr << "mmap failed: " << (int)(uintptr_t)m_ptr << endl;
-            m_ptr = nullptr;
-            return;
+            cout << "Error: mmap failed: " << (int)(uintptr_t)m_ptr << ": " << strerror(errno) << endl;
+            exit(1);
         }
         switch (hint) {
         case FILE_MAP_HINT_NONE: break;
@@ -80,7 +79,7 @@ public:
             fillPageJunk(targetPtr);
         }
     }
-    void benchRandom(bool write) {
+    double benchRandom(bool write) {
         size_t pagesTotal = m_size / pageSize;
         size_t pagesToHit = pagesTotal / 128;
         uint64_t nsTotal = 0;
@@ -99,10 +98,9 @@ public:
         }
         end = chrono::high_resolution_clock::now();
         nsTotal += chrono::duration_cast<chrono::nanoseconds>(end - start).count();
-        //cout << "random: " << nsTotal / 1000.0 / (pagesToHit) << "us/page" << endl;
-        cout << "random " << (write ? "write" : "read") << ": " << ((4096.0 * pagesToHit) / (1 << 20)) / (nsTotal / 1.0E9) << "MB/s" << endl;
+        return ((4096.0 * pagesToHit) / (1 << 20)) / (nsTotal / 1.0E9);
     }
-    void benchLinear(bool write) {
+    double benchLinear(bool write) {
         int pagesTotal = m_size / pageSize;
         int iterations = 4;
         uint64_t nsTotal = 0;
@@ -122,8 +120,7 @@ public:
         }
         end = chrono::high_resolution_clock::now();
         nsTotal += chrono::duration_cast<chrono::nanoseconds>(end - start).count();
-        //cout << "linear: " << nsTotal / 1000.0 / (pagesTotal * iterations) << "us/page" << endl;
-        cout << "linear " << (write ? "write" : "read") << ": " << ((4096.0 * pagesTotal * iterations) / (1 << 20)) / (nsTotal / 1.0E9 ) << "MB/s" << endl;
+        return ((4096.0 * pagesTotal * iterations) / (1 << 20)) / (nsTotal / 1.0E9 );
     }
     void dropCache() {
         int ret1 = msync(m_ptr, m_size, MS_SYNC | MS_INVALIDATE);
@@ -139,25 +136,49 @@ public:
 
 int main(int argc, char *argv[])
 {
-    (void)argc;
-    (void)argv;
+    double randomRead, randomWrite, linearRead, linearWrite;
+    size_t fsize = 0;
     srand(0);
 
+    if (argc == 1)
+        fsize = 1024 * (1ull << 20);
+    else if (argc == 2) {
+        long long sz = atoll(argv[1]);
+        if (sz > 0 && (sz << 20) < SIZE_MAX)
+            fsize = atoll(argv[1]) * (1ull << 20);
+    }
+
+    if (fsize <= 0) {
+        cout << "Error: invalid argument" << endl;
+        cerr << "Usage: " << argv[0] << " [fsize_in_MB]" << endl;
+        exit(1);
+    }
+    cerr << "Using filesize=" << fsize << endl;
+
     {
-        FileMap file{"/data/local/tmp/mmap_test", 16000 * (1ull << 20)};
-        file.benchRandom(false);
+        cerr << "Running random_read..." << endl;
+        FileMap file{"/data/local/tmp/mmap_test", fsize};
+        randomRead = file.benchRandom(false);
     }
     {
-        FileMap file{"/data/local/tmp/mmap_test", 16000 * (1ull << 20)};
-        file.benchLinear(false);
+        cerr << "Running linear_read..." << endl;
+        FileMap file{"/data/local/tmp/mmap_test", fsize};
+        linearRead = file.benchLinear(false);
     }
     {
-        FileMap file{"/data/local/tmp/mmap_test", 16000 * (1ull << 20)};
-        file.benchRandom(true);
+        cerr << "Running random_write..." << endl;
+        FileMap file{"/data/local/tmp/mmap_test", fsize};
+        randomWrite = file.benchRandom(true);
     }
     {
-        FileMap file{"/data/local/tmp/mmap_test", 16000 * (1ull << 20)};
-        file.benchLinear(true);
+        cerr << "Running linear_write..." << endl;
+        FileMap file{"/data/local/tmp/mmap_test", fsize};
+        linearWrite = file.benchLinear(true);
     }
+    cout << "Success" << endl;
+    cout << "random_read : " << randomRead << " : MB/s" << endl;
+    cout << "linear_read : " << linearRead << " : MB/s" << endl;
+    cout << "random_write : " << randomWrite << " : MB/s" << endl;
+    cout << "linear_write : " << linearWrite << " : MB/s" << endl;
     return 0;
 }
