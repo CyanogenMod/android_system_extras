@@ -57,8 +57,10 @@ extern int force;
 
 #define EXT4_JNL_BACKUP_BLOCKS 1
 
+#ifndef __cplusplus
 #ifndef min /* already defined by windows.h */
 #define min(a, b) ((a) < (b) ? (a) : (b))
+#endif
 #endif
 
 #define DIV_ROUND_UP(x, y) (((x) + (y) - 1)/(y))
