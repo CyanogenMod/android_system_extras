@@ -260,6 +260,35 @@ class NeighbourTest(multinetwork_base.MultiNetworkBaseTest):
     for _ in xrange(5):
       ForceProbe(router6, routermac)
 
+  def testIsRouterFlag(self):
+    router6 = self._RouterAddress(self.netid, 6)
+    self.assertNeighbourState(NUD_STALE, router6)
+
+    # Get into FAILED.
+    ifindex = self.ifindices[self.netid]
+    self.iproute.UpdateNeighbour(6, router6, None, ifindex, NUD_FAILED)
+    self.ExpectNeighbourNotification(router6, NUD_FAILED)
+    self.assertNeighbourState(NUD_FAILED, router6)
+
+    time.sleep(1)
+
+    # Send another packet and expect a multicast NS.
+    routing_mode = random.choice(["mark", "oif", "uid"])
+    s = self.BuildSocket(6, net_test.UDPSocket, self.netid, routing_mode)
+    s.connect((net_test.IPV6_ADDR, 53))
+    s.send(net_test.UDP_PAYLOAD)
+    self.ExpectMulticastNS(router6)
+
+    # Receive a unicast NA with the R flag set to 0.
+    self.ReceiveUnicastAdvertisement(router6, self.RouterMacAddress(self.netid),
+                                     srcaddr=self._RouterAddress(self.netid, 6),
+                                     dstaddr=self.MyAddress(6, self.netid),
+                                     S=1, O=0, R=0)
+
+    # Expect that this takes us to REACHABLE.
+    self.ExpectNeighbourNotification(router6, NUD_REACHABLE)
+    self.assertNeighbourState(NUD_REACHABLE, router6)
+
 
 if __name__ == "__main__":
   unittest.main()
