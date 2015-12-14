@@ -15,14 +15,17 @@
 #
 
 LOCAL_PATH:= $(call my-dir)
-
 include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES :=  mmapPerf.cpp
+LOCAL_MODULE_PATH := $(TARGET_OUT_DATA)/local/tmp
 LOCAL_MODULE := mmapPerf
-LOCAL_SRC_FILES := mmapPerf.cpp
+LOCAL_MULTILIB := both
+LOCAL_MODULE_STEM_32 := $(LOCAL_MODULE)
+LOCAL_MODULE_STEM_64 := $(LOCAL_MODULE)64
 LOCAL_CLANG := true
 LOCAL_CFLAGS += -g -Wall -Werror -std=c++11 -Wno-missing-field-initializers -Wno-sign-compare -O3
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 LOCAL_CXX_STL := libc++_static
 LOCAL_STATIC_LIBRARIES := libc
-LOCAL_MODULE_TAGS := optional
 include $(BUILD_EXECUTABLE)
