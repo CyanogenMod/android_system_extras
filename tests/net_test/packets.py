@@ -87,10 +87,11 @@ def SYN(dport, version, srcaddr, dstaddr, sport=0, seq=TCP_SEQ):
 def RST(version, srcaddr, dstaddr, packet):
   ip = _GetIpLayer(version)
   original = packet.getlayer("TCP")
+  was_syn_or_fin = (original.flags & (TCP_SYN | TCP_FIN)) != 0
   return ("TCP RST",
           ip(src=srcaddr, dst=dstaddr) /
           scapy.TCP(sport=original.dport, dport=original.sport,
-                    ack=original.seq + 1, seq=None,
+                    ack=original.seq + was_syn_or_fin, seq=None,
                     flags=TCP_RST | TCP_ACK, window=TCP_WINDOW))
 
 def SYNACK(version, srcaddr, dstaddr, packet):
