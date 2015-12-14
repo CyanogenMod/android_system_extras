@@ -517,6 +517,12 @@ class MultiNetworkBaseTest(net_test.NetworkTest):
       actualip.flags &= 5
       actualip.chksum = None  # Change the header, recalculate the checksum.
 
+    # Blank out the flow label, since new kernels randomize it by default.
+    actualipv6 = actual.getlayer("IPv6")
+    expectedipv6 = expected.getlayer("IPv6")
+    if actualipv6 and expectedipv6:
+      actualipv6.fl = expectedipv6.fl
+
     # Blank out UDP fields that we can't predict (e.g., the source port for
     # kernel-originated packets).
     actualudp = actual.getlayer("UDP")
@@ -529,7 +535,6 @@ class MultiNetworkBaseTest(net_test.NetworkTest):
     # Since the TCP code below messes with options, recalculate the length.
     if actualip:
       actualip.len = None
-    actualipv6 = actual.getlayer("IPv6")
     if actualipv6:
       actualipv6.plen = None
 
