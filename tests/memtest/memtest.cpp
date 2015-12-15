@@ -55,7 +55,6 @@ static void usage(char* p) {
            "  malloc [fill]\n"
            "  madvise\n"
            "  resampler\n"
-           "  crash\n"
            "  stack (stack smasher)\n"
            "  crawl\n"
            , p);
@@ -68,7 +67,6 @@ int per_core_bandwidth(int argc, char** argv);
 int multithread_bandwidth(int argc, char** argv);
 int malloc_test(int argc, char** argv);
 int madvise_test(int argc, char** argv);
-int crash_test(int argc, char** argv);
 int stack_smasher_test(int argc, char** argv);
 int crawl_test(int argc, char** argv);
 int fp_test(int argc, char** argv);
@@ -81,7 +79,6 @@ typedef struct {
 function_t function_table[] = {
     { "malloc", malloc_test },
     { "madvise", madvise_test },
-    { "crash", crash_test },
     { "stack", stack_smasher_test },
     { "crawl", crawl_test },
     { "fp", fp_test },
@@ -175,19 +172,6 @@ int madvise_test(int, char**) {
     }
 
     printf("Done\n"); fflush(stdout);
-    return 0;
-}
-
-int crash_test(int, char**) {
-    printf("about to crash...\n");
-    asm volatile(
-        "mov r0,  #0 \n"
-        "mov r1,  #1 \n"
-        "mov r2,  #2 \n"
-        "mov r3,  #3 \n"
-        "ldr r12, [r0] \n"
-    );
-
     return 0;
 }
 
