@@ -334,7 +334,7 @@ AddIntsService::AddIntsService(int cpu): cpu_(cpu) {
 
 // Server function that handles parcels received from the client
 status_t AddIntsService::onTransact(uint32_t code, const Parcel &data,
-                                    Parcel* reply, uint32_t flags) {
+                                    Parcel* reply, uint32_t /* flags */) {
     int val1, val2;
     status_t rv(0);
     int cpu;
