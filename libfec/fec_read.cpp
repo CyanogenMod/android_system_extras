@@ -127,20 +127,21 @@ static int __ecc_read(fec_handle *f, void *rs, uint8_t *dest, uint64_t offset,
             data_index = i;
         }
 
-        /* copy raw data to reconstruct the RS block */
-        uint8_t bbuf[FEC_BLOCKSIZE];
+        /* to improve our chances of correcting IO errors, initialize the
+           buffer to zeros even if we are going to read to it later */
+        uint8_t bbuf[FEC_BLOCKSIZE] = {0};
 
-        if (unlikely(interleaved >= e->start) ||
-                is_zero(f, interleaved)) {
-            memset(bbuf, 0, FEC_BLOCKSIZE);
-        } else {
+        if (likely(interleaved < e->start) && !is_zero(f, interleaved)) {
+            /* copy raw data to reconstruct the RS block */
             if (!raw_pread(f, bbuf, FEC_BLOCKSIZE, interleaved)) {
-                error("failed to read: %s", strerror(errno));
-                return -1;
-            }
+                warn("failed to read: %s", strerror(errno));
 
-            if (use_erasures && neras <= e->roots &&
-                    is_erasure(f, interleaved, bbuf)) {
+                /* treat errors as corruption */
+                if (use_erasures && neras <= e->roots) {
+                    erasures[neras++] = i;
+                }
+            } else if (use_erasures && neras <= e->roots &&
+                            is_erasure(f, interleaved, bbuf)) {
                 erasures[neras++] = i;
             }
         }
