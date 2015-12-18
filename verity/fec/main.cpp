@@ -28,9 +28,8 @@ extern "C" {
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include <android-base/file.h>
-#include <fec/io.h>
-#include <fec/ecc.h>
 #include "image.h"
 
 enum {
@@ -141,7 +140,7 @@ static int print_size(image& ctx)
     return 0;
 }
 
-static int get_start(int mode, const char *filename)
+static int get_start(int mode, const std::string& filename)
 {
     fec::io fh(filename, O_RDONLY, FEC_VERITY_DISABLE);
 
@@ -170,14 +169,14 @@ static int get_start(int mode, const char *filename)
     return 0;
 }
 
-static int encode(image& ctx, const char *inp_filename,
-        const char *fec_filename)
+static int encode(image& ctx, const std::vector<std::string>& inp_filenames,
+        const std::string& fec_filename)
 {
     if (ctx.inplace) {
         FATAL("invalid parameters: inplace can only used when decoding\n");
     }
 
-    if (!image_load(inp_filename, &ctx, false)) {
+    if (!image_load(inp_filenames, &ctx, false)) {
         FATAL("failed to read input\n");
     }
 
@@ -185,8 +184,14 @@ static int encode(image& ctx, const char *inp_filename,
         FATAL("failed to allocate ecc\n");
     }
 
-    INFO("encoding RS(255, %d) for '%s' to '%s'\n", ctx.rs_n, inp_filename,
-        fec_filename);
+    INFO("encoding RS(255, %d) to '%s' for input files:\n", ctx.rs_n,
+        fec_filename.c_str());
+
+    size_t n = 1;
+
+    for (auto fn : inp_filenames) {
+        INFO("\t%zu: '%s'\n", n++, fn.c_str());
+    }
 
     if (ctx.verbose) {
         INFO("\traw fec size: %u\n", ctx.fec_size);
@@ -206,28 +211,31 @@ static int encode(image& ctx, const char *inp_filename,
     return 0;
 }
 
-static int decode(image& ctx, const char *inp_filename,
-        const char *fec_filename, const char *out_filename)
+static int decode(image& ctx, const std::vector<std::string>& inp_filenames,
+        const std::string& fec_filename, std::string& out_filename)
 {
+    const std::string& inp_filename = inp_filenames.front();
+
     if (ctx.inplace && ctx.sparse) {
         FATAL("invalid parameters: inplace cannot be used with sparse "
             "files\n");
     }
 
     if (!image_ecc_load(fec_filename, &ctx) ||
-            !image_load(inp_filename, &ctx, !!out_filename)) {
+            !image_load(inp_filenames, &ctx, !out_filename.empty())) {
         FATAL("failed to read input\n");
     }
 
     if (ctx.inplace) {
-        INFO("correcting '%s' using RS(255, %d) from '%s'\n", inp_filename,
-            ctx.rs_n, fec_filename);
+        INFO("correcting '%s' using RS(255, %d) from '%s'\n",
+            inp_filename.c_str(), ctx.rs_n, fec_filename.c_str());
 
         out_filename = inp_filename;
     } else {
         INFO("decoding '%s' to '%s' using RS(255, %d) from '%s'\n",
-            inp_filename, out_filename ? out_filename : "<none>", ctx.rs_n,
-            fec_filename);
+            inp_filename.c_str(),
+            out_filename.empty() ? out_filename.c_str() : "<none>", ctx.rs_n,
+            fec_filename.c_str());
     }
 
     if (ctx.verbose) {
@@ -246,7 +254,7 @@ static int decode(image& ctx, const char *inp_filename,
         INFO("no errors found\n");
     }
 
-    if (out_filename && !image_save(out_filename, &ctx)) {
+    if (!out_filename.empty() && !image_save(out_filename, &ctx)) {
         FATAL("failed to write output\n");
     }
 
@@ -256,9 +264,9 @@ static int decode(image& ctx, const char *inp_filename,
 
 int main(int argc, char **argv)
 {
-    char *fec_filename = NULL;
-    char *inp_filename = NULL;
-    char *out_filename = NULL;
+    std::string fec_filename;
+    std::string out_filename;
+    std::vector<std::string> inp_filenames;
     int mode = MODE_ENCODE;
     image ctx;
 
@@ -327,14 +335,14 @@ int main(int argc, char **argv)
                 return usage();
             }
             mode = MODE_GETECCSTART;
-            inp_filename = optarg;
+            inp_filenames.push_back(optarg);
             break;
         case 'V':
             if (mode != MODE_ENCODE) {
                 return usage();
             }
             mode = MODE_GETVERITYSTART;
-            inp_filename = optarg;
+            inp_filenames.push_back(optarg);
             break;
         case 'v':
             ctx.verbose = true;
@@ -352,19 +360,29 @@ int main(int argc, char **argv)
     assert(ctx.roots > 0 && ctx.roots < FEC_RSM);
 
     /* check for input / output parameters */
-    if (mode == MODE_ENCODE || mode == MODE_DECODE) {
+    if (mode == MODE_ENCODE) {
+        /* allow multiple input files */
+        for (int i = 0; i < (argc - 1); ++i) {
+            inp_filenames.push_back(argv[i]);
+        }
+
+        if (inp_filenames.empty()) {
+            return usage();
+        }
+
+        /* the last one is the output file */
+        fec_filename = argv[argc - 1];
+    } else if (mode == MODE_DECODE) {
         if (argc < 2 || argc > 3) {
             return usage();
         } else if (argc == 3) {
-            if (mode != MODE_DECODE || ctx.inplace) {
+            if (ctx.inplace) {
                 return usage();
             }
             out_filename = argv[2];
-        } else {
-            out_filename = NULL;
         }
 
-        inp_filename = argv[0];
+        inp_filenames.push_back(argv[0]);
         fec_filename = argv[1];
     }
 
@@ -373,11 +391,11 @@ int main(int argc, char **argv)
         return print_size(ctx);
     case MODE_GETECCSTART:
     case MODE_GETVERITYSTART:
-        return get_start(mode, inp_filename);
+        return get_start(mode, inp_filenames.front());
     case MODE_ENCODE:
-        return encode(ctx, inp_filename, fec_filename);
+        return encode(ctx, inp_filenames, fec_filename);
     case MODE_DECODE:
-        return decode(ctx, inp_filename, fec_filename, out_filename);
+        return decode(ctx, inp_filenames, fec_filename, out_filename);
     default:
         abort();
     }

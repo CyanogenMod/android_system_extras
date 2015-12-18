@@ -18,6 +18,8 @@
 #define __FEC_H__
 
 #include <utils/Compat.h>
+#include <string>
+#include <vector>
 #include <fec/io.h>
 #include <fec/ecc.h>
 
@@ -77,12 +79,12 @@ struct image_proc_ctx {
     void *rs;
 };
 
-extern bool image_load(const char *filename, image *ctx,
+extern bool image_load(const std::vector<std::string>& filename, image *ctx,
         bool output_needed);
-extern bool image_save(const char *filename, image *ctx);
+extern bool image_save(const std::string& filename, image *ctx);
 
-extern bool image_ecc_new(const char *filename, image *ctx);
-extern bool image_ecc_load(const char *filename, image *ctx);
+extern bool image_ecc_new(const std::string& filename, image *ctx);
+extern bool image_ecc_load(const std::string& filename, image *ctx);
 extern bool image_ecc_save(image *ctx);
 
 extern bool image_process(image_proc_func f, image *ctx);
