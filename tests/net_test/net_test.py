@@ -151,6 +151,10 @@ def RawGRESocket(family):
   return s
 
 
+def DisableLinger(sock):
+  sock.setsockopt(SOL_SOCKET, SO_LINGER, struct.pack("ii", 1, 0))
+
+
 def CreateSocketPair(family, socktype, addr):
   clientsock = socket(family, socktype, 0)
   listensock = socket(family, socktype, 0)
@@ -159,6 +163,9 @@ def CreateSocketPair(family, socktype, addr):
   listensock.listen(1)
   clientsock.connect(addr)
   acceptedsock, _ = listensock.accept()
+  DisableLinger(clientsock)
+  DisableLinger(acceptedsock)
+  listensock.close()
   return clientsock, acceptedsock
 
 

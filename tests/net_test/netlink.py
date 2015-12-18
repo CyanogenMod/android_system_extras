@@ -121,9 +121,10 @@ class NetlinkSocket(object):
       # If it's an attribute we know about, try to decode it.
       nla_name, nla_data = self._Decode(command, msg, nla.nla_type, nla_data)
 
-      # We only support unique attributes for now.
-      if nla_name in attributes:
-        raise ValueError("Duplicate attribute %d" % nla_name)
+      # We only support unique attributes for now, except for INET_DIAG_NONE,
+      # which can appear more than once but doesn't seem to contain any data.
+      if nla_name in attributes and nla_name != "INET_DIAG_NONE":
+        raise ValueError("Duplicate attribute %s" % nla_name)
 
       attributes[nla_name] = nla_data
       self._Debug("      %s" % str((nla_name, nla_data)))
