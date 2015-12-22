@@ -83,7 +83,8 @@ LOCAL_MODULE := libext4_utils_static
 # Various instances of dereferencing a type-punned pointer in extent.c
 LOCAL_CFLAGS += -fno-strict-aliasing
 LOCAL_STATIC_LIBRARIES := \
-    libsparse_static
+    libsparse_static \
+    libselinux
 include $(BUILD_STATIC_LIBRARY)
 
 
