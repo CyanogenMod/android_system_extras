@@ -1,5 +1,6 @@
 service perfprofd /system/xbin/perfprofd
     class late_start
     user root
+    group root wakelock
     oneshot
     writepid /dev/cpuset/system-background/tasks
