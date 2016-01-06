@@ -235,6 +235,16 @@ class SockDiag(netlink.NetlinkSocket):
     """Constructs a diag_req from a diag_msg the kernel has given us."""
     return InetDiagReqV2((d.family, protocol, 0, 1 << d.state, d.id))
 
+  def CloseSocket(self, req):
+    self._SendNlRequest(SOCK_DESTROY, req.Pack(),
+                        netlink.NLM_F_REQUEST | netlink.NLM_F_ACK)
+
+  def CloseSocketFromFd(self, s):
+    diag_msg = self.FindSockDiagFromFd(s)
+    protocol = s.getsockopt(SOL_SOCKET, net_test.SO_PROTOCOL)
+    req = self.DiagReqFromDiagMsg(diag_msg, protocol)
+    return self.CloseSocket(req)
+
 
 if __name__ == "__main__":
   n = SockDiag()
