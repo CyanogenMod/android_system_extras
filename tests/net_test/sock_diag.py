@@ -226,7 +226,7 @@ class SockDiag(netlink.NetlinkSocket):
   def GetSockDiag(self, req):
     """Gets an InetDiagMsg from the kernel for the specified request."""
     self._SendNlRequest(SOCK_DIAG_BY_FAMILY, req.Pack(), netlink.NLM_F_REQUEST)
-    return self._GetMsg(InetDiagMsg)
+    return self._GetMsg(InetDiagMsg)[0]
 
   @staticmethod
   def DiagReqFromDiagMsg(d, protocol):
