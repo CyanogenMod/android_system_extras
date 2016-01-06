@@ -195,7 +195,10 @@ class SockDiag(netlink.NetlinkSocket):
     """Creates an InetDiagReqV2 that matches the specified socket."""
     family = s.getsockopt(net_test.SOL_SOCKET, net_test.SO_DOMAIN)
     protocol = s.getsockopt(net_test.SOL_SOCKET, net_test.SO_PROTOCOL)
-    iface = s.getsockopt(SOL_SOCKET, net_test.SO_BINDTODEVICE)
+    if net_test.LINUX_VERSION >= (3, 8):
+      iface = s.getsockopt(SOL_SOCKET, net_test.SO_BINDTODEVICE)
+    else:
+      iface = 0
     src, sport = s.getsockname()[:2]
     try:
       dst, dport = s.getpeername()[:2]
