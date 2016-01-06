@@ -454,10 +454,7 @@ class IPRoute(netlink.NetlinkSocket):
       # implement parsing dump results.
       raise NotImplementedError("IPv4 RTM_GETADDR not implemented.")
     self._Address(6, RTM_GETADDR, address, 0, 0, RT_SCOPE_UNIVERSE, ifindex)
-    data = self._Recv()
-    if NLMsgHdr(data).type == NLMSG_ERROR:
-      self._ParseAck(data)
-    return self._ParseNLMsg(data, IfAddrMsg)[0]
+    return self._GetMsg(IfAddrMsg)
 
   def _Route(self, version, command, table, dest, prefixlen, nexthop, dev,
              mark, uid):
