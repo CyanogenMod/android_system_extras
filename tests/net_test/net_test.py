@@ -56,6 +56,8 @@ IPV6_FL_S_NONE = 0
 IPV6_FL_S_EXCL = 1
 IPV6_FL_S_ANY = 255
 
+IFNAMSIZ = 16
+
 IPV4_PING = "\x08\x00\x00\x00\x0a\xce\x00\x03"
 IPV6_PING = "\x80\x00\x00\x00\x0a\xce\x00\x03"
 
@@ -171,9 +173,9 @@ def CreateSocketPair(family, socktype, addr):
 
 def GetInterfaceIndex(ifname):
   s = IPv4PingSocket()
-  ifr = struct.pack("16si", ifname, 0)
+  ifr = struct.pack("%dsi" % IFNAMSIZ, ifname, 0)
   ifr = fcntl.ioctl(s, scapy.SIOCGIFINDEX, ifr)
-  return struct.unpack("16si", ifr)[1]
+  return struct.unpack("%dsi" % IFNAMSIZ, ifr)[1]
 
 
 def SetInterfaceHWAddr(ifname, hwaddr):
@@ -182,20 +184,20 @@ def SetInterfaceHWAddr(ifname, hwaddr):
   hwaddr = hwaddr.decode("hex")
   if len(hwaddr) != 6:
     raise ValueError("Unknown hardware address length %d" % len(hwaddr))
-  ifr = struct.pack("16sH6s", ifname, scapy.ARPHDR_ETHER, hwaddr)
+  ifr = struct.pack("%dsH6s" % IFNAMSIZ, ifname, scapy.ARPHDR_ETHER, hwaddr)
   fcntl.ioctl(s, SIOCSIFHWADDR, ifr)
 
 
 def SetInterfaceState(ifname, up):
   s = IPv4PingSocket()
-  ifr = struct.pack("16sH", ifname, 0)
+  ifr = struct.pack("%dsH" % IFNAMSIZ, ifname, 0)
   ifr = fcntl.ioctl(s, scapy.SIOCGIFFLAGS, ifr)
-  _, flags = struct.unpack("16sH", ifr)
+  _, flags = struct.unpack("%dsH" % IFNAMSIZ, ifr)
   if up:
     flags |= scapy.IFF_UP
   else:
     flags &= ~scapy.IFF_UP
-  ifr = struct.pack("16sH", ifname, flags)
+  ifr = struct.pack("%dsH" % IFNAMSIZ, ifname, flags)
   ifr = fcntl.ioctl(s, scapy.SIOCSIFFLAGS, ifr)
 
 
