@@ -54,28 +54,43 @@ class SockDiagTest(multinetwork_base.MultiNetworkBaseTest):
   def tearDown(self):
     [s.close() for socketpair in self.socketpairs.values() for s in socketpair]
 
+  def testFixupDiagMsg(self):
+    src = "0a00fa02303030312030312038302031"
+    dst = "0808080841414141414141416f0a3230"
+    cookie = "4078678100000000"
+    sockid = sock_diag.InetDiagSockId((47436, 32069,
+                                       src.decode("hex"), dst.decode("hex"), 0,
+                                       cookie.decode("hex")))
+    msg4 = sock_diag.InetDiagMsg((AF_INET, IPPROTO_TCP, 0,
+                                  sock_diag.TCP_SYN_RECV, sockid,
+                                  980, 123, 456, 789, 5555))
+    # Make a copy, cstructs are mutable.
+    msg6 = sock_diag.InetDiagMsg(msg4.Pack())
+    msg6.family = AF_INET6
+
+    fixed6 = sock_diag.InetDiagMsg(msg6.Pack())
+    self.sock_diag.FixupDiagMsg(fixed6)
+    self.assertEquals(msg6.Pack(), fixed6.Pack())
+
+    fixed4 = sock_diag.InetDiagMsg(msg4.Pack())
+    self.sock_diag.FixupDiagMsg(fixed4)
+    msg4.id.src = src.decode("hex")[:4] + 12 * "\x00"
+    msg4.id.dst = dst.decode("hex")[:4] + 12 * "\x00"
+    self.assertEquals(msg4.Pack(), fixed4.Pack())
+
   def assertSockDiagMatchesSocket(self, s, diag_msg):
     family = s.getsockopt(net_test.SOL_SOCKET, net_test.SO_DOMAIN)
     self.assertEqual(diag_msg.family, family)
 
-    # TODO: The kernel (at least 3.10) seems only to fill in the first 4 bytes
-    # of src and dst in the case of IPv4 addresses. This means we can't just do
-    # something like:
-    #  self.assertEqual(diag_msg.id.src, self.sock_diag.PaddedAddress(src))
-    # because the trailing bytes might not match.
-    # This seems like a bug because it might leaks kernel memory contents, but
-    # regardless, work around that here.
-    addrlen = {AF_INET: 4, AF_INET6: 16}[family]
+    self.sock_diag.FixupDiagMsg(diag_msg)
 
     src, sport = s.getsockname()[0:2]
+    self.assertEqual(diag_msg.id.src, self.sock_diag.PaddedAddress(src))
     self.assertEqual(diag_msg.id.sport, sport)
-    self.assertEqual(diag_msg.id.src[:addrlen],
-                     self.sock_diag.RawAddress(src))
 
     if self.sock_diag.GetDestinationAddress(diag_msg) not in ["0.0.0.0", "::"]:
       dst, dport = s.getpeername()[0:2]
-      self.assertEqual(diag_msg.id.dst[:addrlen],
-                       self.sock_diag.RawAddress(dst))
+      self.assertEqual(diag_msg.id.dst, self.sock_diag.PaddedAddress(dst))
       self.assertEqual(diag_msg.id.dport, dport)
     else:
       assertRaisesErrno(errno.ENOTCONN, s.getpeername)
@@ -103,9 +118,18 @@ class SockDiagTest(multinetwork_base.MultiNetworkBaseTest):
     random.shuffle(socketpairs)
     for socketpair in socketpairs:
       for sock in socketpair:
+        # Check that we can find a diag_msg by scanning a dump.
         self.assertSockDiagMatchesSocket(
             sock,
-            self.sock_diag.GetSockDiagForFd(sock))
+            self.sock_diag.FindSockDiagFromFd(sock))
+        cookie = self.sock_diag.FindSockDiagFromFd(sock).id.cookie
+
+        # Check that we can find a diag_msg once we know the cookie.
+        req = self.sock_diag.DiagReqFromSocket(sock)
+        req.id.cookie = cookie
+        req.states = 1 << diag_msg.state
+        diag_msg, attrs = self.sock_diag.GetSockDiag(req)
+        self.assertSockDiagMatchesSocket(sock, diag_msg)
 
 
 if __name__ == "__main__":

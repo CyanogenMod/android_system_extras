@@ -131,13 +131,17 @@ class SockDiag(netlink.NetlinkSocket):
   def _EmptyInetDiagSockId():
     return InetDiagSockId(("\x00" * len(InetDiagSockId)))
 
+  def Dump(self, diag_req):
+    out = self._Dump(SOCK_DIAG_BY_FAMILY, diag_req, InetDiagMsg)
+    return out
+
   def DumpSockets(self, family, protocol, ext, states, sock_id):
     """Dumps sockets matching the specified parameters."""
     if sock_id is None:
       sock_id = self._EmptyInetDiagSockId()
 
     diag_req = InetDiagReqV2((family, protocol, ext, states, sock_id))
-    return self._Dump(SOCK_DIAG_BY_FAMILY, diag_req, InetDiagMsg)
+    return self.Dump(diag_req)
 
   def DumpAllInetSockets(self, protocol, sock_id=None, ext=0, states=0xffffffff):
     # DumpSockets(AF_UNSPEC) does not result in dumping all inet sockets, it
@@ -177,6 +181,15 @@ class SockDiag(netlink.NetlinkSocket):
       padded += "\x00" * (16 - len(padded))
     return padded
 
+  # For IPv4 addresses, the kernel seems only to fill in the first 4 bytes of
+  # src and dst, leaving the others unspecified. This seems like a bug because
+  # it might leak kernel memory contents, but regardless, work around it.
+  @staticmethod
+  def FixupDiagMsg(d):
+    if d.family == AF_INET:
+      d.id.src = d.id.src[:4] + "\x00" * 12
+      d.id.dst = d.id.dst[:4] + "\x00" * 12
+
   @staticmethod
   def DiagReqFromSocket(s):
     """Creates an InetDiagReqV2 that matches the specified socket."""
@@ -197,19 +210,25 @@ class SockDiag(netlink.NetlinkSocket):
     sock_id = InetDiagSockId((sport, dport, src, dst, iface, "\x00" * 8))
     return InetDiagReqV2((family, protocol, 0, 0xffffffff, sock_id))
 
-  def GetSockDiagForFd(self, s):
-    """Gets an InetDiagMsg from the kernel for the specified socket."""
-    req = self.DiagReqFromSocket(s)
-    for diag_msg, attrs in self._Dump(SOCK_DIAG_BY_FAMILY, req, InetDiagMsg):
+  def FindSockDiagFromReq(self, req):
+    for diag_msg, attrs in self.Dump(req):
       return diag_msg
     raise ValueError("Dump of %s returned no sockets" % req)
 
-  def GetSockDiag(self, family, protocol, sock_id, ext=0, states=0xffffffff):
-    """Gets an InetDiagMsg from the kernel for the specified parameters."""
-    req = InetDiagReqV2((family, protocol, ext, states, sock_id))
+  def FindSockDiagFromFd(self, s):
+    """Gets an InetDiagMsg from the kernel for the specified socket."""
+    req = self.DiagReqFromSocket(s)
+    return self.FindSockDiagFromReq(req)
+
+  def GetSockDiag(self, req):
+    """Gets an InetDiagMsg from the kernel for the specified request."""
     self._SendNlRequest(SOCK_DIAG_BY_FAMILY, req.Pack(), netlink.NLM_F_REQUEST)
-    data = self._Recv()
-    return self._ParseNLMsg(data, InetDiagMsg)[0]
+    return self._GetMsg(InetDiagMsg)
+
+  @staticmethod
+  def DiagReqFromDiagMsg(d, protocol):
+    """Constructs a diag_req from a diag_msg the kernel has given us."""
+    return InetDiagReqV2((d.family, protocol, 0, 1 << d.state, d.id))
 
 
 if __name__ == "__main__":
