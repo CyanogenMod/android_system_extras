@@ -200,6 +200,12 @@ class NetlinkSocket(object):
     data = data[attrlen:]
     return (nlmsg, attributes), data
 
+  def _GetMsg(self, msgtype):
+    data = self._Recv()
+    if NLMsgHdr(data).type == NLMSG_ERROR:
+      self._ParseAck(data)
+    return self._ParseNLMsg(data, msgtype)[0]
+
   def _GetMsgList(self, msgtype, data, expect_done):
     out = []
     while data:
