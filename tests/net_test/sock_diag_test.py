@@ -128,7 +128,7 @@ class SockDiagTest(multinetwork_base.MultiNetworkBaseTest):
         req = self.sock_diag.DiagReqFromSocket(sock)
         req.id.cookie = cookie
         req.states = 1 << diag_msg.state
-        diag_msg, attrs = self.sock_diag.GetSockDiag(req)
+        diag_msg = self.sock_diag.GetSockDiag(req)
         self.assertSockDiagMatchesSocket(sock, diag_msg)
 
 
