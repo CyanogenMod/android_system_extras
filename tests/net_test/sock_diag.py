@@ -196,7 +196,9 @@ class SockDiag(netlink.NetlinkSocket):
     family = s.getsockopt(net_test.SOL_SOCKET, net_test.SO_DOMAIN)
     protocol = s.getsockopt(net_test.SOL_SOCKET, net_test.SO_PROTOCOL)
     if net_test.LINUX_VERSION >= (3, 8):
-      iface = s.getsockopt(SOL_SOCKET, net_test.SO_BINDTODEVICE)
+      iface = s.getsockopt(SOL_SOCKET, net_test.SO_BINDTODEVICE,
+                           net_test.IFNAMSIZ)
+      iface = GetInterfaceIndex(iface) if iface else 0
     else:
       iface = 0
     src, sport = s.getsockname()[:2]
