@@ -17,6 +17,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := f2fs_ioutils.c
 LOCAL_C_INCLUDES := external/f2fs-tools/include external/f2fs-tools/mkfs
 LOCAL_STATIC_LIBRARIES := \
+    libselinux \
     libsparse_host \
     libext2_uuid-host \
     libz
