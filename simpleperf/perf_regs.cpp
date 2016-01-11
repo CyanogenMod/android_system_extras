@@ -28,7 +28,7 @@ ArchType GetCurrentArch() {
 }
 
 bool SetCurrentArch(const std::string& arch) {
-  if (arch == "x86") {
+  if (arch == "x86" || arch == "i686") {
     current_arch = ARCH_X86_32;
   } else if (arch == "x86_64") {
     current_arch = ARCH_X86_64;
