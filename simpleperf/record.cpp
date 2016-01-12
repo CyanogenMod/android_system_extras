@@ -674,26 +674,27 @@ BuildIdRecord CreateBuildIdRecord(bool in_kernel, pid_t pid, const BuildId& buil
   return record;
 }
 
-bool IsRecordHappensBefore(const Record* r1, const Record* r2) {
-  bool is_r1_sample = (r1->header.type == PERF_RECORD_SAMPLE);
-  bool is_r2_sample = (r2->header.type == PERF_RECORD_SAMPLE);
-  uint64_t time1 = r1->Timestamp();
-  uint64_t time2 = r2->Timestamp();
+bool RecordCache::RecordWithSeq::IsHappensBefore(const RecordWithSeq& other) const {
+  bool is_sample = (record->header.type == PERF_RECORD_SAMPLE);
+  bool is_other_sample = (other.record->header.type == PERF_RECORD_SAMPLE);
+  uint64_t time = record->Timestamp();
+  uint64_t other_time = other.record->Timestamp();
   // The record with smaller time happens first.
-  if (time1 != time2) {
-    return time1 < time2;
+  if (time != other_time) {
+    return time < other_time;
   }
   // If happening at the same time, make non-sample records before sample records,
   // because non-sample records may contain useful information to parse sample records.
-  if (is_r1_sample != is_r2_sample) {
-    return is_r1_sample ? false : true;
+  if (is_sample != is_other_sample) {
+    return is_sample ? false : true;
   }
-  // Otherwise, don't care of the order.
-  return false;
+  // Otherwise, use the same order as they enter the cache.
+  return seq < other.seq;
 }
 
-bool RecordCache::RecordComparator::operator()(const Record* r1, const Record* r2) {
-  return !IsRecordHappensBefore(r1, r2);
+bool RecordCache::RecordComparator::operator()(const RecordWithSeq& r1,
+                                               const RecordWithSeq& r2) {
+  return r2.IsHappensBefore(r1);
 }
 
 RecordCache::RecordCache(const perf_event_attr& attr, size_t min_cache_size,
@@ -703,6 +704,7 @@ RecordCache::RecordCache(const perf_event_attr& attr, size_t min_cache_size,
       min_cache_size_(min_cache_size),
       min_time_diff_in_ns_(min_time_diff_in_ns),
       last_time_(0),
+      cur_seq_(0),
       queue_(RecordComparator()) {
 }
 
@@ -718,19 +720,19 @@ void RecordCache::Push(const char* data, size_t size) {
     }
   }
   for (auto& r : records) {
-    queue_.push(r.release());
+    queue_.push(CreateRecordWithSeq(r.release()));
   }
 }
 
 void RecordCache::Push(std::unique_ptr<Record> record) {
-  queue_.push(record.release());
+  queue_.push(CreateRecordWithSeq(record.release()));
 }
 
 std::unique_ptr<Record> RecordCache::Pop() {
   if (queue_.size() < min_cache_size_) {
     return nullptr;
   }
-  Record* r = queue_.top();
+  Record* r = queue_.top().record;
   if (has_timestamp_) {
     if (r->Timestamp() + min_time_diff_in_ns_ > last_time_) {
       return nullptr;
@@ -743,8 +745,15 @@ std::unique_ptr<Record> RecordCache::Pop() {
 std::vector<std::unique_ptr<Record>> RecordCache::PopAll() {
   std::vector<std::unique_ptr<Record>> result;
   while (!queue_.empty()) {
-    result.emplace_back(queue_.top());
+    result.emplace_back(queue_.top().record);
     queue_.pop();
   }
+  return result;
+}
+
+RecordCache::RecordWithSeq RecordCache::CreateRecordWithSeq(Record *r) {
+  RecordWithSeq result;
+  result.seq = cur_seq_++;
+  result.record = r;
   return result;
 }

@@ -179,7 +179,7 @@ void DumpRecordCommand::DumpDataSection() {
   record_file_reader_->ReadDataSection([](std::unique_ptr<Record> record) {
     record->Dump();
     return true;
-  });
+  }, false);
 }
 
 void DumpRecordCommand::DumpFeatureSection() {

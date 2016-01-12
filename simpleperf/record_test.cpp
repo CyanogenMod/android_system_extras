@@ -100,3 +100,21 @@ TEST_F(RecordTest, RecordCache_smoke) {
   ASSERT_EQ(1u, last_records.size());
   CheckRecordEqual(r4, *last_records[0]);
 }
+
+TEST_F(RecordTest, RecordCache_FIFO) {
+  event_attr.sample_id_all = 1;
+  event_attr.sample_type |= PERF_SAMPLE_TIME;
+  RecordCache cache(event_attr, 2, 2);
+  std::vector<MmapRecord> records;
+  for (size_t i = 0; i < 10; ++i) {
+    MmapRecord r = CreateMmapRecord(event_attr, true, 1, i, 0x100, 0x200, 0x300, "mmap_record1");
+    records.push_back(r);
+    std::vector<char> buf = r.BinaryFormat();
+    cache.Push(buf.data(), buf.size());
+  }
+  std::vector<std::unique_ptr<Record>> out_records = cache.PopAll();
+  ASSERT_EQ(records.size(), out_records.size());
+  for (size_t i = 0; i < records.size(); ++i) {
+    CheckRecordEqual(records[i], *out_records[i]);
+  }
+}

@@ -327,16 +327,27 @@ class RecordCache {
   std::vector<std::unique_ptr<Record>> PopAll();
 
  private:
-  struct RecordComparator {
-    bool operator()(const Record* r1, const Record* r2);
+  struct RecordWithSeq {
+    uint32_t seq;
+    Record *record;
+
+    bool IsHappensBefore(const RecordWithSeq& other) const;
   };
+
+  struct RecordComparator {
+    bool operator()(const RecordWithSeq& r1, const RecordWithSeq& r2);
+  };
+
+  RecordWithSeq CreateRecordWithSeq(Record *r);
 
   const perf_event_attr attr_;
   bool has_timestamp_;
   size_t min_cache_size_;
   uint64_t min_time_diff_in_ns_;
   uint64_t last_time_;
-  std::priority_queue<Record*, std::vector<Record*>, RecordComparator> queue_;
+  uint32_t cur_seq_;
+  std::priority_queue<RecordWithSeq, std::vector<RecordWithSeq>,
+      RecordComparator> queue_;
 };
 
 std::vector<std::unique_ptr<Record>> ReadRecordsFromBuffer(const perf_event_attr& attr,
