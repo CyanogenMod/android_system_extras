@@ -353,11 +353,11 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
     } else if (args[i] == "--children") {
       accumulate_callchain_ = true;
     } else if (args[i] == "--comms" || args[i] == "--dsos") {
+      std::unordered_set<std::string>& filter = (args[i] == "--comms" ? comm_filter : dso_filter);
       if (!NextArgumentOrError(args, &i)) {
         return false;
       }
       std::vector<std::string> strs = android::base::Split(args[i], ",");
-      std::unordered_set<std::string>& filter = (args[i] == "--comms" ? comm_filter : dso_filter);
       filter.insert(strs.begin(), strs.end());
 
     } else if (args[i] == "-g") {
