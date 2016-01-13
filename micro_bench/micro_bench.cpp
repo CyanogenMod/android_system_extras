@@ -382,20 +382,6 @@ int benchmarkSleep(const char* /*name*/, const command_data_t &cmd_data, void_fu
     return 0;
 }
 
-int benchmarkCpu(const char* /*name*/, const command_data_t &cmd_data, void_func_t /*func*/) {
-    // Use volatile so that the loop is not optimized away by the compiler.
-    volatile int cpu_foo;
-
-    MAINLOOP(cmd_data,
-             for (cpu_foo = 0; cpu_foo < 100000000; cpu_foo++),
-             (double)time_ns/NS_PER_SEC,
-             printf("cpu took %.06f seconds\n", avg),
-             printf("  cpu average %.06f seconds std dev %f min %0.6f seconds max %0.6f seconds\n", \
-                    running_avg, computeStdDev(square_avg, running_avg), min, max));
-
-    return 0;
-}
-
 int benchmarkMemset(const char *name, const command_data_t &cmd_data, void_func_t func) {
     memset_func_t memset_func = reinterpret_cast<memset_func_t>(func);
     BENCH_ONE_BUF(name, cmd_data, ;, memset_func(buf, i, size));
@@ -591,7 +577,6 @@ int benchmarkStrcpyCold(const char *name, const command_data_t &cmd_data, void_f
 
 // Create the mapping structure.
 function_t function_table[] = {
-    { "cpu", benchmarkCpu, NULL },
     { "memcpy", benchmarkMemcpy, reinterpret_cast<void_func_t>(memcpy) },
     { "memcpy_cold", benchmarkMemcpyCold, reinterpret_cast<void_func_t>(memcpy) },
     { "memmove_forward", benchmarkMemcpy, reinterpret_cast<void_func_t>(memmove) },
