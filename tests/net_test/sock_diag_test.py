@@ -37,7 +37,8 @@ ALL_NON_TIME_WAIT = 0xffffffff & ~(1 << sock_diag.TCP_TIME_WAIT)
 # TODO: Backport SOCK_DESTROY and delete this.
 HAVE_SOCK_DESTROY = net_test.LINUX_VERSION >= (4, 4)
 
-class SockDiagTest(multinetwork_base.MultiNetworkBaseTest):
+
+class SockDiagBaseTest(multinetwork_base.MultiNetworkBaseTest):
 
   @staticmethod
   def _CreateLotsOfSockets():
@@ -50,6 +51,9 @@ class SockDiagTest(multinetwork_base.MultiNetworkBaseTest):
                       socketpair[1].getsockname()[1])
       socketpairs[(addr, sport, dport)] = socketpair
     return socketpairs
+
+
+class SockDiagTest(SockDiagBaseTest):
 
   def setUp(self):
     super(SockDiagTest, self).setUp()
@@ -216,7 +220,7 @@ class SocketExceptionThread(threading.Thread):
 
 # TODO: Take a tun fd as input, make this a utility class, and reuse at least
 # in forwarding_test.
-class TcpTest(SockDiagTest):
+class TcpTest(SockDiagBaseTest):
 
   NOT_YET_ACCEPTED = -1
 
