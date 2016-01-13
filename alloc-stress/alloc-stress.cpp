@@ -1,5 +1,7 @@
+#include <arpa/inet.h>
 #include <iostream>
 #include <chrono>
+#include <cutils/sockets.h>
 #include <hardware/gralloc.h>
 #include <vector>
 #include <tuple>
@@ -9,6 +11,7 @@
 #include <fcntl.h>
 #include <string>
 #include <fstream>
+#include <sys/stat.h>
 #include <sys/wait.h>
 
 using namespace std;
@@ -108,7 +111,6 @@ void createProcess(Pipe pipe, const char *exName, const char *arg)
         char writeFdStr[16];
         snprintf(readFdStr, sizeof(readFdStr), "%d", pipe.getReadFd());
         snprintf(writeFdStr, sizeof(writeFdStr), "%d", pipe.getWriteFd());
-
         execl(exName, exName, "--worker", arg, readFdStr, writeFdStr, 0);
         ASSERT_TRUE(0);
     }
@@ -123,21 +125,63 @@ void createProcess(Pipe pipe, const char *exName, const char *arg)
 }
 
 
-void writeToFile(const char * path, const char *data)
-{
-    ofstream file(path);
-    file << data;
-    file.close();
+static void write_oomadj_to_lmkd(int oomadj) {
+    // Connect to lmkd and store our oom_adj
+    int lmk_procprio_cmd[4];
+    int sock;
+    int tries = 10;
+    while ((sock = socket_local_client("lmkd",
+                    ANDROID_SOCKET_NAMESPACE_RESERVED,
+                    SOCK_SEQPACKET)) < 0) {
+        usleep(100000);
+        if (tries-- < 0) break;
+    }
+    if (sock < 0) {
+        cout << "Failed to connect to lmkd, errno " << errno << endl;
+        exit(1);
+    }
+    lmk_procprio_cmd[0] = htonl(1);
+    lmk_procprio_cmd[1] = htonl(getpid());
+    lmk_procprio_cmd[2] = htonl(getuid());
+    lmk_procprio_cmd[3] = htonl(oomadj);
+
+    int written = write(sock, lmk_procprio_cmd, sizeof(lmk_procprio_cmd));
+    cout << "Wrote " << written << " bytes to lmkd control socket." << endl;
 }
+
+#ifdef ENABLE_MEM_CGROUPS
+static void create_memcg() {
+    char buf[256];
+    pid_t pid = getpid();
+    snprintf(buf, sizeof(buf), "/dev/memctl/apps/%u", pid);
+
+    int tasks = mkdir(buf, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    if (tasks < 0) {
+        cout << "Failed to create memory cgroup" << endl;
+        return;
+    }
+    snprintf(buf, sizeof(buf), "/dev/memctl/apps/%u/tasks", pid);
+    tasks = open(buf, O_WRONLY);
+    if (tasks < 0) {
+        cout << "Unable to add process to memory cgroup" << endl;
+        return;
+    }
+    snprintf(buf, sizeof(buf), "%u", pid);
+    write(tasks, buf, strlen(buf));
+    close(tasks);
+}
+#endif
 
 size_t s = 4 * (1 << 20);
 void *gptr;
 int main(int argc, char *argv[])
 {
     if ((argc > 1) && (std::string(argv[1]) == "--worker")) {
+#ifdef ENABLE_MEM_CGROUPS
+        create_memcg();
+#endif
+        write_oomadj_to_lmkd(atoi(argv[2]));
         Pipe p{atoi(argv[3]), atoi(argv[4])};
-
-        writeToFile("/proc/self/oom_adj", argv[2]);
 
         long long allocCount = 0;
         while (1) {
@@ -155,10 +199,10 @@ int main(int argc, char *argv[])
             allocCount += s;
         }
     } else {
-        writeToFile("/proc/self/oom_adj", "-17");
         cout << "parent:" << argc << endl;
 
-        for (int i = 10; i >= 0; i--) {
+        write_oomadj_to_lmkd(-1000);
+        for (int i = 1000; i >= 0; i -= 100) {
             auto pipes = Pipe::createPipePair();
             char arg[16];
             snprintf(arg, sizeof(arg), "%d", i);
