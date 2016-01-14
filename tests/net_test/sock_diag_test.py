@@ -32,8 +32,6 @@ import threading
 
 NUM_SOCKETS = 100
 
-ALL_NON_TIME_WAIT = 0xffffffff & ~(1 << sock_diag.TCP_TIME_WAIT)
-
 # TODO: Backport SOCK_DESTROY and delete this.
 HAVE_SOCK_DESTROY = net_test.LINUX_VERSION >= (4, 4)
 
@@ -117,8 +115,7 @@ class SockDiagTest(SockDiagBaseTest):
 
   def testFindsAllMySockets(self):
     self.socketpairs = self._CreateLotsOfSockets()
-    sockets = self.sock_diag.DumpAllInetSockets(IPPROTO_TCP,
-                                                states=ALL_NON_TIME_WAIT)
+    sockets = self.sock_diag.DumpAllInetSockets(IPPROTO_TCP)
     self.assertGreaterEqual(len(sockets), NUM_SOCKETS)
 
     # Find the cookies for all of our sockets.
