@@ -192,7 +192,7 @@ class SockDiagTest(SockDiagBaseTest):
       sock_id = self.sock_diag._EmptyInetDiagSockId()
       req = sock_diag.InetDiagReqV2((AF_INET6, IPPROTO_TCP, 0, 0xffffffff,
                                      sock_id))
-      self.sock_diag._Dump(code, req, sock_diag.InetDiagMsg)
+      self.sock_diag._Dump(code, req, sock_diag.InetDiagMsg, "")
 
     op = sock_diag.SOCK_DIAG_BY_FAMILY
     DiagDump(op)  # No errors? Good.

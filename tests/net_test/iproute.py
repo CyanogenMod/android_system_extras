@@ -422,11 +422,11 @@ class IPRoute(netlink.NetlinkSocket):
     # Create a struct rtmsg specifying the table and the given match attributes.
     family = self._AddressFamily(version)
     rtmsg = RTMsg((family, 0, 0, 0, 0, 0, 0, 0, 0))
-    return self._Dump(RTM_GETRULE, rtmsg, RTMsg)
+    return self._Dump(RTM_GETRULE, rtmsg, RTMsg, "")
 
   def DumpLinks(self):
     ifinfomsg = IfinfoMsg((0, 0, 0, 0, 0, 0))
-    return self._Dump(RTM_GETLINK, ifinfomsg, IfinfoMsg)
+    return self._Dump(RTM_GETLINK, ifinfomsg, IfinfoMsg, "")
 
   def _Address(self, version, command, addr, prefixlen, flags, scope, ifindex):
     """Adds or deletes an IP address."""
@@ -530,7 +530,7 @@ class IPRoute(netlink.NetlinkSocket):
 
   def DumpNeighbours(self, version):
     ndmsg = NdMsg((self._AddressFamily(version), 0, 0, 0, 0))
-    return self._Dump(RTM_GETNEIGH, ndmsg, NdMsg)
+    return self._Dump(RTM_GETNEIGH, ndmsg, NdMsg, "")
 
   def ParseNeighbourMessage(self, msg):
     msg, _ = self._ParseNLMsg(msg, NdMsg)

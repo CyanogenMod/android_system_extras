@@ -132,7 +132,7 @@ class SockDiag(netlink.NetlinkSocket):
     return InetDiagSockId(("\x00" * len(InetDiagSockId)))
 
   def Dump(self, diag_req):
-    out = self._Dump(SOCK_DIAG_BY_FAMILY, diag_req, InetDiagMsg)
+    out = self._Dump(SOCK_DIAG_BY_FAMILY, diag_req, InetDiagMsg, "")
     return out
 
   def DumpSockets(self, family, protocol, ext, states, sock_id):
