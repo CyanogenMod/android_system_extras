@@ -27,6 +27,7 @@ The information of all runtests is stored in runtest.conf.
 
 import re
 import subprocess
+import sys
 import xml.etree.ElementTree as ET
 
 
@@ -75,7 +76,7 @@ class Symbol(object):
 
 class SymbolOverheadRequirement(object):
 
-  def __init__(self, symbol_name, comm=None, min_overhead=None,
+  def __init__(self, symbol_name=None, comm=None, min_overhead=None,
                max_overhead=None):
     self.symbol_name = symbol_name
     self.comm = comm
@@ -84,8 +85,9 @@ class SymbolOverheadRequirement(object):
 
   def __str__(self):
     strs = []
-    strs.append('SymbolOverheadRequirement symbol_name=%s' %
-                self.symbol_name)
+    strs.append('SymbolOverheadRequirement')
+    if self.symbol_name is not None:
+      strs.append('symbol_name=%s' % self.symbol_name)
     if self.comm is not None:
       strs.append('comm=%s' % self.comm)
     if self.min_overhead is not None:
@@ -95,8 +97,9 @@ class SymbolOverheadRequirement(object):
     return ' '.join(strs)
 
   def is_match(self, symbol):
-    if symbol.name != self.symbol_name:
-      return False
+    if self.symbol_name is not None:
+      if self.symbol_name != symbol.name:
+        return False
     if self.comm is not None:
       if self.comm != symbol.comm:
         return False
@@ -163,11 +166,13 @@ class Test(object):
           self,
           test_name,
           executable_name,
+          report_options,
           symbol_overhead_requirements,
           symbol_children_overhead_requirements,
           symbol_relation_requirements):
     self.test_name = test_name
     self.executable_name = executable_name
+    self.report_options = report_options
     self.symbol_overhead_requirements = symbol_overhead_requirements
     self.symbol_children_overhead_requirements = (
         symbol_children_overhead_requirements)
@@ -177,6 +182,7 @@ class Test(object):
     strs = []
     strs.append('Test test_name=%s' % self.test_name)
     strs.append('\texecutable_name=%s' % self.executable_name)
+    strs.append('\treport_options=%s' % (' '.join(self.report_options)))
     strs.append('\tsymbol_overhead_requirements:')
     for req in self.symbol_overhead_requirements:
       strs.append('\t\t%s' % req)
@@ -198,17 +204,22 @@ def load_config_file(config_file):
     assert test.tag == 'test'
     test_name = test.attrib['name']
     executable_name = None
+    report_options = []
     symbol_overhead_requirements = []
     symbol_children_overhead_requirements = []
     symbol_relation_requirements = []
     for test_item in test:
       if test_item.tag == 'executable':
         executable_name = test_item.attrib['name']
+      elif test_item.tag == 'report':
+        report_options = test_item.attrib['option'].split()
       elif (test_item.tag == 'symbol_overhead' or
               test_item.tag == 'symbol_children_overhead'):
         for symbol_item in test_item:
           assert symbol_item.tag == 'symbol'
-          symbol_name = symbol_item.attrib['name']
+          symbol_name = None
+          if 'name' in symbol_item.attrib:
+            symbol_name = symbol_item.attrib['name']
           comm = None
           if 'comm' in symbol_item.attrib:
             comm = symbol_item.attrib['comm']
@@ -243,6 +254,7 @@ def load_config_file(config_file):
         Test(
             test_name,
             executable_name,
+            report_options,
             symbol_overhead_requirements,
             symbol_children_overhead_requirements,
             symbol_relation_requirements))
@@ -423,21 +435,24 @@ class ReportAnalyzer(object):
   def _check_symbol_overhead_requirements(self, test, symbols):
     result = True
     matched = [False] * len(test.symbol_overhead_requirements)
+    matched_overhead = [0] * len(test.symbol_overhead_requirements)
     for symbol in symbols:
       for i in range(len(test.symbol_overhead_requirements)):
         req = test.symbol_overhead_requirements[i]
         if req.is_match(symbol):
           matched[i] = True
-          fulfilled = req.check_overhead(symbol.overhead)
-          if not fulfilled:
-            print "Symbol (%s) doesn't match requirement (%s) in test %s" % (
-                symbol, req, test)
-            result = False
+          matched_overhead[i] += symbol.overhead
     for i in range(len(matched)):
       if not matched[i]:
         print 'requirement (%s) has no matched symbol in test %s' % (
             test.symbol_overhead_requirements[i], test)
         result = False
+      else:
+        fulfilled = req.check_overhead(matched_overhead[i])
+        if not fulfilled:
+          print "Symbol (%s) doesn't match requirement (%s) in test %s" % (
+              symbol, req, test)
+          result = False
     return result
 
   def _check_symbol_children_overhead_requirements(self, test, symbols):
@@ -481,56 +496,95 @@ class ReportAnalyzer(object):
     return result
 
 
-def main():
+def runtest(host, device, normal, callgraph, selected_tests):
   tests = load_config_file('runtest.conf')
   host_runner = HostRunner('simpleperf')
   device_runner = DeviceRunner('simpleperf')
   report_analyzer = ReportAnalyzer()
   for test in tests:
-    host_runner.record(test.executable_name, 'perf.data')
-    host_runner.report('perf.data', 'perf.report')
-    result = report_analyzer.check_report_file(
-        test, 'perf.report', False)
-    print 'test %s on host %s' % (
-        test.test_name, 'Succeeded' if result else 'Failed')
-    if not result:
-      exit(1)
-    device_runner.record(test.executable_name, '/data/perf.data')
-    device_runner.report('/data/perf.data', 'perf.report')
-    result = report_analyzer.check_report_file(test, 'perf.report', False)
-    print 'test %s on device %s' % (
-        test.test_name, 'Succeeded' if result else 'Failed')
-    if not result:
-      exit(1)
+    if selected_tests is not None:
+      if test.test_name not in selected_tests:
+        continue
+    if host and normal:
+      host_runner.record(test.executable_name, 'perf.data')
+      host_runner.report('perf.data', 'perf.report',
+                         additional_options = test.report_options)
+      result = report_analyzer.check_report_file(
+          test, 'perf.report', False)
+      print 'test %s on host %s' % (
+          test.test_name, 'Succeeded' if result else 'Failed')
+      if not result:
+        exit(1)
 
-    host_runner.record(
-        test.executable_name,
-        'perf_g.data',
-        additional_options=['-g'])
-    host_runner.report(
-        'perf_g.data',
-        'perf_g.report',
-        additional_options=['-g'])
-    result = report_analyzer.check_report_file(test, 'perf_g.report', True)
-    print 'call-graph test %s on host %s' % (
-        test.test_name, 'Succeeded' if result else 'Failed')
-    if not result:
-      exit(1)
+    if device and normal:
+      device_runner.record(test.executable_name, '/data/perf.data')
+      device_runner.report('/data/perf.data', 'perf.report',
+                           additional_options = test.report_options)
+      result = report_analyzer.check_report_file(test, 'perf.report', False)
+      print 'test %s on device %s' % (
+          test.test_name, 'Succeeded' if result else 'Failed')
+      if not result:
+        exit(1)
 
-    device_runner.record(
-        test.executable_name,
-        '/data/perf_g.data',
-        additional_options=['-g'])
-    device_runner.report(
-        '/data/perf_g.data',
-        'perf_g.report',
-        additional_options=['-g'])
-    result = report_analyzer.check_report_file(test, 'perf_g.report', True)
-    print 'call-graph test %s on device %s' % (
-        test.test_name, 'Succeeded' if result else 'Failed')
-    if not result:
-      exit(1)
+    if host and callgraph:
+      host_runner.record(
+          test.executable_name,
+          'perf_g.data',
+          additional_options=['-g'])
+      host_runner.report(
+          'perf_g.data',
+          'perf_g.report',
+          additional_options=['-g'] + test.report_options)
+      result = report_analyzer.check_report_file(test, 'perf_g.report', True)
+      print 'call-graph test %s on host %s' % (
+          test.test_name, 'Succeeded' if result else 'Failed')
+      if not result:
+        exit(1)
 
+    if device and callgraph:
+      device_runner.record(
+          test.executable_name,
+          '/data/perf_g.data',
+          additional_options=['-g'])
+      device_runner.report(
+          '/data/perf_g.data',
+          'perf_g.report',
+          additional_options=['-g'] + test.report_options)
+      result = report_analyzer.check_report_file(test, 'perf_g.report', True)
+      print 'call-graph test %s on device %s' % (
+          test.test_name, 'Succeeded' if result else 'Failed')
+      if not result:
+        exit(1)
+
+def main():
+  host = True
+  device = True
+  normal = True
+  callgraph = True
+  selected_tests = None
+  i = 1
+  while i < len(sys.argv):
+    if sys.argv[i] == '--host':
+      host = True
+      device = False
+    elif sys.argv[i] == '--device':
+      host = False
+      device = True
+    elif sys.argv[i] == '--normal':
+      normal = True
+      callgraph = False
+    elif sys.argv[i] == '--callgraph':
+      normal = False
+      callgraph = True
+    elif sys.argv[i] == '--test':
+      if i < len(sys.argv):
+        i += 1
+        for test in sys.argv[i].split(','):
+          if selected_tests is None:
+            selected_tests = {}
+          selected_tests[test] = True
+    i += 1
+  runtest(host, device, normal, callgraph, selected_tests)
 
 if __name__ == '__main__':
   main()
