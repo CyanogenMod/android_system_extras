@@ -217,15 +217,26 @@ class NetlinkSocket(object):
       self._ExpectDone()
     return out
 
-  def _Dump(self, command, msg, msgtype):
-    """Sends a dump request and returns a list of decoded messages."""
+  def _Dump(self, command, msg, msgtype, attrs):
+    """Sends a dump request and returns a list of decoded messages.
+
+    Args:
+      command: An integer, the command to run (e.g., RTM_NEWADDR).
+      msg: A string, the raw bytes of the request (e.g., a packed RTMsg).
+      msgtype: A cstruct.Struct, the data type to parse the dump results as.
+      attrs: A string, the raw bytes of any request attributes to include.
+
+    Returns:
+      A list of (msg, attrs) tuples where msg is of type msgtype and attrs is
+      a dict of attributes.
+    """
     # Create a netlink dump request containing the msg.
     flags = NLM_F_DUMP | NLM_F_REQUEST
-    length = len(NLMsgHdr) + len(msg)
+    length = len(NLMsgHdr) + len(msg) + len(attrs)
     nlmsghdr = NLMsgHdr((length, command, flags, self.seq, self.pid))
 
     # Send the request.
-    self._Send(nlmsghdr.Pack() + msg.Pack())
+    self._Send(nlmsghdr.Pack() + msg.Pack() + attrs)
 
     # Keep reading netlink messages until we get a NLMSG_DONE.
     out = []
