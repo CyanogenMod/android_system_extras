@@ -102,6 +102,7 @@ RTA_UID = 18
 
 # Route metric attributes.
 RTAX_MTU = 2
+RTAX_HOPLIMIT = 10
 
 # Data structure formats.
 IfinfoMsg = cstruct.Struct(
@@ -248,10 +249,6 @@ class IPRoute(netlink.NetlinkSocket):
          will be the raw byte string.
     """
     if command == -RTA_METRICS:
-      if nla_type == RTAX_MTU:
-        return ("RTAX_MTU", struct.unpack("=I", nla_data)[0])
-
-    if command == -RTA_METRICS:
       name = self._GetConstantName(nla_type, "RTAX_")
     elif CommandSubject(command) == "ADDR":
       name = self._GetConstantName(nla_type, "IFA_")
@@ -267,14 +264,13 @@ class IPRoute(netlink.NetlinkSocket):
       # Don't know what this is. Leave it as an integer.
       name = nla_type
 
-    family = msg.family
-
     if name in ["FRA_PRIORITY", "FRA_FWMARK", "FRA_TABLE", "FRA_FWMASK",
                 "FRA_UID_START", "FRA_UID_END",
                 "RTA_OIF", "RTA_PRIORITY", "RTA_TABLE", "RTA_MARK",
                 "IFLA_MTU", "IFLA_TXQLEN", "IFLA_GROUP", "IFLA_EXT_MASK",
                 "IFLA_PROMISCUITY", "IFLA_NUM_RX_QUEUES",
-                "IFLA_NUM_TX_QUEUES", "NDA_PROBES"]:
+                "IFLA_NUM_TX_QUEUES", "NDA_PROBES", "RTAX_MTU",
+                "RTAX_HOPLIMIT"]:
       data = struct.unpack("=I", nla_data)[0]
     elif name == "FRA_SUPPRESS_PREFIXLEN":
       data = struct.unpack("=i", nla_data)[0]
@@ -283,11 +279,11 @@ class IPRoute(netlink.NetlinkSocket):
     elif name in ["IFA_ADDRESS", "IFA_LOCAL", "RTA_DST", "RTA_SRC",
                   "RTA_GATEWAY", "RTA_PREFSRC", "RTA_UID",
                   "NDA_DST"]:
-      data = socket.inet_ntop(family, nla_data)
+      data = socket.inet_ntop(msg.family, nla_data)
     elif name in ["FRA_IIFNAME", "FRA_OIFNAME", "IFLA_IFNAME", "IFLA_QDISC"]:
       data = nla_data.strip("\x00")
     elif name == "RTA_METRICS":
-      data = self._ParseAttributes(-RTA_METRICS, family, RTMsg, nla_data)
+      data = self._ParseAttributes(-RTA_METRICS, msg.family, None, nla_data)
     elif name == "RTA_CACHEINFO":
       data = RTACacheinfo(nla_data)
     elif name == "IFA_CACHEINFO":
