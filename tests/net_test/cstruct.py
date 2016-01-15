@@ -57,7 +57,7 @@ def CalcNumElements(fmt):
   return len(elements)
 
 
-def Struct(name, fmt, fields, substructs={}):
+def Struct(name, fmt, fieldnames, substructs={}):
   """Function that returns struct classes."""
 
   class Meta(type):
@@ -77,12 +77,12 @@ def Struct(name, fmt, fields, substructs={}):
     # Name of the struct.
     _name = name
     # List of field names.
-    _fields = fields
+    _fieldnames = fieldnames
     # Dict mapping field indices to nested struct classes.
     _nested = {}
 
-    if isinstance(_fields, str):
-      _fields = _fields.split(" ")
+    if isinstance(_fieldnames, str):
+      _fieldnames = _fieldnames.split(" ")
 
     # Parse fmt into _format, converting any S format characters to "XXs",
     # where XX is the length of the struct type's packed representation.
@@ -121,14 +121,14 @@ def Struct(name, fmt, fields, substructs={}):
         self._Parse(values)
       else:
         # Initializing from a tuple.
-        if len(values) != len(self._fields):
-          raise TypeError("%s has exactly %d fields (%d given)" %
-                          (self._name, len(self._fields), len(values)))
+        if len(values) != len(self._fieldnames):
+          raise TypeError("%s has exactly %d fieldnames (%d given)" %
+                          (self._name, len(self._fieldnames), len(values)))
         self._SetValues(values)
 
     def _FieldIndex(self, attr):
       try:
-        return self._fields.index(attr)
+        return self._fieldnames.index(attr)
       except ValueError:
         raise AttributeError("'%s' has no attribute '%s'" %
                              (self._name, attr))
@@ -143,6 +143,15 @@ def Struct(name, fmt, fields, substructs={}):
     def __len__(cls):
       return cls._length
 
+    def __ne__(self, other):
+      return not self.__eq__(other)
+
+    def __eq__(self, other):
+      return (isinstance(other, self.__class__) and
+              self._name == other._name and
+              self._fieldnames == other._fieldnames and
+              self._values == other._values)
+
     @staticmethod
     def _MaybePackStruct(value):
       if hasattr(value, "__metaclass__"):# and value.__metaclass__ == Meta:
@@ -156,12 +165,14 @@ def Struct(name, fmt, fields, substructs={}):
 
     def __str__(self):
       def FieldDesc(index, name, value):
-        if isinstance(value, str) and any (c not in string.printable for c in value):
+        if isinstance(value, str) and any(
+            c not in string.printable for c in value):
           value = value.encode("hex")
         return "%s=%s" % (name, value)
 
       descriptions = [
-          FieldDesc(i, n, v) for i, (n, v) in enumerate(zip(self._fields, self._values))]
+          FieldDesc(i, n, v) for i, (n, v) in
+          enumerate(zip(self._fieldnames, self._values))]
 
       return "%s(%s)" % (self._name, ", ".join(descriptions))
 
