@@ -31,6 +31,7 @@ import threading
 
 
 NUM_SOCKETS = 100
+NO_BYTECODE = ""
 
 # TODO: Backport SOCK_DESTROY and delete this.
 HAVE_SOCK_DESTROY = net_test.LINUX_VERSION >= (4, 4)
@@ -115,7 +116,7 @@ class SockDiagTest(SockDiagBaseTest):
 
   def testFindsAllMySockets(self):
     self.socketpairs = self._CreateLotsOfSockets()
-    sockets = self.sock_diag.DumpAllInetSockets(IPPROTO_TCP)
+    sockets = self.sock_diag.DumpAllInetSockets(IPPROTO_TCP, NO_BYTECODE)
     self.assertGreaterEqual(len(sockets), NUM_SOCKETS)
 
     # Find the cookies for all of our sockets.
@@ -148,6 +149,54 @@ class SockDiagTest(SockDiagBaseTest):
         req.states = 1 << diag_msg.state
         diag_msg = self.sock_diag.GetSockDiag(req)
         self.assertSockDiagMatchesSocket(sock, diag_msg)
+
+  def testBytecodeCompilation(self):
+    instructions = [
+        (sock_diag.INET_DIAG_BC_S_GE,   1, 8, 0),                      # 0
+        (sock_diag.INET_DIAG_BC_D_LE,   1, 7, 0xffff),                 # 8
+        (sock_diag.INET_DIAG_BC_S_COND, 1, 2, ("::1", 128, -1)),       # 16
+        (sock_diag.INET_DIAG_BC_JMP,    1, 3, None),                   # 44
+        (sock_diag.INET_DIAG_BC_S_COND, 2, 4, ("127.0.0.1", 32, -1)),  # 48
+        (sock_diag.INET_DIAG_BC_D_LE,   1, 3, 0x6665),  # not used     # 64
+        (sock_diag.INET_DIAG_BC_NOP,    1, 1, None),                   # 72
+                                                                       # 76 acc
+                                                                       # 80 rej
+    ]
+    bytecode = self.sock_diag.PackBytecode(instructions)
+    expected = (
+        "0208500000000000"
+        "050848000000ffff"
+        "071c20000a800000ffffffff00000000000000000000000000000001"
+        "01041c00"
+        "0718200002200000ffffffff7f000001"
+        "0508100000006566"
+        "00040400"
+    )
+    self.assertMultiLineEqual(expected, bytecode.encode("hex"))
+    self.assertEquals(76, len(bytecode))
+    self.socketpairs = self._CreateLotsOfSockets()
+    filteredsockets = self.sock_diag.DumpAllInetSockets(IPPROTO_TCP, bytecode)
+    allsockets = self.sock_diag.DumpAllInetSockets(IPPROTO_TCP, NO_BYTECODE)
+    self.assertEquals(len(allsockets), len(filteredsockets))
+
+    # Pick a few sockets in hash table order, and check that the bytecode we
+    # compiled selects them properly.
+    for socketpair in self.socketpairs.values()[:20]:
+      for s in socketpair:
+        diag_msg = self.sock_diag.FindSockDiagFromFd(s)
+        instructions = [
+            (sock_diag.INET_DIAG_BC_S_GE, 1, 5, diag_msg.id.sport),
+            (sock_diag.INET_DIAG_BC_S_LE, 1, 4, diag_msg.id.sport),
+            (sock_diag.INET_DIAG_BC_D_GE, 1, 3, diag_msg.id.dport),
+            (sock_diag.INET_DIAG_BC_D_LE, 1, 2, diag_msg.id.dport),
+        ]
+        bytecode = self.sock_diag.PackBytecode(instructions)
+        self.assertEquals(32, len(bytecode))
+        sockets = self.sock_diag.DumpAllInetSockets(IPPROTO_TCP, bytecode)
+        self.assertEquals(1, len(sockets))
+
+        # TODO: why doesn't comparing the cstructs work?
+        self.assertEquals(diag_msg.Pack(), sockets[0][0].Pack())
 
   @unittest.skipUnless(HAVE_SOCK_DESTROY, "SOCK_DESTROY not supported")
   def testClosesSockets(self):
@@ -356,7 +405,7 @@ class TcpTest(SockDiagBaseTest):
     req = self.sock_diag.DiagReqFromDiagMsg(d, IPPROTO_TCP)
     req.states = 1 << sock_diag.TCP_SYN_RECV | 1 << sock_diag.TCP_ESTABLISHED
     req.id.cookie = "\x00" * 8
-    children = self.sock_diag.Dump(req)
+    children = self.sock_diag.Dump(req, NO_BYTECODE)
     return [self.sock_diag.DiagReqFromDiagMsg(d, IPPROTO_TCP)
             for d, _ in children]
 
@@ -486,7 +535,7 @@ class TcpTest(SockDiagBaseTest):
     sock_id.sport = self.port
     states = 1 << sock_diag.TCP_SYN_RECV
     req = sock_diag.InetDiagReqV2((AF_INET6, IPPROTO_TCP, 0, states, sock_id))
-    children = self.sock_diag.Dump(req)
+    children = self.sock_diag.Dump(req, NO_BYTECODE)
 
     self.assertTrue(children)
     for child, unused_args in children:
