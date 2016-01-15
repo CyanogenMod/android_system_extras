@@ -60,7 +60,7 @@ bool SetCurrentArch(const std::string& arch);
 
 uint64_t GetSupportedRegMask();
 
-std::string GetRegName(size_t reg);
+std::string GetRegName(size_t regno);
 
 struct RegSet {
   uint64_t valid_mask;

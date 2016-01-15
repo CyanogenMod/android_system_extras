@@ -33,6 +33,33 @@
 #include "read_elf.h"
 #include "utils.h"
 
+class LineReader {
+ public:
+  LineReader(FILE* fp) : fp_(fp), buf_(nullptr), bufsize_(0) {
+  }
+
+  ~LineReader() {
+    free(buf_);
+    fclose(fp_);
+  }
+
+  char* ReadLine() {
+    if (getline(&buf_, &bufsize_, fp_) != -1) {
+      return buf_;
+    }
+    return nullptr;
+  }
+
+  size_t MaxLineSize() {
+    return bufsize_;
+  }
+
+ private:
+  FILE* fp_;
+  char* buf_;
+  size_t bufsize_;
+};
+
 std::vector<int> GetOnlineCpus() {
   std::vector<int> result;
   FILE* fp = fopen("/sys/devices/system/cpu/online", "re");

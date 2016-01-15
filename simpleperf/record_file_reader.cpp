@@ -18,8 +18,6 @@
 
 #include <fcntl.h>
 #include <string.h>
-#include <sys/mman.h>
-#include <unistd.h>
 #include <set>
 #include <vector>
 
@@ -32,7 +30,8 @@
 using namespace PerfFileFormat;
 
 std::unique_ptr<RecordFileReader> RecordFileReader::CreateInstance(const std::string& filename) {
-  FILE* fp = fopen(filename.c_str(), "reb");
+  std::string mode = std::string("rb") + CLOSE_ON_EXEC_MODE;
+  FILE* fp = fopen(filename.c_str(), mode.c_str());
   if (fp == nullptr) {
     PLOG(ERROR) << "failed to open record file '" << filename << "'";
     return nullptr;

@@ -16,17 +16,16 @@
 
 LOCAL_PATH := $(call my-dir)
 
-simpleperf_common_cppflags := -Wall -Wextra -Werror -Wunused \
+simpleperf_common_cppflags := -Wextra -Wunused -Wno-unknown-pragmas
 
-simpleperf_cppflags_target := $(simpleperf_common_cppflags) \
+simpleperf_cppflags_target := $(simpleperf_common_cppflags)
 
 simpleperf_cppflags_host := $(simpleperf_common_cppflags) \
                             -DUSE_BIONIC_UAPI_HEADERS -I bionic/libc/kernel \
 
-simpleperf_cppflags_host_linux := $(simpleperf_cppflags_host) \
+simpleperf_cppflags_host_darwin := -I $(LOCAL_PATH)/nonlinux_support/include
+simpleperf_cppflags_host_windows := -I $(LOCAL_PATH)/nonlinux_support/include
 
-simpleperf_cppflags_host_darwin := $(simpleperf_cppflags_host) \
-                                   -I $(LOCAL_PATH)/darwin_support/include \
 
 LLVM_ROOT_PATH := external/llvm
 include $(LLVM_ROOT_PATH)/llvm.mk
@@ -36,15 +35,15 @@ simpleperf_shared_libraries_target := \
   libbase \
   libLLVM \
 
-simpleperf_shared_libraries_host_linux := \
-  libbacktrace \
-  libbase \
+simpleperf_shared_libraries_host := libbase
 
-simpleperf_shared_libraries_host_darwin := \
-  libbase \
-  libLLVM \
+simpleperf_shared_libraries_host_linux := libbacktrace
 
-simpleperf_ldlibs_host_linux := -lrt \
+simpleperf_shared_libraries_host_darwin := libLLVM
+
+simpleperf_shared_libraries_host_windows := libLLVM
+
+simpleperf_ldlibs_host_linux := -lrt
 
 
 # libsimpleperf
@@ -78,11 +77,17 @@ libsimpleperf_src_files_linux := \
   workload.cpp \
 
 libsimpleperf_src_files_darwin := \
-  darwin_support/darwin_support.cpp \
+  nonlinux_support/nonlinux_support.cpp \
+
+libsimpleperf_src_files_windows := \
+  nonlinux_support/nonlinux_support.cpp \
 
 # libsimpleperf target
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
+LOCAL_MODULE := libsimpleperf
+LOCAL_MODULE_TAGS := debug
+LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
 LOCAL_SRC_FILES := \
   $(libsimpleperf_src_files) \
@@ -90,46 +95,30 @@ LOCAL_SRC_FILES := \
 
 LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
 LOCAL_MULTILIB := first
-LOCAL_MODULE := libsimpleperf
-LOCAL_MODULE_TAGS := debug
-LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 include $(LLVM_DEVICE_BUILD_MK)
 include $(BUILD_STATIC_LIBRARY)
 
-# libsimpleperf linux host
-ifeq ($(HOST_OS),linux)
+# libsimpleperf host
 include $(CLEAR_VARS)
-LOCAL_CLANG := true
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_host_linux)
-LOCAL_SRC_FILES := \
-  $(libsimpleperf_src_files) \
-  $(libsimpleperf_src_files_linux) \
-
-LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_host_linux)
-LOCAL_LDLIBS := $(simpleperf_ldlibs_host_linux)
-LOCAL_MULTILIB := first
+#LOCAL_CLANG := true  # Comment it to build on windows.
 LOCAL_MODULE := libsimpleperf
-LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_HOST_OS := darwin linux windows
+LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
+LOCAL_CPPFLAGS_darwin := $(simpleperf_cppflags_host_darwin)
+LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
+LOCAL_CPPFLAGS_windows := $(simpleperf_cppflags_host_windows)
+LOCAL_SRC_FILES := $(libsimpleperf_src_files)
+LOCAL_SRC_FILES_darwin := $(libsimpleperf_src_files_darwin)
+LOCAL_SRC_FILES_linux := $(libsimpleperf_src_files_linux)
+LOCAL_SRC_FILES_windows := $(libsimpleperf_src_files_windows)
+LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_host)
+LOCAL_SHARED_LIBRARIES_darwin := $(simpleperf_shared_libraries_host_darwin)
+LOCAL_SHARED_LIBRARIES_linux := $(simpleperf_shared_libraries_host_linux)
+LOCAL_SHARED_LIBRARIES_windows := $(simpleperf_shared_libraries_host_windows)
+LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
+LOCAL_MULTILIB := first
 include $(LLVM_HOST_BUILD_MK)
 include $(BUILD_HOST_STATIC_LIBRARY)
-endif
-
-# libsimpleperf darwin host
-ifeq ($(HOST_OS),darwin)
-include $(CLEAR_VARS)
-LOCAL_CLANG := true
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_host_darwin)
-LOCAL_SRC_FILES := \
-  $(libsimpleperf_src_files) \
-  $(libsimpleperf_src_files_darwin) \
-
-LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_host_darwin)
-LOCAL_MULTILIB := first
-LOCAL_MODULE := libsimpleperf
-LOCAL_MODULE_TAGS := optional
-include $(LLVM_HOST_BUILD_MK)
-include $(BUILD_HOST_SHARED_LIBRARY)
-endif
 
 
 # simpleperf
@@ -138,46 +127,33 @@ endif
 # simpleperf target
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
+LOCAL_MODULE := simpleperf
+LOCAL_MODULE_TAGS := debug
+LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
 LOCAL_SRC_FILES := main.cpp
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
 LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
 LOCAL_MULTILIB := first
-LOCAL_MODULE := simpleperf
-LOCAL_MODULE_TAGS := debug
-LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 include $(BUILD_EXECUTABLE)
 
-# simpleperf linux host
-ifeq ($(HOST_OS),linux)
+# simpleperf host
 include $(CLEAR_VARS)
-LOCAL_CLANG := true
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_host_linux)
+LOCAL_MODULE := simpleperf
+LOCAL_MODULE_HOST_OS := darwin linux windows
+LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
+LOCAL_CPPFLAGS_darwin := $(simpleperf_cppflags_host_darwin)
+LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
+LOCAL_CPPFLAGS_windows := $(simpleperf_cppflags_host_windows)
 LOCAL_SRC_FILES := main.cpp
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
-LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_host_linux)
+LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_host)
+LOCAL_SHARED_LIBRARIES_darwin := $(simpleperf_shared_libraries_host_darwin)
+LOCAL_SHARED_LIBRARIES_linux := $(simpleperf_shared_libraries_host_linux)
+LOCAL_SHARED_LIBRARIES_windows := $(simpleperf_shared_libraries_host_windows)
+LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
 LOCAL_MULTILIB := first
-LOCAL_LDLIBS := $(simpleperf_ldlibs_host_linux)
-LOCAL_MODULE := simpleperf
-LOCAL_MODULE_TAGS := optional
 include $(BUILD_HOST_EXECUTABLE)
-endif
-
-# simpleperf darwin host
-ifeq ($(HOST_OS),darwin)
-include $(CLEAR_VARS)
-LOCAL_CLANG := true
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_host_darwin)
-LOCAL_SRC_FILES := main.cpp
-LOCAL_SHARED_LIBRARIES := \
-  libsimpleperf \
-  $(simpleperf_shared_libraries_host_darwin) \
-
-LOCAL_MULTILIB := first
-LOCAL_MODULE := simpleperf
-LOCAL_MODULE_TAGS := optional
-include $(BUILD_HOST_EXECUTABLE)
-endif
 
 
 # simpleperf_unit_test
@@ -202,6 +178,7 @@ simpleperf_unit_test_src_files_linux := \
 # simpleperf_unit_test target
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
+LOCAL_MODULE := simpleperf_unit_test
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
 LOCAL_SRC_FILES := \
   $(simpleperf_unit_test_src_files) \
@@ -210,42 +187,26 @@ LOCAL_SRC_FILES := \
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
 LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
 LOCAL_MULTILIB := first
-LOCAL_MODULE := simpleperf_unit_test
-LOCAL_MODULE_TAGS := optional
 include $(BUILD_NATIVE_TEST)
 
-# simpleperf_unit_test linux host
-ifeq ($(HOST_OS),linux)
+# simpleperf_unit_test host
 include $(CLEAR_VARS)
-LOCAL_CLANG := true
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_host_linux)
-LOCAL_SRC_FILES := \
-  $(simpleperf_unit_test_src_files) \
-  $(simpleperf_unit_test_src_files_linux) \
-
-LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
-LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_host_linux)
-LOCAL_MULTILIB := first
 LOCAL_MODULE := simpleperf_unit_test
-LOCAL_MODULE_TAGS := optional
-include $(BUILD_HOST_NATIVE_TEST)
-endif
-
-# simpleperf_unit_test darwin host
-ifeq ($(HOST_OS),darwin)
-include $(CLEAR_VARS)
-LOCAL_CLANG := true
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_host_darwin)
+LOCAL_MODULE_HOST_OS := darwin linux windows
+LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
+LOCAL_CPPFLAGS_darwin := $(simpleperf_cppflags_host_darwin)
+LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
+LOCAL_CPPFLAGS_windows := $(simpleperf_cppflags_host_windows)
 LOCAL_SRC_FILES := $(simpleperf_unit_test_src_files)
-LOCAL_SHARED_LIBRARIES := \
-  libsimpleperf \
-  $(simpleperf_shared_libraries_host_darwin) \
-
+LOCAL_SRC_FILES_linux := $(simpleperf_unit_test_src_files_linux)
+LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
+LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_host)
+LOCAL_SHARED_LIBRARIES_darwin := $(simpleperf_shared_libraries_host_darwin)
+LOCAL_SHARED_LIBRARIES_linux := $(simpleperf_shared_libraries_host_linux)
+LOCAL_SHARED_LIBRARIES_windows := $(simpleperf_shared_libraries_host_windows)
+LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
 LOCAL_MULTILIB := first
-LOCAL_MODULE := simpleperf_unit_test
-LOCAL_MODULE_TAGS := optional
 include $(BUILD_HOST_NATIVE_TEST)
-endif
 
 
 # simpleperf_cpu_hotplug_test
@@ -257,27 +218,27 @@ simpleperf_cpu_hotplug_test_src_files := \
 # simpleperf_cpu_hotplug_test target
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
+LOCAL_MODULE := simpleperf_cpu_hotplug_test
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
 LOCAL_SRC_FILES := $(simpleperf_cpu_hotplug_test_src_files)
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
 LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
 LOCAL_MULTILIB := first
-LOCAL_MODULE := simpleperf_cpu_hotplug_test
-LOCAL_MODULE_TAGS := optional
 include $(BUILD_NATIVE_TEST)
 
 # simpleperf_cpu_hotplug_test linux host
-ifeq ($(HOST_OS),linux)
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
-LOCAL_CPPFLAGS := $(simpleperf_cppflags_host_linux)
+LOCAL_MODULE := simpleperf_cpu_hotplug_test
+LOCAL_MODULE_HOST_OS := linux
+LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
+LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
 LOCAL_SRC_FILES := $(simpleperf_cpu_hotplug_test_src_files)
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
-LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_host_linux)
+LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_host)
+LOCAL_SHARED_LIBRARIES_linux := $(simpleperf_shared_libraries_host_linux)
+LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
 LOCAL_MULTILIB := first
-LOCAL_MODULE := simpleperf_cpu_hotplug_test
-LOCAL_MODULE_TAGS := optional
 include $(BUILD_HOST_NATIVE_TEST)
-endif
 
 include $(call first-makefiles-under,$(LOCAL_PATH))

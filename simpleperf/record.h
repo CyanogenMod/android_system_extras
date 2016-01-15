@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 
+#include <memory>
 #include <queue>
 #include <string>
 #include <vector>
