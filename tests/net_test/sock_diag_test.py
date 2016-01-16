@@ -73,35 +73,9 @@ class SockDiagTest(SockDiagBaseTest):
     [s.close() for socketpair in self.socketpairs.values() for s in socketpair]
     super(SockDiagTest, self).tearDown()
 
-  def testFixupDiagMsg(self):
-    src = "0a00fa02303030312030312038302031"
-    dst = "0808080841414141414141416f0a3230"
-    cookie = "4078678100000000"
-    sockid = sock_diag.InetDiagSockId((47436, 32069,
-                                       src.decode("hex"), dst.decode("hex"), 0,
-                                       cookie.decode("hex")))
-    msg4 = sock_diag.InetDiagMsg((AF_INET, IPPROTO_TCP, 0,
-                                  sock_diag.TCP_SYN_RECV, sockid,
-                                  980, 123, 456, 789, 5555))
-    # Make a copy, cstructs are mutable.
-    msg6 = sock_diag.InetDiagMsg(msg4.Pack())
-    msg6.family = AF_INET6
-
-    fixed6 = sock_diag.InetDiagMsg(msg6.Pack())
-    self.sock_diag.FixupDiagMsg(fixed6)
-    self.assertEquals(msg6.Pack(), fixed6.Pack())
-
-    fixed4 = sock_diag.InetDiagMsg(msg4.Pack())
-    self.sock_diag.FixupDiagMsg(fixed4)
-    msg4.id.src = src.decode("hex")[:4] + 12 * "\x00"
-    msg4.id.dst = dst.decode("hex")[:4] + 12 * "\x00"
-    self.assertEquals(msg4.Pack(), fixed4.Pack())
-
   def assertSockDiagMatchesSocket(self, s, diag_msg):
     family = s.getsockopt(net_test.SOL_SOCKET, net_test.SO_DOMAIN)
     self.assertEqual(diag_msg.family, family)
-
-    self.sock_diag.FixupDiagMsg(diag_msg)
 
     src, sport = s.getsockname()[0:2]
     self.assertEqual(diag_msg.id.src, self.sock_diag.PaddedAddress(src))
@@ -115,6 +89,14 @@ class SockDiagTest(SockDiagBaseTest):
       assertRaisesErrno(ENOTCONN, s.getpeername)
 
   def testFindsAllMySockets(self):
+    """Tests that basic socket dumping works.
+
+    Relevant commits:
+      android-3.4:
+        ab4a727 net: inet_diag: zero out uninitialized idiag_{src,dst} fields
+      android-3.10
+        3eb409b net: inet_diag: zero out uninitialized idiag_{src,dst} fields
+    """
     self.socketpairs = self._CreateLotsOfSockets()
     sockets = self.sock_diag.DumpAllInetSockets(IPPROTO_TCP, NO_BYTECODE)
     self.assertGreaterEqual(len(sockets), NUM_SOCKETS)
