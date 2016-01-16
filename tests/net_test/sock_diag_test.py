@@ -238,6 +238,18 @@ class SockDiagTest(SockDiagBaseTest):
     self.assertTrue(all(d in v4sockets for d in diag_msgs))
     self.assertTrue(all(d in v6sockets for d in diag_msgs))
 
+  def testPortComparisonValidation(self):
+    """Checks for a bug in validating port comparison bytecode.
+
+    Relevant kernel commits:
+      android-3.4:
+        5e1f542 inet_diag: validate port comparison byte code to prevent unsafe reads
+    """
+    bytecode = sock_diag.InetDiagBcOp((sock_diag.INET_DIAG_BC_D_GE, 4, 8))
+    self.assertRaisesErrno(
+        EINVAL,
+        self.sock_diag.DumpAllInetSockets, IPPROTO_TCP, bytecode.Pack())
+
   @unittest.skipUnless(HAVE_SOCK_DESTROY, "SOCK_DESTROY not supported")
   def testClosesSockets(self):
     self.socketpairs = self._CreateLotsOfSockets()
