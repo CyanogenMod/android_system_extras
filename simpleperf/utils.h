@@ -17,61 +17,18 @@
 #ifndef SIMPLE_PERF_UTILS_H_
 #define SIMPLE_PERF_UTILS_H_
 
-#include <signal.h>
 #include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 #include <string>
 #include <vector>
 
 #define ALIGN(value, alignment) (((value) + (alignment)-1) & ~((alignment)-1))
 
-class LineReader {
- public:
-  LineReader(FILE* fp) : fp_(fp), buf_(nullptr), bufsize_(0) {
-  }
-
-  ~LineReader() {
-    free(buf_);
-    fclose(fp_);
-  }
-
-  char* ReadLine() {
-    if (getline(&buf_, &bufsize_, fp_) != -1) {
-      return buf_;
-    }
-    return nullptr;
-  }
-
-  size_t MaxLineSize() {
-    return bufsize_;
-  }
-
- private:
-  FILE* fp_;
-  char* buf_;
-  size_t bufsize_;
-};
-
-class SignalHandlerRegister {
- public:
-  SignalHandlerRegister(const std::vector<int>& signums, void (*handler)(int)) {
-    for (auto& sig : signums) {
-      sig_t old_handler = signal(sig, handler);
-      saved_signal_handlers_.push_back(std::make_pair(sig, old_handler));
-    }
-  }
-
-  ~SignalHandlerRegister() {
-    for (auto& pair : saved_signal_handlers_) {
-      signal(pair.first, pair.second);
-    }
-  }
-
- private:
-  std::vector<std::pair<int, sig_t>> saved_signal_handlers_;
-};
+#ifdef _WIN32
+#define CLOSE_ON_EXEC_MODE ""
+#else
+#define CLOSE_ON_EXEC_MODE "e"
+#endif
 
 // OneTimeAllocator is used to allocate memory many times and free only once at the end.
 // It reduces the cost to free each allocated memory.

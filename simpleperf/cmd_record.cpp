@@ -35,6 +35,7 @@
 #include "read_elf.h"
 #include "record.h"
 #include "record_file.h"
+#include "scoped_signal_handler.h"
 #include "thread_tree.h"
 #include "utils.h"
 #include "workload.h"
@@ -123,8 +124,8 @@ class RecordCommand : public Command {
         perf_mmap_pages_(256),
         record_filename_("perf.data") {
     signaled = false;
-    signal_handler_register_.reset(
-        new SignalHandlerRegister({SIGCHLD, SIGINT, SIGTERM}, signal_handler));
+    scoped_signal_handler_.reset(
+        new ScopedSignalHandler({SIGCHLD, SIGINT, SIGTERM}, signal_handler));
   }
 
   bool Run(const std::vector<std::string>& args);
@@ -175,7 +176,7 @@ class RecordCommand : public Command {
   std::set<std::string> hit_kernel_modules_;
   std::set<std::string> hit_user_files_;
 
-  std::unique_ptr<SignalHandlerRegister> signal_handler_register_;
+  std::unique_ptr<ScopedSignalHandler> scoped_signal_handler_;
 };
 
 bool RecordCommand::Run(const std::vector<std::string>& args) {
