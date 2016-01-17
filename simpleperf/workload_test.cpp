@@ -18,6 +18,7 @@
 
 #include <signal.h>
 
+#include "scoped_signal_handler.h"
 #include "utils.h"
 #include "workload.h"
 
@@ -28,7 +29,7 @@ static void signal_handler(int) {
 
 TEST(workload, success) {
   signaled = false;
-  SignalHandlerRegister signal_handler_register({SIGCHLD}, signal_handler);
+  ScopedSignalHandler scoped_signal_handler({SIGCHLD}, signal_handler);
   auto workload = Workload::CreateWorkload({"sleep", "1"});
   ASSERT_TRUE(workload != nullptr);
   ASSERT_TRUE(workload->GetPid() != 0);
@@ -46,7 +47,7 @@ TEST(workload, execvp_failure) {
 static void run_signaled_workload() {
   {
     signaled = false;
-    SignalHandlerRegister signal_handler_register({SIGCHLD}, signal_handler);
+    ScopedSignalHandler scoped_signal_handler({SIGCHLD}, signal_handler);
     auto workload = Workload::CreateWorkload({"sleep", "10"});
     ASSERT_TRUE(workload != nullptr);
     ASSERT_TRUE(workload->Start());
@@ -66,7 +67,7 @@ TEST(workload, signaled_warning) {
 static void run_exit_nonzero_workload() {
   {
     signaled = false;
-    SignalHandlerRegister signal_handler_register({SIGCHLD}, signal_handler);
+    ScopedSignalHandler scoped_signal_handler({SIGCHLD}, signal_handler);
     auto workload = Workload::CreateWorkload({"ls", "nonexistdir"});
     ASSERT_TRUE(workload != nullptr);
     ASSERT_TRUE(workload->Start());

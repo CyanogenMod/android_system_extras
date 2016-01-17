@@ -82,7 +82,7 @@ void GetEntriesInDir(const std::string& dirpath, std::vector<std::string>* files
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
       continue;
     }
-    if (entry->d_type == DT_DIR) {
+    if (IsDir(dirpath + std::string("/") + entry->d_name)) {
       if (subdirs != nullptr) {
         subdirs->push_back(entry->d_name);
       }

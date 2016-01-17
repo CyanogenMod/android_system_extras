@@ -78,11 +78,13 @@ static std::unordered_map<size_t, std::string> arm64_reg_map = {
     {PERF_REG_ARM64_LR, "lr"}, {PERF_REG_ARM64_SP, "sp"}, {PERF_REG_ARM64_PC, "pc"},
 };
 
-std::string GetRegName(size_t reg) {
+std::string GetRegName(size_t regno) {
+  // Cast regno to int type to avoid -Werror=type-limits.
+  int reg = static_cast<int>(regno);
   switch (GetCurrentArch()) {
     case ARCH_X86_64: {
       if (reg >= PERF_REG_X86_R8 && reg <= PERF_REG_X86_R15) {
-        return android::base::StringPrintf("r%zu", reg - PERF_REG_X86_R8 + 8);
+        return android::base::StringPrintf("r%d", reg - PERF_REG_X86_R8 + 8);
       }
     }  // go through
     case ARCH_X86_32: {
@@ -92,7 +94,7 @@ std::string GetRegName(size_t reg) {
     }
     case ARCH_ARM: {
       if (reg >= PERF_REG_ARM_R0 && reg <= PERF_REG_ARM_R10) {
-        return android::base::StringPrintf("r%zu", reg - PERF_REG_ARM_R0);
+        return android::base::StringPrintf("r%d", reg - PERF_REG_ARM_R0);
       }
       auto it = arm_reg_map.find(reg);
       CHECK(it != arm_reg_map.end()) << "unknown reg " << reg;
@@ -100,7 +102,7 @@ std::string GetRegName(size_t reg) {
     }
     case ARCH_ARM64: {
       if (reg >= PERF_REG_ARM64_X0 && reg <= PERF_REG_ARM64_X29) {
-        return android::base::StringPrintf("r%zu", reg - PERF_REG_ARM64_X0);
+        return android::base::StringPrintf("r%d", reg - PERF_REG_ARM64_X0);
       }
       auto it = arm64_reg_map.find(reg);
       CHECK(it != arm64_reg_map.end()) << "unknown reg " << reg;

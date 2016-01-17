@@ -34,6 +34,7 @@
 #include "event_fd.h"
 #include "event_selection_set.h"
 #include "event_type.h"
+#include "scoped_signal_handler.h"
 #include "utils.h"
 #include "workload.h"
 
@@ -75,8 +76,8 @@ class StatCommand : public Command {
         system_wide_collection_(false),
         child_inherit_(true) {
     signaled = false;
-    signal_handler_register_.reset(
-        new SignalHandlerRegister({SIGCHLD, SIGINT, SIGTERM}, signal_handler));
+    scoped_signal_handler_.reset(
+        new ScopedSignalHandler({SIGCHLD, SIGINT, SIGTERM}, signal_handler));
   }
 
   bool Run(const std::vector<std::string>& args);
@@ -96,7 +97,7 @@ class StatCommand : public Command {
   std::vector<EventTypeAndModifier> measured_event_types_;
   EventSelectionSet event_selection_set_;
 
-  std::unique_ptr<SignalHandlerRegister> signal_handler_register_;
+  std::unique_ptr<ScopedSignalHandler> scoped_signal_handler_;
 };
 
 bool StatCommand::Run(const std::vector<std::string>& args) {
