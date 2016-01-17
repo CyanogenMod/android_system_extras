@@ -25,7 +25,6 @@
 #include <android-base/logging.h>
 
 #include "event_attr.h"
-#include "event_fd.h"
 #include "utils.h"
 
 #define EVENT_TYPE_TABLE_ENTRY(name, type, config) {name, type, config},
