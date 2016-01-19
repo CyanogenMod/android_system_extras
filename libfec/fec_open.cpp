@@ -117,6 +117,9 @@ static int parse_ecc_header(fec_handle *f, uint64_t offset)
         return -1;
     }
 
+    /* move offset back to the beginning of the block for validating header */
+    offset -= offset % FEC_BLOCKSIZE;
+
     if (header.magic != FEC_MAGIC) {
         return -1;
     }
