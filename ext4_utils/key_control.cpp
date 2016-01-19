@@ -3,11 +3,7 @@
 #include <stdarg.h>
 #include <unistd.h>
 #include <sys/syscall.h>
-
-/* keyring keyctl commands */
-#define KEYCTL_REVOKE         3 /* revoke a key */
-#define KEYCTL_SETPERM        5 /* set permissions for a key in a keyring */
-#define KEYCTL_SEARCH        10 /* search for a key in a keyring */
+#include <linux/keyctl.h>
 
 static long keyctl(int cmd, ...)
 {
