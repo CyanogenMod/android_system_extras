@@ -20,8 +20,7 @@ class PagecacheStats():
   def __init__(self, inode_to_filename):
     self._inode_to_filename = inode_to_filename
     self._file_size = {}
-    self._file_pages_added = {}
-    self._file_pages_removed = {}
+    self._file_pages = {}
     self._total_pages_added = 0
     self._total_pages_removed = 0
 
@@ -29,10 +28,11 @@ class PagecacheStats():
     # See if we can find the page in our lookup table
     if (device_number, inode) in self._inode_to_filename:
       filename, filesize = self._inode_to_filename[(device_number, inode)]
-      if filename not in self._file_pages_added:
-        self._file_pages_added[filename] = 1
+      if filename not in self._file_pages:
+        self._file_pages[filename] = [1, 0]
       else:
-        self._file_pages_added[filename] += 1
+        self._file_pages[filename][0] += 1
+
       self._total_pages_added += 1
 
       if filename not in self._file_size:
@@ -41,10 +41,11 @@ class PagecacheStats():
   def remove_page(self, device_number, inode, offset):
     if (device_number, inode) in self._inode_to_filename:
       filename, filesize = self._inode_to_filename[(device_number, inode)]
-      if filename not in self._file_pages_removed:
-        self._file_pages_removed[filename] = 1
+      if filename not in self._file_pages:
+        self._file_pages[filename] = [0, 1]
       else:
-        self._file_pages_removed[filename] += 1
+        self._file_pages[filename][1] += 1
+
       self._total_pages_removed += 1
 
       if filename not in self._file_size:
@@ -61,13 +62,27 @@ class PagecacheStats():
     return pages_string
 
   def reset_stats(self):
-    self._file_pages_removed.clear()
-    self._file_pages_added.clear()
+    self._file_pages.clear()
     self._total_pages_added = 0;
     self._total_pages_removed = 0;
 
-  def print_stats(self, pad):
-    sorted_added = sorted(self._file_pages_added.items(), key=operator.itemgetter(1), reverse=True)
+  def print_stats(self):
+    # Create new merged dict
+    sorted_added = sorted(self._file_pages.items(), key=operator.itemgetter(1), reverse=True)
+    row_format = "{:<70}{:<12}{:<14}{:<9}"
+    print row_format.format('NAME', 'ADDED (MB)', 'REMOVED (MB)', 'SIZE (MB)')
+    for filename, added in sorted_added:
+      filesize = self._file_size[filename]
+      added = self._file_pages[filename][0]
+      removed = self._file_pages[filename][1]
+      if (filename > 64):
+        filename = filename[-64:]
+      print row_format.format(filename, self.pages_to_mb(added), self.pages_to_mb(removed), self.bytes_to_mb(filesize))
+
+    print row_format.format('TOTAL', self.pages_to_mb(self._total_pages_added), self.pages_to_mb(self._total_pages_removed), '')
+
+  def print_stats_curses(self, pad):
+    sorted_added = sorted(self._file_pages.items(), key=operator.itemgetter(1), reverse=True)
     height, width = pad.getmaxyx()
     pad.clear()
     pad.addstr(0, 2, 'NAME'.ljust(68), curses.A_REVERSE)
@@ -75,11 +90,10 @@ class PagecacheStats():
     pad.addstr(0, 82, 'REMOVED (MB)'.ljust(14), curses.A_REVERSE)
     pad.addstr(0, 96, 'SIZE (MB)'.ljust(9), curses.A_REVERSE)
     y = 1
-    for filename, added in sorted_added:
+    for filename, added_removed in sorted_added:
       filesize = self._file_size[filename]
-      removed = 0
-      if filename in self._file_pages_removed:
-        removed = self._file_pages_removed[filename]
+      added  = self._file_pages[filename][0]
+      removed = self._file_pages[filename][1]
       if (filename > 64):
         filename = filename[-64:]
       pad.addstr(y, 2, filename)
@@ -231,7 +245,7 @@ def build_inode_lookup_table(inode_dump):
   inode2filename = {}
   text = inode_dump.splitlines()
   for line in text:
-    result = re.match('([0-9]+) ([0-9]+) ([0-9]+) (.*)', line)
+    result = re.match('([0-9]+)d? ([0-9]+) ([0-9]+) (.*)', line)
     if result:
       inode2filename[(int(result.group(1)), int(result.group(2)))] = (result.group(4), result.group(3))
 
@@ -261,14 +275,19 @@ def get_inode_data(datafile, dumpfile, adb_serial):
 
   return stat_dump
 
-def read_and_parse_trace_data(atrace, pagecache_stats):
+def read_and_parse_trace_file(trace_file, pagecache_stats):
+  for line in trace_file:
+    parse_atrace_line(line, pagecache_stats)
+  pagecache_stats.print_stats();
+
+def read_and_parse_trace_data_live(stdout, stderr, pagecache_stats):
   # Start reading trace data
   stdout_queue = Queue.Queue(maxsize=128)
   stderr_queue = Queue.Queue()
 
-  stdout_thread = FileReaderThread(atrace.stdout, stdout_queue,
+  stdout_thread = FileReaderThread(stdout, stdout_queue,
                                    text_file=True, chunk_size=64)
-  stderr_thread = FileReaderThread(atrace.stderr, stderr_queue,
+  stderr_thread = FileReaderThread(stderr, stderr_queue,
                                    text_file=True)
   stdout_thread.start()
   stderr_thread.start()
@@ -312,7 +331,7 @@ def read_and_parse_trace_data(atrace, pagecache_stats):
       if key == 'r':
         pagecache_stats.reset_stats()
 
-      pagecache_stats.print_stats(pagecache_pad)
+      pagecache_stats.print_stats_curses(pagecache_pad)
   except Exception, e:
     curses.endwin()
     print e
@@ -322,9 +341,8 @@ def read_and_parse_trace_data(atrace, pagecache_stats):
     stdout_thread.join()
     stderr_thread.join()
 
-    atrace.stdout.close()
-    atrace.stderr.close()
-
+    stdout.close()
+    stderr.close()
 
 def parse_options(argv):
   usage = 'Usage: %prog [options]'
@@ -339,6 +357,9 @@ def parse_options(argv):
                     ' -d option.')
   parser.add_option('-s', '--serial', dest='device_serial', type='string',
                     help='adb device serial number')
+  parser.add_option('-f', dest='trace_file', metavar='FILE',
+                    help='Show stats from a trace file, instead of running live.')
+
   options, categories = parser.parse_args(argv[1:])
   if options.inode_dump_file and options.inode_data_file:
     parser.error('options -d and -i can\'t be used at the same time')
@@ -355,18 +376,25 @@ def main():
   # Init pagecache stats
   pagecache_stats = PagecacheStats(inode_lookup_table)
 
-  # Construct and execute trace command
-  trace_cmd = AdbUtils.construct_adb_shell_command(['atrace', '--stream', 'pagecache'],
-      options.device_serial)
+  if options.trace_file is not None:
+    if not os.path.isfile(options.trace_file):
+      print >> sys.stderr, ('Couldn\'t load trace file.')
+      sys.exit(1)
+    trace_file = open(options.trace_file, 'r')
+    read_and_parse_trace_file(trace_file, pagecache_stats)
+  else:
+    # Construct and execute trace command
+    trace_cmd = AdbUtils.construct_adb_shell_command(['atrace', '--stream', 'pagecache'],
+        options.device_serial)
 
-  try:
-    atrace = subprocess.Popen(trace_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE)
-  except OSError as error:
-    print >> sys.stderr, ('The command failed')
-    sys.exit(1)
+    try:
+      atrace = subprocess.Popen(trace_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+          stderr=subprocess.PIPE)
+    except OSError as error:
+      print >> sys.stderr, ('The command failed')
+      sys.exit(1)
 
-  read_and_parse_trace_data(atrace, pagecache_stats)
+    read_and_parse_trace_data_live(atrace.stdout, atrace.stderr, pagecache_stats)
 
 if __name__ == "__main__":
   main()
