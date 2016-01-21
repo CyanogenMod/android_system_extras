@@ -30,7 +30,7 @@ import sock_diag
 import threading
 
 
-NUM_SOCKETS = 100
+NUM_SOCKETS = 30
 NO_BYTECODE = ""
 
 # TODO: Backport SOCK_DESTROY and delete this.
@@ -44,7 +44,10 @@ class SockDiagBaseTest(multinetwork_base.MultiNetworkBaseTest):
     # Dict mapping (addr, sport, dport) tuples to socketpairs.
     socketpairs = {}
     for i in xrange(NUM_SOCKETS):
-      family, addr = random.choice([(AF_INET, "127.0.0.1"), (AF_INET6, "::1")])
+      family, addr = random.choice([
+          (AF_INET, "127.0.0.1"),
+          (AF_INET6, "::1"),
+          (AF_INET6, "::ffff:127.0.0.1")])
       socketpair = net_test.CreateSocketPair(family, SOCK_STREAM, addr)
       sport, dport = (socketpair[0].getsockname()[1],
                       socketpair[1].getsockname()[1])
@@ -87,6 +90,21 @@ class SockDiagTest(SockDiagBaseTest):
       self.assertEqual(diag_msg.id.dport, dport)
     else:
       assertRaisesErrno(ENOTCONN, s.getpeername)
+
+  def testFindsMappedSockets(self):
+    """Tests that inet_diag_find_one_icsk can find mapped sockets.
+
+    Relevant kernel commits:
+      android-3.10:
+        f77e059 net: diag: support v4mapped sockets in inet_diag_find_one_icsk()
+    """
+    socketpair = net_test.CreateSocketPair(AF_INET6, SOCK_STREAM,
+                                           "::ffff:127.0.0.1")
+    for sock in socketpair:
+      diag_msg = self.sock_diag.FindSockDiagFromFd(sock)
+      diag_req = self.sock_diag.DiagReqFromDiagMsg(diag_msg, IPPROTO_TCP)
+      self.sock_diag.GetSockDiag(diag_req)
+      # No errors? Good.
 
   def testFindsAllMySockets(self):
     """Tests that basic socket dumping works.
@@ -311,8 +329,8 @@ class TcpTest(SockDiagBaseTest):
 
   def OpenListenSocket(self, version):
     self.port = packets.RandomPort()
-    family = {4: AF_INET, 6: AF_INET6}[version]
-    address = {4: "0.0.0.0", 6: "::"}[version]
+    family = {4: AF_INET, 5: AF_INET6, 6: AF_INET6}[version]
+    address = {4: "0.0.0.0", 5: "::", 6: "::"}[version]
     s = net_test.Socket(family, SOCK_STREAM, IPPROTO_TCP)
     s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
     s.bind((address, self.port))
@@ -336,25 +354,14 @@ class TcpTest(SockDiagBaseTest):
                        self.last_packet)
 
   def IncomingConnection(self, version, end_state, netid):
-    if version == 5:
-      mapped = True
-      socket_version = 6
-      version = 4
-    else:
-      socket_version = version
-      mapped = False
-
-    self.version = version
-    self.s = self.OpenListenSocket(socket_version)
+    self.s = self.OpenListenSocket(version)
     self.end_state = end_state
 
-    def MaybeMappedAddress(addr):
-      return "::ffff:%s" % addr if mapped else addr
+    remoteaddr = self.remoteaddr = self.GetRemoteAddress(version)
+    myaddr = self.myaddr = self.MyAddress(version, netid)
 
-    remoteaddr = self.remoteaddr = MaybeMappedAddress(
-        self.GetRemoteAddress(version))
-    myaddr = self.myaddr = MaybeMappedAddress(
-        self.MyAddress(version, netid))
+    if version == 5: version = 4
+    self.version = version
 
     if end_state == sock_diag.TCP_LISTEN:
       return
@@ -420,7 +427,7 @@ class TcpTest(SockDiagBaseTest):
       sock.close()
 
   def CheckTcpReset(self, state, statename):
-    for version in [4, 6]:
+    for version in [4, 5, 6]:
       msg = "Closing incoming IPv%d %s socket" % (version, statename)
       self.IncomingConnection(version, state, self.netid)
       self.CheckRstOnClose(self.s, None, False, msg)
@@ -446,7 +453,7 @@ class TcpTest(SockDiagBaseTest):
             for d, _ in children]
 
   def CheckChildSocket(self, state, statename, parent_first):
-    for version in [4, 6]:
+    for version in [4, 5, 6]:
       self.IncomingConnection(version, state, self.netid)
 
       d = self.sock_diag.FindSockDiagFromFd(self.s)
