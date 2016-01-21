@@ -3,6 +3,7 @@
 #include "ext4_crypt_init_extensions.h"
 
 #include <string>
+#include <vector>
 
 #include <dirent.h>
 #include <errno.h>
@@ -144,19 +145,21 @@ int e4crypt_set_directory_policy(const char* dir)
         return 0;
     }
 
-    // Don't encrypt lost+found - ext4 doesn't like it
-    if (!strcmp(dir, "/data/lost+found")) {
-        return 0;
+    // Special case various directories that must not be encrypted,
+    // often because their subdirectories must be encrypted.
+    // This isn't a nice way to do this, see b/26641735
+    std::vector<std::string> directories_to_exclude = {
+        "lost+found", "user", "system_ce", "media", "data",
+        // ext4enc:TODO workaround that must be removed b/26673855
+        "misc",
+    };
+    std::string prefix = "/data/";
+    for (auto d: directories_to_exclude) {
+        if ((prefix + d) == dir) {
+            KLOG_INFO(TAG, "Not setting policy on %s\n", dir);
+            return 0;
+        }
     }
-
-    // ext4enc:TODO exclude /data/user with a horrible special case.
-    if (!strcmp(dir, "/data/user")) {
-        return 0;
-    }
-    if (!strcmp(dir, "/data/system_ce")) {
-        return 0;
-    }
-
     UnencryptedProperties props("/data");
     std::string policy = props.Get<std::string>(properties::ref);
     if (policy.empty()) {
