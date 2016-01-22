@@ -286,15 +286,6 @@ class SockDiag(netlink.NetlinkSocket):
       padded += "\x00" * (16 - len(padded))
     return padded
 
-  # For IPv4 addresses, the kernel seems only to fill in the first 4 bytes of
-  # src and dst, leaving the others unspecified. This seems like a bug because
-  # it might leak kernel memory contents, but regardless, work around it.
-  @staticmethod
-  def FixupDiagMsg(d):
-    if d.family == AF_INET:
-      d.id.src = d.id.src[:4] + "\x00" * 12
-      d.id.dst = d.id.dst[:4] + "\x00" * 12
-
   @staticmethod
   def DiagReqFromSocket(s):
     """Creates an InetDiagReqV2 that matches the specified socket."""
