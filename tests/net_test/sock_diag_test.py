@@ -51,6 +51,16 @@ class SockDiagBaseTest(multinetwork_base.MultiNetworkBaseTest):
       socketpairs[(addr, sport, dport)] = socketpair
     return socketpairs
 
+  def assertSocketClosed(self, sock):
+    self.assertRaisesErrno(ENOTCONN, sock.getpeername)
+
+  def assertSocketConnected(self, sock):
+    sock.getpeername()  # No errors? Socket is alive and connected.
+
+  def assertSocketsClosed(self, socketpair):
+    for sock in socketpair:
+      self.assertSocketClosed(sock)
+
 
 class SockDiagTest(SockDiagBaseTest):
 
@@ -86,16 +96,6 @@ class SockDiagTest(SockDiagBaseTest):
     msg4.id.src = src.decode("hex")[:4] + 12 * "\x00"
     msg4.id.dst = dst.decode("hex")[:4] + 12 * "\x00"
     self.assertEquals(msg4.Pack(), fixed4.Pack())
-
-  def assertSocketClosed(self, sock):
-    self.assertRaisesErrno(ENOTCONN, sock.getpeername)
-
-  def assertSocketConnected(self, sock):
-    sock.getpeername()  # No errors? Socket is alive and connected.
-
-  def assertSocketsClosed(self, socketpair):
-    for sock in socketpair:
-      self.assertSocketClosed(sock)
 
   def assertSockDiagMatchesSocket(self, s, diag_msg):
     family = s.getsockopt(net_test.SOL_SOCKET, net_test.SO_DOMAIN)
@@ -177,7 +177,7 @@ class SockDiagTest(SockDiagBaseTest):
     self.socketpairs = self._CreateLotsOfSockets()
     filteredsockets = self.sock_diag.DumpAllInetSockets(IPPROTO_TCP, bytecode)
     allsockets = self.sock_diag.DumpAllInetSockets(IPPROTO_TCP, NO_BYTECODE)
-    self.assertEquals(len(allsockets), len(filteredsockets))
+    self.assertItemsEqual(allsockets, filteredsockets)
 
     # Pick a few sockets in hash table order, and check that the bytecode we
     # compiled selects them properly.
@@ -205,6 +205,11 @@ class SockDiagTest(SockDiagBaseTest):
       android-3.4:
         f67caec inet_diag: avoid unsafe and nonsensical prefix matches in inet_diag_bc_run()
     """
+    # TODO: this is only here because the test fails if there are any open
+    # sockets other than the ones it creates itself. Make the bytecode more
+    # specific and remove it.
+    self.assertFalse(self.sock_diag.DumpAllInetSockets(IPPROTO_TCP, ""))
+
     pair4 = net_test.CreateSocketPair(AF_INET, SOCK_STREAM, "127.0.0.1")
     pair6 = net_test.CreateSocketPair(AF_INET6, SOCK_STREAM, "::1")
 
@@ -374,6 +379,8 @@ class TcpTest(SockDiagBaseTest):
       return
 
     self.accepted, _ = self.s.accept()
+    net_test.DisableLinger(self.accepted)
+
     if end_state == sock_diag.TCP_ESTABLISHED:
       return
 
@@ -544,10 +551,14 @@ class TcpTest(SockDiagBaseTest):
   def testConnectInterrupted(self):
     """Tests that connect() is interrupted by SOCK_DESTROY."""
     for version in [4, 5, 6]:
-      family = {4: AF_INET, 6: AF_INET6}[version]
+      family = {4: AF_INET, 5: AF_INET6, 6: AF_INET6}[version]
       s = net_test.Socket(family, SOCK_STREAM, IPPROTO_TCP)
       self.SelectInterface(s, self.netid, "mark")
-      remoteaddr = self.GetRemoteAddress(version)
+      if version == 5:
+        remoteaddr = "::ffff:" + self.GetRemoteAddress(4)
+        version = 4
+      else:
+        remoteaddr = self.GetRemoteAddress(version)
       s.bind(("", 0))
       _, sport = s.getsockname()[:2]
       self.CloseDuringBlockingCall(
