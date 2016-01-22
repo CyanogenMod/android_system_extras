@@ -203,3 +203,8 @@ int dev_read_blocks(void *buf, __u64 addr, __u32 nr_blks)
 	return 0;
 }
 
+int dev_write_block(void *buf, __u64 blk_addr)
+{
+    assert(false); // Must not be invoked.
+    return 0;
+}
