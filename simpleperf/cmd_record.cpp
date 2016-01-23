@@ -96,6 +96,9 @@ class RecordCommand : public Command {
             "                   k: only when the branch target is in the kernel\n"
             "                 This option requires at least one branch type among any,\n"
             "                 any_call, any_ret, ind_call.\n"
+            "    -m mmap_pages\n"
+            "                 Set the size of the buffer used to receiving sample data from\n"
+            "                 the kernel. It should be a power of 2. The default value is 16.\n"
             "    --no-inherit\n"
             "                 Don't record created child threads/processes.\n"
             "    --no-unwind  If `--call-graph dwarf` option is used, then the user's stack will\n"
@@ -121,7 +124,7 @@ class RecordCommand : public Command {
         unwind_dwarf_callchain_(true),
         post_unwind_(false),
         child_inherit_(true),
-        perf_mmap_pages_(256),
+        perf_mmap_pages_(16),
         record_filename_("perf.data") {
     signaled = false;
     scoped_signal_handler_.reset(
@@ -165,8 +168,8 @@ class RecordCommand : public Command {
   std::vector<EventTypeAndModifier> measured_event_types_;
   EventSelectionSet event_selection_set_;
 
-  // mmap pages used by each perf event file, should be power of 2.
-  const size_t perf_mmap_pages_;
+  // mmap pages used by each perf event file, should be a power of 2.
+  size_t perf_mmap_pages_;
 
   std::unique_ptr<RecordCache> record_cache_;
   ThreadTree thread_tree_;
@@ -367,6 +370,17 @@ bool RecordCommand::ParseOptions(const std::vector<std::string>& args,
         }
         branch_sampling_ |= it->second;
       }
+    } else if (args[i] == "-m") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      char* endptr;
+      uint64_t pages = strtoull(args[i].c_str(), &endptr, 0);
+      if (*endptr != '\0' || !IsPowerOfTwo(pages)) {
+        LOG(ERROR) << "Invalid mmap_pages: '" << args[i] << "'";
+        return false;
+      }
+      perf_mmap_pages_ = pages;
     } else if (args[i] == "--no-inherit") {
       child_inherit_ = false;
     } else if (args[i] == "--no-unwind") {
