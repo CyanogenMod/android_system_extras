@@ -172,3 +172,9 @@ TEST(record_cmd, cpu_option) {
   ASSERT_TRUE(RecordCmd()->Run({"--cpu", "0", "sleep", "1"}));
   ASSERT_TRUE(RecordCmd()->Run({"--cpu", "0", "-a", "sleep", "1"}));
 }
+
+TEST(record_cmd, mmap_page_option) {
+  ASSERT_TRUE(RecordCmd()->Run({"-m", "1", "sleep", "1"}));
+  ASSERT_FALSE(RecordCmd()->Run({"-m", "0", "sleep", "1"}));
+  ASSERT_FALSE(RecordCmd()->Run({"-m", "7", "sleep", "1"}));
+}
