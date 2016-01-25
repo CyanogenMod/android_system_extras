@@ -64,17 +64,17 @@ class SockDiagBaseTest(multinetwork_base.MultiNetworkBaseTest):
     for sock in socketpair:
       self.assertSocketClosed(sock)
 
-
-class SockDiagTest(SockDiagBaseTest):
-
   def setUp(self):
-    super(SockDiagTest, self).setUp()
+    super(SockDiagBaseTest, self).setUp()
     self.sock_diag = sock_diag.SockDiag()
     self.socketpairs = {}
 
   def tearDown(self):
     [s.close() for socketpair in self.socketpairs.values() for s in socketpair]
-    super(SockDiagTest, self).tearDown()
+    super(SockDiagBaseTest, self).tearDown()
+
+
+class SockDiagTest(SockDiagBaseTest):
 
   def assertSockDiagMatchesSocket(self, s, diag_msg):
     family = s.getsockopt(net_test.SOL_SOCKET, net_test.SO_DOMAIN)
@@ -250,7 +250,21 @@ class SockDiagTest(SockDiagBaseTest):
         EINVAL,
         self.sock_diag.DumpAllInetSockets, IPPROTO_TCP, bytecode.Pack())
 
-  @unittest.skipUnless(HAVE_SOCK_DESTROY, "SOCK_DESTROY not supported")
+  def testNonSockDiagCommand(self):
+    def DiagDump(code):
+      sock_id = self.sock_diag._EmptyInetDiagSockId()
+      req = sock_diag.InetDiagReqV2((AF_INET6, IPPROTO_TCP, 0, 0xffffffff,
+                                     sock_id))
+      self.sock_diag._Dump(code, req, sock_diag.InetDiagMsg, "")
+
+    op = sock_diag.SOCK_DIAG_BY_FAMILY
+    DiagDump(op)  # No errors? Good.
+    self.assertRaisesErrno(EINVAL, DiagDump, op + 17)
+
+
+@unittest.skipUnless(HAVE_SOCK_DESTROY, "SOCK_DESTROY not supported")
+class SockDestroyTest(SockDiagBaseTest):
+
   def testClosesSockets(self):
     self.socketpairs = self._CreateLotsOfSockets()
     for (addr, _, _), socketpair in self.socketpairs.iteritems():
@@ -278,23 +292,11 @@ class SockDiagTest(SockDiagBaseTest):
       # Check that both sockets in the pair are closed.
       self.assertSocketsClosed(socketpair)
 
-  @unittest.skipUnless(HAVE_SOCK_DESTROY, "SOCK_DESTROY not supported")
   def testNonTcpSockets(self):
     s = socket(AF_INET6, SOCK_DGRAM, 0)
     s.connect(("::1", 53))
     diag_msg = self.sock_diag.FindSockDiagFromFd(s)
     self.assertRaisesErrno(EOPNOTSUPP, self.sock_diag.CloseSocketFromFd, s)
-
-  def testNonSockDiagCommand(self):
-    def DiagDump(code):
-      sock_id = self.sock_diag._EmptyInetDiagSockId()
-      req = sock_diag.InetDiagReqV2((AF_INET6, IPPROTO_TCP, 0, 0xffffffff,
-                                     sock_id))
-      self.sock_diag._Dump(code, req, sock_diag.InetDiagMsg, "")
-
-    op = sock_diag.SOCK_DIAG_BY_FAMILY
-    DiagDump(op)  # No errors? Good.
-    self.assertRaisesErrno(EINVAL, DiagDump, op + 17)
 
   # TODO:
   # Test that killing unix sockets returns EOPNOTSUPP.
