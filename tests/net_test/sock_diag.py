@@ -94,20 +94,7 @@ TcpInfo = cstruct.Struct(
     "rcv_rtt rcv_space "
     "total_retrans")  # As of linux 3.13, at least.
 
-# TCP states. See include/net/tcp_states.h.
-TCP_ESTABLISHED = 1
-TCP_SYN_SENT = 2
-TCP_SYN_RECV = 3
-TCP_FIN_WAIT1 = 4
-TCP_FIN_WAIT2 = 5
 TCP_TIME_WAIT = 6
-TCP_CLOSE = 7
-TCP_CLOSE_WAIT = 8
-TCP_LAST_ACK = 9
-TCP_LISTEN = 10
-TCP_CLOSING = 11
-TCP_NEW_SYN_RECV = 12
-
 ALL_NON_TIME_WAIT = 0xffffffff & ~(1 << TCP_TIME_WAIT)
 
 
