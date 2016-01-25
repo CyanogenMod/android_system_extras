@@ -34,9 +34,6 @@ import threading
 NUM_SOCKETS = 30
 NO_BYTECODE = ""
 
-# TODO: Backport SOCK_DESTROY and delete this.
-HAVE_SOCK_DESTROY = net_test.LINUX_VERSION >= (4, 4)
-
 
 class SockDiagBaseTest(multinetwork_base.MultiNetworkBaseTest):
 
@@ -263,8 +260,38 @@ class SockDiagTest(SockDiagBaseTest):
     self.assertRaisesErrno(EINVAL, DiagDump, op + 17)
 
 
-@unittest.skipUnless(HAVE_SOCK_DESTROY, "SOCK_DESTROY not supported")
 class SockDestroyTest(SockDiagBaseTest):
+  """Tests that SOCK_DESTROY works correctly.
+
+  Relevant kernel commits:
+    net-next:
+      b613f56 net: diag: split inet_diag_dump_one_icsk into two
+      64be0ae net: diag: Add the ability to destroy a socket.
+      6eb5d2e net: diag: Support SOCK_DESTROY for inet sockets.
+      c1e64e2 net: diag: Support destroying TCP sockets.
+      2010b93 net: tcp: deal with listen sockets properly in tcp_abort.
+
+    android-3.4:
+      d48ec88 net: diag: split inet_diag_dump_one_icsk into two
+      2438189 net: diag: Add the ability to destroy a socket.
+      7a2ddbc net: diag: Support SOCK_DESTROY for inet sockets.
+      44047b2 net: diag: Support destroying TCP sockets.
+      200dae7 net: tcp: deal with listen sockets properly in tcp_abort.
+
+    android-3.10:
+      9eaff90 net: diag: split inet_diag_dump_one_icsk into two
+      d60326c net: diag: Add the ability to destroy a socket.
+      3d4ce85 net: diag: Support SOCK_DESTROY for inet sockets.
+      529dfc6 net: diag: Support destroying TCP sockets.
+      9c712fe net: tcp: deal with listen sockets properly in tcp_abort.
+
+    android-3.18:
+      100263d net: diag: split inet_diag_dump_one_icsk into two
+      194c5f3 net: diag: Add the ability to destroy a socket.
+      8387ea2 net: diag: Support SOCK_DESTROY for inet sockets.
+      b80585a net: diag: Support destroying TCP sockets.
+      476c6ce net: tcp: deal with listen sockets properly in tcp_abort.
+  """
 
   def testClosesSockets(self):
     self.socketpairs = self._CreateLotsOfSockets()
@@ -345,7 +372,6 @@ class SockDiagTcpTest(tcp_test.TcpBaseTest, SockDiagBaseTest):
                        child.id.src)
 
 
-@unittest.skipUnless(HAVE_SOCK_DESTROY, "SOCK_DESTROY not supported")
 class SockDestroyTcpTest(tcp_test.TcpBaseTest, SockDiagBaseTest):
 
   def setUp(self):
