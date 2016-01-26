@@ -94,20 +94,7 @@ TcpInfo = cstruct.Struct(
     "rcv_rtt rcv_space "
     "total_retrans")  # As of linux 3.13, at least.
 
-# TCP states. See include/net/tcp_states.h.
-TCP_ESTABLISHED = 1
-TCP_SYN_SENT = 2
-TCP_SYN_RECV = 3
-TCP_FIN_WAIT1 = 4
-TCP_FIN_WAIT2 = 5
 TCP_TIME_WAIT = 6
-TCP_CLOSE = 7
-TCP_CLOSE_WAIT = 8
-TCP_LAST_ACK = 9
-TCP_LISTEN = 10
-TCP_CLOSING = 11
-TCP_NEW_SYN_RECV = 12
-
 ALL_NON_TIME_WAIT = 0xffffffff & ~(1 << TCP_TIME_WAIT)
 
 
@@ -329,27 +316,7 @@ class SockDiag(netlink.NetlinkSocket):
   @staticmethod
   def DiagReqFromDiagMsg(d, protocol):
     """Constructs a diag_req from a diag_msg the kernel has given us."""
-    # For a dual-stack socket connected to a mapped address, the diag_msg
-    # returned by the kernel has family AF_INET6 and mapped addresses. But if
-    # we ask the kernel to find a socket based on that data, we'll get ENOENT.
-    # This is because inet_diag_find_one_icsk sees diag_req.family == AF_INET6
-    # and looks in the IPv6 TCP hash table, but mapped sockets are in the IPv4
-    # hash tables. So fix up the diag_req to specify AF_INET.
-    #
-    # TODO: Should the kernel do this for us in inet_diag_find_one_icsk?
-    mapped_prefix = inet_pton(AF_INET6, "::ffff:0.0.0.0")[:12]
-    if (d.family == AF_INET6 and
-        (d.id.src.startswith(mapped_prefix) or
-         d.id.dst.startswith(mapped_prefix))):
-      family = AF_INET
-      sock_id = InetDiagSockId((d.id.sport, d.id.dport,
-                                d.id.src[12:16] + "\x00" * 12,
-                                d.id.dst[12:16] + "\x00" * 12,
-                                d.id.iface, d.id.cookie))
-    else:
-      family = d.family
-      sock_id = d.id
-    return InetDiagReqV2((family, protocol, 0, 1 << d.state, sock_id))
+    return InetDiagReqV2((d.family, protocol, 0, 1 << d.state, d.id))
 
   def CloseSocket(self, req):
     self._SendNlRequest(SOCK_DESTROY, req.Pack(),
