@@ -32,12 +32,13 @@ include $(LLVM_ROOT_PATH)/llvm.mk
 
 simpleperf_shared_libraries_target := \
   libbacktrace \
+  libbacktrace_offline \
   libbase \
   libLLVM \
 
 simpleperf_shared_libraries_host := libbase
 
-simpleperf_shared_libraries_host_linux := libbacktrace
+simpleperf_shared_libraries_host_linux := libbacktrace libbacktrace_offline
 
 simpleperf_shared_libraries_host_darwin := libLLVM
 
