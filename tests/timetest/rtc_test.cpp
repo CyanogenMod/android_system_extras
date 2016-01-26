@@ -18,15 +18,38 @@
 #include <fcntl.h>
 #include <linux/rtc.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
 #include <gtest/gtest.h>
 
 static int hwtime(int flag, int request, struct rtc_time *tm) {
-  int ret;
+  static const char rtc[] = "/dev/rtc0";
+
+  int ret = TEMP_FAILURE_RETRY(access(rtc, flag & O_WRONLY) ? W_OK : R_OK);
+  if (ret < 0) {
+    ret = -errno;
+  }
+  if (ret == -EACCES) {
+    return ret;
+  }
+
+  if (flag & O_WRONLY) {
+    struct stat st;
+    ret = TEMP_FAILURE_RETRY(stat(rtc, &st));
+    if (ret < 0) {
+      ret = -errno;
+    } else if (!(st.st_mode & (S_IWUSR|S_IWGRP|S_IWOTH))) {
+      ret = -EACCES;
+    }
+  }
+  if (ret == -EACCES) {
+    return ret;
+  }
+
   do {
-    ret = TEMP_FAILURE_RETRY(open("/dev/rtc0", flag));
+    ret = TEMP_FAILURE_RETRY(open(rtc, flag));
     if (ret < 0) {
       ret = -errno;
     }
@@ -94,9 +117,15 @@ TEST(time, rtc_rollover) {
   roll.tm_yday = 0;
   roll.tm_isdst = 0;
 
+  bool eacces = true;
   for (roll.tm_year = 70; roll.tm_year < 137; ++roll.tm_year) {
     struct rtc_time tm = roll;
     int __set_hwtime = set_hwtime(&tm);
+    // Allowed to be 100% denied for writing
+    if ((__set_hwtime == -EACCES) && (eacces == true)) {
+      continue;
+    }
+    eacces = false;
     // below 2015, permitted to error out.
     if ((__set_hwtime == -EINVAL) && (roll.tm_year < 115)) {
       continue;
@@ -137,13 +166,17 @@ TEST(time, rtc_rollover) {
     }
   }
 
-  ASSERT_LE(0, set_hwtime(&save));
+  if (!eacces) {
+    ASSERT_LE(0, set_hwtime(&save));
+  }
   ASSERT_LE(0, rd_hwtime(&roll));
 
-  ASSERT_EQ(save.tm_sec, roll.tm_sec);
-  ASSERT_EQ(save.tm_min, roll.tm_min);
-  ASSERT_EQ(save.tm_hour, roll.tm_hour);
-  ASSERT_EQ(save.tm_mday, roll.tm_mday);
-  ASSERT_EQ(save.tm_mon, roll.tm_mon);
-  ASSERT_EQ(save.tm_year, roll.tm_year);
+  if (!eacces) {
+    ASSERT_EQ(save.tm_sec, roll.tm_sec);
+    ASSERT_EQ(save.tm_min, roll.tm_min);
+    ASSERT_EQ(save.tm_hour, roll.tm_hour);
+    ASSERT_EQ(save.tm_mday, roll.tm_mday);
+    ASSERT_EQ(save.tm_mon, roll.tm_mon);
+    ASSERT_EQ(save.tm_year, roll.tm_year);
+  }
 }
