@@ -188,6 +188,7 @@ class MultiNetworkBaseTest(net_test.NetworkTest):
   @classmethod
   def MyAddress(cls, version, netid):
     return {4: cls._MyIPv4Address(netid),
+            5: "::ffff:" + cls._MyIPv4Address(netid),
             6: cls._MyIPv6Address(netid)}[version]
 
   @classmethod
@@ -428,7 +429,9 @@ class MultiNetworkBaseTest(net_test.NetworkTest):
       s.setsockopt(net_test.SOL_IPV6, IPV6_UNICAST_IF, ifindex)
 
   def GetRemoteAddress(self, version):
-    return {4: self.IPV4_ADDR, 6: self.IPV6_ADDR}[version]
+    return {4: self.IPV4_ADDR,
+            5: "::ffff:" + self.IPV4_ADDR,
+            6: self.IPV6_ADDR}[version]
 
   def SelectInterface(self, s, netid, mode):
     if mode == "uid":
