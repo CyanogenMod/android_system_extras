@@ -35,7 +35,7 @@ TCP_LISTEN = 10
 TCP_CLOSING = 11
 TCP_NEW_SYN_RECV = 12
 
-NOT_YET_ACCEPTED = -1
+TCP_NOT_YET_ACCEPTED = -1
 
 
 class TcpBaseTest(multinetwork_base.MultiNetworkBaseTest):
@@ -94,7 +94,7 @@ class TcpBaseTest(multinetwork_base.MultiNetworkBaseTest):
     establishing_ack = packets.ACK(version, remoteaddr, myaddr, reply)[1]
     self.ReceivePacketOn(netid, establishing_ack)
 
-    if end_state == NOT_YET_ACCEPTED:
+    if end_state == TCP_NOT_YET_ACCEPTED:
       return
 
     self.accepted, _ = self.s.accept()

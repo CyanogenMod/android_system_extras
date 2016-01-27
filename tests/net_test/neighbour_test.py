@@ -183,6 +183,9 @@ class NeighbourTest(multinetwork_base.MultiNetworkBaseTest):
 
       android-3.10:
         e4a6d6b neigh: Better handling of transition to NUD_PROBE state
+
+      android-3.18:
+        2011e72 neigh: Better handling of transition to NUD_PROBE state
     """
 
     router4 = self._RouterAddress(self.netid, 4)
