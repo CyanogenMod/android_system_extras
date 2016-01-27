@@ -14,28 +14,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# pylint: disable=g-bad-todo,g-bad-file-header,wildcard-import
 from errno import *  # pylint: disable=wildcard-import
 import os
 import random
+import re
 from socket import *  # pylint: disable=wildcard-import
+import threading
 import time
 import unittest
 
-import csocket
-import cstruct
 import multinetwork_base
 import net_test
 import packets
 import sock_diag
 import tcp_test
-import threading
 
 
 NUM_SOCKETS = 30
 NO_BYTECODE = ""
-
-# TODO: Backport SOCK_DESTROY and delete this.
-HAVE_SOCK_DESTROY = net_test.LINUX_VERSION >= (4, 4)
 
 
 class SockDiagBaseTest(multinetwork_base.MultiNetworkBaseTest):
@@ -44,7 +41,7 @@ class SockDiagBaseTest(multinetwork_base.MultiNetworkBaseTest):
   def _CreateLotsOfSockets():
     # Dict mapping (addr, sport, dport) tuples to socketpairs.
     socketpairs = {}
-    for i in xrange(NUM_SOCKETS):
+    for _ in xrange(NUM_SOCKETS):
       family, addr = random.choice([
           (AF_INET, "127.0.0.1"),
           (AF_INET6, "::1"),
@@ -71,7 +68,9 @@ class SockDiagBaseTest(multinetwork_base.MultiNetworkBaseTest):
     self.socketpairs = {}
 
   def tearDown(self):
-    [s.close() for socketpair in self.socketpairs.values() for s in socketpair]
+    for socketpair in self.socketpairs.values():
+      for s in socketpair:
+        s.close()
     super(SockDiagBaseTest, self).tearDown()
 
 
@@ -90,7 +89,7 @@ class SockDiagTest(SockDiagBaseTest):
       self.assertEqual(diag_msg.id.dst, self.sock_diag.PaddedAddress(dst))
       self.assertEqual(diag_msg.id.dport, dport)
     else:
-      assertRaisesErrno(ENOTCONN, s.getpeername)
+      self.assertRaisesErrno(ENOTCONN, s.getpeername)
 
   def testFindsMappedSockets(self):
     """Tests that inet_diag_find_one_icsk can find mapped sockets.
@@ -122,7 +121,7 @@ class SockDiagTest(SockDiagBaseTest):
 
     # Find the cookies for all of our sockets.
     cookies = {}
-    for diag_msg, attrs in sockets:
+    for diag_msg, unused_attrs in sockets:
       addr = self.sock_diag.GetSourceAddress(diag_msg)
       sport = diag_msg.id.sport
       dport = diag_msg.id.dport
@@ -147,11 +146,12 @@ class SockDiagTest(SockDiagBaseTest):
         # Check that we can find a diag_msg once we know the cookie.
         req = self.sock_diag.DiagReqFromSocket(sock)
         req.id.cookie = cookie
-        req.states = 1 << diag_msg.state
         diag_msg = self.sock_diag.GetSockDiag(req)
+        req.states = 1 << diag_msg.state
         self.assertSockDiagMatchesSocket(sock, diag_msg)
 
   def testBytecodeCompilation(self):
+    # pylint: disable=bad-whitespace
     instructions = [
         (sock_diag.INET_DIAG_BC_S_GE,   1, 8, 0),                      # 0
         (sock_diag.INET_DIAG_BC_D_LE,   1, 7, 0xffff),                 # 8
@@ -163,6 +163,7 @@ class SockDiagTest(SockDiagBaseTest):
                                                                        # 76 acc
                                                                        # 80 rej
     ]
+    # pylint: enable=bad-whitespace
     bytecode = self.sock_diag.PackBytecode(instructions)
     expected = (
         "0208500000000000"
@@ -211,8 +212,8 @@ class SockDiagTest(SockDiagBaseTest):
     # specific and remove it.
     self.assertFalse(self.sock_diag.DumpAllInetSockets(IPPROTO_TCP, ""))
 
-    pair4 = net_test.CreateSocketPair(AF_INET, SOCK_STREAM, "127.0.0.1")
-    pair6 = net_test.CreateSocketPair(AF_INET6, SOCK_STREAM, "::1")
+    unused_pair4 = net_test.CreateSocketPair(AF_INET, SOCK_STREAM, "127.0.0.1")
+    unused_pair6 = net_test.CreateSocketPair(AF_INET6, SOCK_STREAM, "::1")
 
     bytecode4 = self.sock_diag.PackBytecode([
         (sock_diag.INET_DIAG_BC_S_COND, 1, 2, ("0.0.0.0", 0, -1))])
@@ -263,12 +264,42 @@ class SockDiagTest(SockDiagBaseTest):
     self.assertRaisesErrno(EINVAL, DiagDump, op + 17)
 
 
-@unittest.skipUnless(HAVE_SOCK_DESTROY, "SOCK_DESTROY not supported")
 class SockDestroyTest(SockDiagBaseTest):
+  """Tests that SOCK_DESTROY works correctly.
+
+  Relevant kernel commits:
+    net-next:
+      b613f56 net: diag: split inet_diag_dump_one_icsk into two
+      64be0ae net: diag: Add the ability to destroy a socket.
+      6eb5d2e net: diag: Support SOCK_DESTROY for inet sockets.
+      c1e64e2 net: diag: Support destroying TCP sockets.
+      2010b93 net: tcp: deal with listen sockets properly in tcp_abort.
+
+    android-3.4:
+      d48ec88 net: diag: split inet_diag_dump_one_icsk into two
+      2438189 net: diag: Add the ability to destroy a socket.
+      7a2ddbc net: diag: Support SOCK_DESTROY for inet sockets.
+      44047b2 net: diag: Support destroying TCP sockets.
+      200dae7 net: tcp: deal with listen sockets properly in tcp_abort.
+
+    android-3.10:
+      9eaff90 net: diag: split inet_diag_dump_one_icsk into two
+      d60326c net: diag: Add the ability to destroy a socket.
+      3d4ce85 net: diag: Support SOCK_DESTROY for inet sockets.
+      529dfc6 net: diag: Support destroying TCP sockets.
+      9c712fe net: tcp: deal with listen sockets properly in tcp_abort.
+
+    android-3.18:
+      100263d net: diag: split inet_diag_dump_one_icsk into two
+      194c5f3 net: diag: Add the ability to destroy a socket.
+      8387ea2 net: diag: Support SOCK_DESTROY for inet sockets.
+      b80585a net: diag: Support destroying TCP sockets.
+      476c6ce net: tcp: deal with listen sockets properly in tcp_abort.
+  """
 
   def testClosesSockets(self):
     self.socketpairs = self._CreateLotsOfSockets()
-    for (addr, _, _), socketpair in self.socketpairs.iteritems():
+    for _, socketpair in self.socketpairs.iteritems():
       # Close one of the sockets.
       # This will send a RST that will close the other side as well.
       s = random.choice(socketpair)
@@ -276,7 +307,6 @@ class SockDestroyTest(SockDiagBaseTest):
         self.sock_diag.CloseSocketFromFd(s)
       else:
         diag_msg = self.sock_diag.FindSockDiagFromFd(s)
-        family = AF_INET6 if ":" in addr else AF_INET
 
         # Get the cookie wrong and ensure that we get an error and the socket
         # is not closed.
@@ -296,7 +326,7 @@ class SockDestroyTest(SockDiagBaseTest):
   def testNonTcpSockets(self):
     s = socket(AF_INET6, SOCK_DGRAM, 0)
     s.connect(("::1", 53))
-    diag_msg = self.sock_diag.FindSockDiagFromFd(s)
+    self.sock_diag.FindSockDiagFromFd(s)  # No exceptions? Good.
     self.assertRaisesErrno(EOPNOTSUPP, self.sock_diag.CloseSocketFromFd, s)
 
   # TODO:
@@ -315,7 +345,7 @@ class SocketExceptionThread(threading.Thread):
   def run(self):
     try:
       self.operation(self.sock)
-    except Exception, e:
+    except IOError, e:
       self.exception = e
 
 
@@ -345,7 +375,6 @@ class SockDiagTcpTest(tcp_test.TcpBaseTest, SockDiagBaseTest):
                        child.id.src)
 
 
-@unittest.skipUnless(HAVE_SOCK_DESTROY, "SOCK_DESTROY not supported")
 class SockDestroyTcpTest(tcp_test.TcpBaseTest, SockDiagBaseTest):
 
   def setUp(self):
@@ -398,69 +427,71 @@ class SockDestroyTcpTest(tcp_test.TcpBaseTest, SockDiagBaseTest):
     return [self.sock_diag.DiagReqFromDiagMsg(d, IPPROTO_TCP)
             for d, _ in children]
 
-  def CheckChildSocket(self, state, statename, parent_first):
-    for version in [4, 5, 6]:
-      self.IncomingConnection(version, state, self.netid)
+  def CheckChildSocket(self, version, statename, parent_first):
+    state = getattr(tcp_test, statename)
 
-      d = self.sock_diag.FindSockDiagFromFd(self.s)
-      parent = self.sock_diag.DiagReqFromDiagMsg(d, IPPROTO_TCP)
-      children = self.FindChildSockets(self.s)
-      self.assertEquals(1, len(children))
+    self.IncomingConnection(version, state, self.netid)
 
-      is_established = (state == tcp_test.NOT_YET_ACCEPTED)
+    d = self.sock_diag.FindSockDiagFromFd(self.s)
+    parent = self.sock_diag.DiagReqFromDiagMsg(d, IPPROTO_TCP)
+    children = self.FindChildSockets(self.s)
+    self.assertEquals(1, len(children))
 
-      # The new TCP listener code in 4.4 makes SYN_RECV sockets live in the
-      # regular TCP hash tables, and inet_diag_find_one_icsk can find them.
-      # Before 4.4, we can see those sockets in dumps, but we can't fetch
-      # or close them.
-      can_close_children = is_established or net_test.LINUX_VERSION >= (4, 4)
+    is_established = (state == tcp_test.TCP_NOT_YET_ACCEPTED)
 
-      for child in children:
-        if can_close_children:
-          self.sock_diag.GetSockDiag(child)  # No errors? Good, child found.
-        else:
-          self.assertRaisesErrno(ENOENT, self.sock_diag.GetSockDiag, child)
+    # The new TCP listener code in 4.4 makes SYN_RECV sockets live in the
+    # regular TCP hash tables, and inet_diag_find_one_icsk can find them.
+    # Before 4.4, we can see those sockets in dumps, but we can't fetch
+    # or close them.
+    can_close_children = is_established or net_test.LINUX_VERSION >= (4, 4)
 
-      def CloseParent(expect_reset):
-        msg = "Closing parent IPv%d %s socket %s child" % (
-            version, statename, "before" if parent_first else "after")
-        self.CheckRstOnClose(self.s, None, expect_reset, msg)
-        self.assertRaisesErrno(ENOENT, self.sock_diag.GetSockDiag, parent)
-
-      def CheckChildrenClosed():
-        for child in children:
-          self.assertRaisesErrno(ENOENT, self.sock_diag.GetSockDiag, child)
-
-      def CloseChildren():
-        for child in children:
-          msg = "Closing child IPv%d %s socket %s parent" % (
-              version, statename, "after" if parent_first else "before")
-          self.sock_diag.GetSockDiag(child)
-          self.CheckRstOnClose(None, child, is_established, msg)
-          self.assertRaisesErrno(ENOENT, self.sock_diag.GetSockDiag, child)
-        CheckChildrenClosed()
-
-      if parent_first:
-        # Closing the parent will close child sockets, which will send a RST,
-        # iff they are already established.
-        CloseParent(is_established)
-        if is_established:
-          CheckChildrenClosed()
-        elif can_close_children:
-          CloseChildren()
-          CheckChildrenClosed()
-        self.s.close()
+    for child in children:
+      if can_close_children:
+        self.sock_diag.GetSockDiag(child)  # No errors? Good, child found.
       else:
-        if can_close_children:
-          CloseChildren()
-        CloseParent(False)
-        self.s.close()
+        self.assertRaisesErrno(ENOENT, self.sock_diag.GetSockDiag, child)
+
+    def CloseParent(expect_reset):
+      msg = "Closing parent IPv%d %s socket %s child" % (
+          version, statename, "before" if parent_first else "after")
+      self.CheckRstOnClose(self.s, None, expect_reset, msg)
+      self.assertRaisesErrno(ENOENT, self.sock_diag.GetSockDiag, parent)
+
+    def CheckChildrenClosed():
+      for child in children:
+        self.assertRaisesErrno(ENOENT, self.sock_diag.GetSockDiag, child)
+
+    def CloseChildren():
+      for child in children:
+        msg = "Closing child IPv%d %s socket %s parent" % (
+            version, statename, "after" if parent_first else "before")
+        self.sock_diag.GetSockDiag(child)
+        self.CheckRstOnClose(None, child, is_established, msg)
+        self.assertRaisesErrno(ENOENT, self.sock_diag.GetSockDiag, child)
+      CheckChildrenClosed()
+
+    if parent_first:
+      # Closing the parent will close child sockets, which will send a RST,
+      # iff they are already established.
+      CloseParent(is_established)
+      if is_established:
+        CheckChildrenClosed()
+      elif can_close_children:
+        CloseChildren()
+        CheckChildrenClosed()
+      self.s.close()
+    else:
+      if can_close_children:
+        CloseChildren()
+      CloseParent(False)
+      self.s.close()
 
   def testChildSockets(self):
-    self.CheckChildSocket(tcp_test.TCP_SYN_RECV, "TCP_SYN_RECV", False)
-    self.CheckChildSocket(tcp_test.TCP_SYN_RECV, "TCP_SYN_RECV", True)
-    self.CheckChildSocket(tcp_test.NOT_YET_ACCEPTED, "not yet accepted", False)
-    self.CheckChildSocket(tcp_test.NOT_YET_ACCEPTED, "not yet accepted", True)
+    for version in [4, 5, 6]:
+      self.CheckChildSocket(version, "TCP_SYN_RECV", False)
+      self.CheckChildSocket(version, "TCP_SYN_RECV", True)
+      self.CheckChildSocket(version, "TCP_NOT_YET_ACCEPTED", False)
+      self.CheckChildSocket(version, "TCP_NOT_YET_ACCEPTED", True)
 
   def CloseDuringBlockingCall(self, sock, call, expected_errno):
     thread = SocketExceptionThread(sock, call)
