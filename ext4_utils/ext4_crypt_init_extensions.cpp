@@ -149,7 +149,7 @@ int e4crypt_set_directory_policy(const char* dir)
     // often because their subdirectories must be encrypted.
     // This isn't a nice way to do this, see b/26641735
     std::vector<std::string> directories_to_exclude = {
-        "lost+found", "user", "system_ce", "media", "data",
+        "lost+found", "user", "system_ce", "media", "data", "user_de",
         // ext4enc:TODO workaround that must be removed b/26673855
         "misc",
     };
