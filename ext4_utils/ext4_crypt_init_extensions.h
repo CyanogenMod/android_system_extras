@@ -11,6 +11,7 @@ int e4crypt_create_device_key(const char* path,
                               int ensure_dir_exists(const char* dir));
 int e4crypt_set_directory_policy(const char* path);
 bool e4crypt_non_default_key(const char* path);
+int e4crypt_do_init_user0();
 int do_policy_set(const char *directory, const char *policy, int policy_length);
 
 __END_DECLS

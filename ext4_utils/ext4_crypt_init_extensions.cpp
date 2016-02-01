@@ -135,6 +135,15 @@ int e4crypt_install_keyring()
     return 0;
 }
 
+int e4crypt_do_init_user0()
+{
+    auto result = vold_command("cryptfs init_user0");
+    // ext4enc:TODO proper error handling
+    KLOG_INFO(TAG, "init_user0 returned with result %s\n",
+              result.c_str());
+    return 0;
+}
+
 int e4crypt_set_directory_policy(const char* dir)
 {
     // Only set policy on first level /data directories
