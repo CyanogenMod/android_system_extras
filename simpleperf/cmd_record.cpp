@@ -32,6 +32,7 @@
 #include "environment.h"
 #include "event_selection_set.h"
 #include "event_type.h"
+#include "read_apk.h"
 #include "read_elf.h"
 #include "record.h"
 #include "record_file.h"
@@ -149,7 +150,9 @@ class RecordCommand : public Command {
   bool PostUnwind(const std::vector<std::string>& args);
   bool DumpAdditionalFeatures(const std::vector<std::string>& args);
   bool DumpBuildIdFeature();
-  void CollectHitFileInfo(const Record* record);
+  void CollectHitFileInfo(Record* record);
+  std::pair<std::string, uint64_t> TestForEmbeddedElf(Dso *dso, uint64_t pgoff);
+
 
   bool use_sample_freq_;    // Use sample_freq_ when true, otherwise using sample_period_.
   uint64_t sample_freq_;    // Sample 'sample_freq_' times per second.
@@ -177,7 +180,8 @@ class RecordCommand : public Command {
   std::unique_ptr<RecordFileWriter> record_file_writer_;
 
   std::set<std::string> hit_kernel_modules_;
-  std::set<std::string> hit_user_files_;
+  std::set<std::pair<std::string, uint64_t> > hit_user_files_;
+  ApkInspector apk_inspector_;
 
   std::unique_ptr<ScopedSignalHandler> scoped_signal_handler_;
 };
@@ -764,8 +768,24 @@ bool RecordCommand::DumpBuildIdFeature() {
     }
   }
   // Add build_ids for user elf files.
-  for (auto& filename : hit_user_files_) {
+  for (auto& dso_origin : hit_user_files_) {
+    auto& filename = dso_origin.first;
+    auto& offset = dso_origin.second;
     if (filename == DEFAULT_EXECNAME_FOR_THREAD_MMAP) {
+      continue;
+    }
+    EmbeddedElf *ee = apk_inspector_.FindElfInApkByMmapOffset(filename, offset);
+    if (ee) {
+      if (!GetBuildIdFromEmbeddedElfFile(filename,
+                                         ee->entry_offset(),
+                                         ee->entry_size(),
+                                         &build_id)) {
+        LOG(DEBUG) << "can't read build_id from archive file " << filename
+                   << "entry " << ee->entry_name();
+        continue;
+      }
+      std::string ee_filename = filename + "!" + ee->entry_name();
+      build_id_records.push_back(CreateBuildIdRecord(false, UINT_MAX, build_id, ee_filename));
       continue;
     }
     if (!GetBuildIdFromElfFile(filename, &build_id)) {
@@ -780,18 +800,60 @@ bool RecordCommand::DumpBuildIdFeature() {
   return true;
 }
 
-void RecordCommand::CollectHitFileInfo(const Record* record) {
+void RecordCommand::CollectHitFileInfo(Record* record) {
   if (record->type() == PERF_RECORD_SAMPLE) {
-    auto r = *static_cast<const SampleRecord*>(record);
+    auto r = *static_cast<SampleRecord*>(record);
     bool in_kernel = ((r.header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL);
     const ThreadEntry* thread = thread_tree_.FindThreadOrNew(r.tid_data.pid, r.tid_data.tid);
     const MapEntry* map = thread_tree_.FindMap(thread, r.ip_data.ip, in_kernel);
     if (in_kernel) {
       hit_kernel_modules_.insert(map->dso->Path());
     } else {
-      hit_user_files_.insert(map->dso->Path());
+      auto apair = std::make_pair(map->dso->Path(), map->pgoff);
+      hit_user_files_.insert(apair);
     }
   }
+  if (record->type() == PERF_RECORD_MMAP) {
+    MmapRecord& r = *static_cast<MmapRecord*>(record);
+    bool in_kernel = ((r.header.misc & PERF_RECORD_MISC_CPUMODE_MASK) == PERF_RECORD_MISC_KERNEL);
+    if (!in_kernel) {
+      const ThreadEntry* thread = thread_tree_.FindThreadOrNew(r.data.pid, r.data.tid);
+      const MapEntry* map = thread_tree_.FindMap(thread, r.data.addr, in_kernel);
+      if (map->pgoff != 0u) {
+        std::pair<std::string, uint64_t> ee_info = TestForEmbeddedElf(map->dso, map->pgoff);
+        if (!ee_info.first.empty()) {
+          // For the case of a shared library "foobar.so" embedded
+          // inside an APK, we rewrite the original MMAP from
+          // ["path.apk" offset=X] to ["path.apk!foobar.so" offset=W]
+          // so as to make the library name explicit. This update is
+          // done here (as part of the record operation) as opposed to
+          // on the host during the report, since we want to report
+          // the correct library name even if the the APK in question
+          // is not present on the host. The new offset W is
+          // calculated to be with respect to the start of foobar.so,
+          // not to the start of path.apk.
+          const std::string& entry_name = ee_info.first;
+          uint64_t new_offset = ee_info.second;
+          std::string new_filename = r.filename + "!" + entry_name;
+          UpdateMmapRecord(&r, new_filename, new_offset);
+        }
+      }
+    }
+  }
+}
+
+std::pair<std::string, uint64_t> RecordCommand::TestForEmbeddedElf(Dso *dso, uint64_t pgoff)
+{
+  // Examine the DSO to determine whether it corresponds to an ELF
+  // file embedded in an APK.
+  std::string ee_name;
+  EmbeddedElf *ee = apk_inspector_.FindElfInApkByMmapOffset(dso->Path(), pgoff);
+  if (ee) {
+    // Compute new offset relative to start of elf in APK.
+    uint64_t elf_offset = pgoff - ee->entry_offset();
+    return std::make_pair(ee->entry_name(), elf_offset);
+  }
+  return std::make_pair(std::string(), 0u);
 }
 
 __attribute__((constructor)) static void RegisterRecordCommand() {
