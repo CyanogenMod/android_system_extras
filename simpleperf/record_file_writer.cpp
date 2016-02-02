@@ -21,8 +21,10 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <set>
+#include <string>
 #include <vector>
 
+#include <android-base/file.h>
 #include <android-base/logging.h>
 
 #include "perf_event.h"
@@ -33,7 +35,9 @@ using namespace PerfFileFormat;
 
 std::unique_ptr<RecordFileWriter> RecordFileWriter::CreateInstance(const std::string& filename) {
   // Remove old perf.data to avoid file ownership problems.
-  if (!RemovePossibleFile(filename)) {
+  std::string err;
+  if (!android::base::RemoveFileIfExists(filename, &err)) {
+    LOG(ERROR) << "failed to remove file " << filename << ": " << err;
     return nullptr;
   }
   FILE* fp = fopen(filename.c_str(), "web+");

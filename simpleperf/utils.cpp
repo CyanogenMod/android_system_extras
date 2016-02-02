@@ -115,21 +115,6 @@ bool IsRegularFile(const std::string& filename) {
   return false;
 }
 
-bool RemovePossibleFile(const std::string& filename) {
-  struct stat st;
-  if (stat(filename.c_str(), &st) == 0) {
-    if (!S_ISREG(st.st_mode)) {
-      LOG(ERROR) << filename << " is not a file.";
-      return false;
-    }
-    if (unlink(filename.c_str()) == -1) {
-      PLOG(ERROR) << "unlink(" << filename << ") failed";
-      return false;
-    }
-  }
-  return true;
-}
-
 bool StringToPid(const std::string& s, int* pid) {
   char* endptr;
   *pid = static_cast<int>(strtol(s.c_str(), &endptr, 10));
