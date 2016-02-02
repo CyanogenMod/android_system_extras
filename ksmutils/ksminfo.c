@@ -189,7 +189,6 @@ exit:
 
 static int read_pages(struct ksm_pages *kp, pm_map_t **maps, size_t num_maps, uint8_t pr_flags) {
     size_t i, j, k;
-    size_t len;
     uint64_t *pagemap;
     size_t map_len;
     uint64_t flags;
@@ -251,7 +250,7 @@ static int read_pages(struct ksm_pages *kp, pm_map_t **maps, size_t num_maps, ui
                 fprintf(stderr, "warning: could not lseek to 0x%08lx\n", vaddr);
                 continue;
             }
-            len = read(fd, data, pm_kernel_pagesize(ker));
+            ssize_t len = read(fd, data, pm_kernel_pagesize(ker));
             if (len != pm_kernel_pagesize(ker)) {
                 fprintf(stderr, "warning: could not read page at 0x%08lx\n", vaddr);
                 continue;

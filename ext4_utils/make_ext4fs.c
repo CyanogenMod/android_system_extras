@@ -41,6 +41,19 @@
 /* These match the Linux definitions of these flags.
    L_xx is defined to avoid conflicting with the win32 versions.
 */
+#undef S_IRWXU
+#undef S_IRGRP
+#undef S_IWGRP
+#undef S_IXGRP
+#undef S_IRWXG
+#undef S_IROTH
+#undef S_IWOTH
+#undef S_IXOTH
+#undef S_IRWXO
+#undef S_ISUID
+#undef S_ISGID
+#undef S_ISVTX
+
 #define L_S_IRUSR 00400
 #define L_S_IWUSR 00200
 #define L_S_IXUSR 00100

@@ -28,8 +28,11 @@
 
 #define _LARGEFILE64_SOURCE
 
+#include <assert.h>
 #include <asm/types.h>
+#include <dlfcn.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <linux/fs.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,10 +40,7 @@
 #include <sys/param.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <fcntl.h>
-#include <dlfcn.h>
-
-#include <assert.h>
+#include <unistd.h>
 
 #include <f2fs_fs.h>
 #include <f2fs_format_utils.h>
@@ -98,7 +98,10 @@ static int dev_write_fd(void *buf, __u64 offset, size_t len)
 {
 	if (lseek64(config.fd, (off64_t)offset, SEEK_SET) < 0)
 		return -1;
-	if (write(config.fd, buf, len) != len)
+	ssize_t written = write(config.fd, buf, len);
+	if (written == -1)
+		return -1;
+	if ((size_t)written != len)
 		return -1;
 	return 0;
 }
