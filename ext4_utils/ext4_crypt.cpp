@@ -123,9 +123,3 @@ int do_policy_set(const char *directory, const char *policy, int policy_length)
               directory, policy[0], policy[1], policy[2], policy[3]);
     return 0;
 }
-
-bool e4crypt_non_default_key(const char* dir)
-{
-    UnencryptedProperties props(dir);
-    return props.Get<int>(properties::is_default, 1) != 1;
-}
