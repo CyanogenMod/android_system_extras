@@ -34,11 +34,19 @@ simpleperf_shared_libraries_target := \
   libbacktrace \
   libbacktrace_offline \
   libbase \
+  liblog \
+  libutils \
   libLLVM \
+
+simpleperf_static_libraries_target := \
+  libziparchive \
 
 simpleperf_shared_libraries_host := libbase
 
-simpleperf_shared_libraries_host_linux := libbacktrace libbacktrace_offline
+simpleperf_shared_libraries_host_linux := \
+  libbacktrace \
+  libbacktrace_offline \
+  libziparchive-host \
 
 simpleperf_shared_libraries_host_darwin := libLLVM
 
@@ -74,6 +82,7 @@ libsimpleperf_src_files_linux := \
   environment.cpp \
   event_fd.cpp \
   event_selection_set.cpp \
+  read_apk.cpp \
   record_file_writer.cpp \
   workload.cpp \
 
@@ -135,6 +144,7 @@ LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
 LOCAL_SRC_FILES := main.cpp
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
 LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
+LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_target)
 LOCAL_MULTILIB := first
 include $(BUILD_EXECUTABLE)
 
@@ -173,6 +183,7 @@ simpleperf_unit_test_src_files_linux := \
   cmd_stat_test.cpp \
   environment_test.cpp \
   read_elf_test.cpp \
+  read_apk_test.cpp \
   record_file_test.cpp \
   workload_test.cpp \
 
@@ -187,6 +198,7 @@ LOCAL_SRC_FILES := \
 
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
 LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
+LOCAL_STATIC_LIBRARIES += $(simpleperf_static_libraries_target)
 LOCAL_MULTILIB := first
 include $(BUILD_NATIVE_TEST)
 
@@ -224,6 +236,7 @@ LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
 LOCAL_SRC_FILES := $(simpleperf_cpu_hotplug_test_src_files)
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
 LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
+LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_target)
 LOCAL_MULTILIB := first
 include $(BUILD_NATIVE_TEST)
 

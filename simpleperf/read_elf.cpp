@@ -15,9 +15,13 @@
  */
 
 #include "read_elf.h"
+#include "read_apk.h"
 
 #include <stdio.h>
 #include <string.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include <algorithm>
 #include <limits>
@@ -40,9 +44,29 @@
 #define ELF_NOTE_GNU "GNU"
 #define NT_GNU_BUILD_ID 3
 
-bool IsValidElfPath(const std::string& filename) {
-  static const char elf_magic[] = {0x7f, 'E', 'L', 'F'};
+FileHelper::FileHelper(const char *filename) : fd_(-1)
+{
+  fd_ = TEMP_FAILURE_RETRY(open(filename, O_RDONLY));
+}
 
+FileHelper::~FileHelper()
+{
+  if (fd_ != -1) { close(fd_); }
+}
+
+bool IsValidElfFile(int fd) {
+  static const char elf_magic[] = {0x7f, 'E', 'L', 'F'};
+  char buf[4];
+  size_t sz4 = 4;
+
+  ssize_t rc = TEMP_FAILURE_RETRY(read(fd, buf, sz4));
+  if (rc < 0 || rc != 4 || memcmp(buf, elf_magic, 4) != 0) {
+    return false;
+  }
+  return true;
+}
+
+bool IsValidElfPath(const std::string& filename) {
   if (!IsRegularFile(filename)) {
     return false;
   }
@@ -51,13 +75,9 @@ bool IsValidElfPath(const std::string& filename) {
   if (fp == nullptr) {
     return false;
   }
-  char buf[4];
-  if (fread(buf, 4, 1, fp) != 1) {
-    fclose(fp);
-    return false;
-  }
+  bool result = IsValidElfFile(fileno(fp));
   fclose(fp);
-  return memcmp(buf, elf_magic, 4) == 0;
+  return result;
 }
 
 static bool GetBuildIdFromNoteSection(const char* section, size_t section_size, BuildId* build_id) {
@@ -129,6 +149,46 @@ static bool GetBuildIdFromObjectFile(llvm::object::ObjectFile* obj, BuildId* bui
     LOG(DEBUG) << "no build id present in file " << obj->getFileName().data();
   }
   return result;
+}
+
+bool GetBuildIdFromEmbeddedElfFile(const std::string& filename,
+                                   uint64_t offsetInFile,
+                                   uint32_t sizeInFile,
+                                   BuildId* build_id) {
+  FileHelper opener(filename.c_str());
+  if (opener.fd() == -1) {
+    LOG(DEBUG) << "unable to open " << filename
+               << "to collect embedded ELF build id";
+    return false;
+  }
+  llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> bufferOrErr =
+      llvm::MemoryBuffer::getOpenFileSlice(opener.fd(), filename, sizeInFile,
+                                           offsetInFile);
+  if (std::error_code EC = bufferOrErr.getError()) {
+    LOG(DEBUG) << "MemoryBuffer::getOpenFileSlice failed opening "
+               << filename << "while collecting embedded ELF build id: "
+               << EC.message();
+    return false;
+  }
+  std::unique_ptr<llvm::MemoryBuffer> buffer = std::move(bufferOrErr.get());
+  llvm::LLVMContext *context = nullptr;
+  llvm::ErrorOr<std::unique_ptr<llvm::object::Binary>> binaryOrErr =
+      llvm::object::createBinary(buffer->getMemBufferRef(), context);
+  if (std::error_code EC = binaryOrErr.getError()) {
+    LOG(DEBUG) << "llvm::object::createBinary failed opening "
+               << filename << "while collecting embedded ELF build id: "
+               << EC.message();
+    return false;
+  }
+  std::unique_ptr<llvm::object::Binary> binary = std::move(binaryOrErr.get());
+  auto obj = llvm::dyn_cast<llvm::object::ObjectFile>(binary.get());
+  if (obj == nullptr) {
+    LOG(DEBUG) << "unable to cast to interpret contents of " << filename
+               << "at offset " << offsetInFile
+               << ": failed to cast to llvm::object::ObjectFile";
+    return false;
+  }
+  return GetBuildIdFromObjectFile(obj, build_id);
 }
 
 bool GetBuildIdFromElfFile(const std::string& filename, BuildId* build_id) {
