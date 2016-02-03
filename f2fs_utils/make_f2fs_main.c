@@ -17,14 +17,17 @@
 #include <fcntl.h>
 #include <libgen.h>
 #include <stdio.h>
-#include <unistd.h>
 #include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 #if defined(__linux__)
 #include <linux/fs.h>
 #elif defined(__APPLE__) && defined(__MACH__)
 #include <sys/disk.h>
 #endif
+
+#include "make_f2fs.h"
 
 #ifndef USE_MINGW /* O_BINARY is windows-specific flag */
 #define O_BINARY 0
