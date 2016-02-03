@@ -632,6 +632,18 @@ MmapRecord CreateMmapRecord(const perf_event_attr& attr, bool in_kernel, uint32_
   return record;
 }
 
+void UpdateMmapRecord(MmapRecord *record, const std::string& new_filename, uint64_t new_pgoff)
+{
+  size_t new_filename_size = ALIGN(new_filename.size() + 1, 8);
+  size_t old_filename_size = ALIGN(record->filename.size() + 1, 8);
+  record->data.pgoff = new_pgoff;
+  record->filename = new_filename;
+  if (new_filename_size > old_filename_size)
+    record->header.size += (new_filename_size - old_filename_size);
+  else if (new_filename_size < old_filename_size)
+    record->header.size += (old_filename_size - new_filename_size);
+}
+
 CommRecord CreateCommRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid,
                             const std::string& comm) {
   CommRecord record;
