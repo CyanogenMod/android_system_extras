@@ -8,6 +8,8 @@ LOCAL_SRC_FILES:=    \
     pageinout_test.c \
     thrashing_test.c
 
+LOCAL_CFLAGS := -std=gnu11
+
 LOCAL_MODULE:= pagingtest
 
 LOCAL_MODULE_TAGS := tests
