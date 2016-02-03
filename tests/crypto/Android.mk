@@ -7,5 +7,5 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES:= get_dm_versions.c
 LOCAL_MODULE:= get_dm_versions
 LOCAL_MODULE_TAGS := optional
-LOCAL_CFLAGS :=
+LOCAL_CFLAGS := -Wno-unused-parameter
 include $(BUILD_EXECUTABLE)

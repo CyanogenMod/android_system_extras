@@ -25,6 +25,7 @@ LOCAL_MODULE := libpagemap
 LOCAL_MODULE_TAGS := debug
 LOCAL_SRC_FILES := $(pagemap_src_files)
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/include
+LOCAL_CFLAGS := -Wno-unused-parameter
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
 include $(BUILD_SHARED_LIBRARY)
 
