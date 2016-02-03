@@ -243,7 +243,7 @@ BUILD_SORT_FUNC(nr_pages)
  * set_sort_func - return the slab_sort_func that matches the given key.
  * On unrecognizable key, the call returns NULL.
  */
-static void * set_sort_func(char key)
+static sort_t set_sort_func(char key)
 {
 	switch (tolower(key)) {
 	case 'a':

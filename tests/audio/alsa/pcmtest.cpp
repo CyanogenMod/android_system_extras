@@ -53,7 +53,7 @@ static unsigned int cards;
 static unsigned int mixers;
 static unsigned int timers;
 
-int getPcmNodes(void)
+unsigned int getPcmNodes(void)
 {
     DIR *d;
     struct dirent *de;
@@ -165,7 +165,7 @@ int getPcmParams(unsigned int i)
 
 TEST(pcmtest, CheckAudioDir) {
     pcms = getPcmNodes();
-    ASSERT_GT(pcms, 0);
+    ASSERT_GT(pcms, 0U);
 }
 
 TEST(pcmtest, GetSoundDevs) {
@@ -176,24 +176,24 @@ TEST(pcmtest, GetSoundDevs) {
 }
 
 TEST(pcmtest, CheckPcmSanity0) {
-    ASSERT_NE(0, pcms);
+    ASSERT_NE(0U, pcms);
 }
 
 TEST(pcmtest, CheckPcmSanity1) {
-    EXPECT_NE(1, pcms % 2);
+    EXPECT_NE(1U, pcms % 2);
 }
 
 TEST(pcmtests, CheckMixerSanity) {
-    ASSERT_NE(0, mixers);
+    ASSERT_NE(0U, mixers);
     ASSERT_EQ(mixers, cards);
 }
 
 TEST(pcmtest, CheckTimesSanity0) {
-    ASSERT_NE(0, timers);
+    ASSERT_NE(0U, timers);
 }
 
 TEST(pcmtest, CheckTimesSanity1) {
-    EXPECT_EQ(1, timers);
+    EXPECT_EQ(1U, timers);
 }
 
 TEST(pcmtest, CheckPcmDevices) {

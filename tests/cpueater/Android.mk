@@ -20,6 +20,7 @@ LOCAL_MODULE := cpueater
 LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 LOCAL_MODULE_TAGS := eng
 LOCAL_SRC_FILES := cpueater.c
+LOCAL_CFLAGS := -Wno-unused-parameter
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)

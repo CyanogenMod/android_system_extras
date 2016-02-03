@@ -180,7 +180,6 @@ bool boot_info_validate(BrilloBootInfo* info)
 
 void boot_info_reset(BrilloBootInfo* info)
 {
-  size_t n;
   memset(info, '\0', sizeof(BrilloBootInfo));
   info->magic[0] = 'B';
   info->magic[1] = 'C';

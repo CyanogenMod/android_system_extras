@@ -248,7 +248,7 @@ void ProcessInfo::dumpToLog() {
   for (std::vector<const process_info_t *>::const_iterator it = list_.begin();
        it != list_.end(); ++it) {
     ALOGI("  Name: %s", (*it)->name.c_str());
-    ALOGI("    Max running processes: %d", (*it)->max_num_pids);
+    ALOGI("    Max running processes: %zu", (*it)->max_num_pids);
     if ((*it)->pids.size() > 0) {
       ALOGI("    Currently running pids:");
       for (std::vector<int>::const_iterator pid_it = (*it)->pids.begin();
