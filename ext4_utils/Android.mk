@@ -66,6 +66,7 @@ LOCAL_C_INCLUDES += system/core/logwrapper/include
 # Various instances of dereferencing a type-punned pointer in extent.c
 LOCAL_CFLAGS += -fno-strict-aliasing
 LOCAL_SHARED_LIBRARIES := \
+    libbase \
     libcutils \
     libext2_uuid \
     libselinux \
@@ -82,6 +83,8 @@ LOCAL_MODULE := libext4_utils_static
 # Various instances of dereferencing a type-punned pointer in extent.c
 LOCAL_CFLAGS += -fno-strict-aliasing
 LOCAL_STATIC_LIBRARIES := \
+    libbase \
+    liblogwrap \
     libsparse_static \
     libselinux \
     libbase
