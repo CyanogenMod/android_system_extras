@@ -19,8 +19,6 @@
 
 #include <cutils/klog.h>
 
-#include "unencrypted_properties.h"
-
 #define XATTR_NAME_ENCRYPTION_POLICY "encryption.policy"
 #define EXT4_KEYREF_DELIMITER ((char)'.')
 

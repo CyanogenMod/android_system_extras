@@ -11,13 +11,14 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <android-base/file.h>
+
 #include <cutils/klog.h>
 #include <cutils/properties.h>
 #include <cutils/sockets.h>
 #include <poll.h>
 
 #include "key_control.h"
-#include "unencrypted_properties.h"
 
 static const std::string arbitrary_sequence_number = "42";
 static const int vold_command_timeout_ms = 60 * 1000;
@@ -95,18 +96,11 @@ static std::string vold_command(std::string const& command)
 int e4crypt_create_device_key(const char* dir,
                               int ensure_dir_exists(const char*))
 {
-    // Already encrypted with password? If so bail
-    std::string temp_folder = std::string() + dir + "/tmp_mnt";
-    DIR* temp_dir = opendir(temp_folder.c_str());
-    if (temp_dir) {
-        closedir(temp_dir);
-        return 0;
-    }
-
     // Make sure folder exists. Use make_dir to set selinux permissions.
-    if (ensure_dir_exists(UnencryptedProperties::GetPath(dir).c_str())) {
+    std::string unencrypted_dir = std::string(dir) + "/unencrypted";
+    if (ensure_dir_exists(unencrypted_dir.c_str())) {
         KLOG_ERROR(TAG, "Failed to create %s (%s)\n",
-                   UnencryptedProperties::GetPath(dir).c_str(),
+                   unencrypted_dir.c_str(),
                    strerror(errno));
         return -1;
     }
@@ -169,10 +163,11 @@ int e4crypt_set_directory_policy(const char* dir)
             return 0;
         }
     }
-    UnencryptedProperties props("/data");
-    std::string policy = props.Get<std::string>(properties::ref);
-    if (policy.empty()) {
-        // ext4enc:TODO why is this OK?
+
+    std::string ref_filename = std::string("/data") + e4crypt_key_ref;
+    std::string policy;
+    if (!android::base::ReadFileToString(ref_filename, &policy)) {
+        KLOG_INFO(TAG, "Not file encrypted so no policy for %s\n", dir);
         return 0;
     }
 

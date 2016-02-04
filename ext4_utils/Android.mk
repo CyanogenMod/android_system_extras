@@ -55,8 +55,7 @@ include $(BUILD_HOST_EXECUTABLE)
 
 libext4_utils_src_files += \
     key_control.cpp \
-    ext4_crypt.cpp \
-    unencrypted_properties.cpp
+    ext4_crypt.cpp
 
 ifneq ($(HOST_OS),windows)
 
@@ -84,7 +83,8 @@ LOCAL_MODULE := libext4_utils_static
 LOCAL_CFLAGS += -fno-strict-aliasing
 LOCAL_STATIC_LIBRARIES := \
     libsparse_static \
-    libselinux
+    libselinux \
+    libbase
 include $(BUILD_STATIC_LIBRARY)
 
 

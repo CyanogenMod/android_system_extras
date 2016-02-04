@@ -13,4 +13,7 @@ int e4crypt_set_directory_policy(const char* path);
 int e4crypt_do_init_user0();
 int do_policy_set(const char *directory, const char *policy, int policy_length);
 
+static const char* e4crypt_unencrypted_folder = "/unencrypted";
+static const char* e4crypt_key_ref = "/unencrypted/ref";
+
 __END_DECLS
