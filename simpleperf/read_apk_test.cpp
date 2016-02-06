@@ -17,22 +17,23 @@
 #include "read_apk.h"
 
 #include <gtest/gtest.h>
+#include "get_test_data.h"
 
 static const std::string fibjar = "fibonacci.jar";
 static const std::string jniapk = "has_embedded_native_libs.apk";
 
 TEST(read_apk, IsValidJarOrApkPath) {
   ASSERT_FALSE(IsValidJarOrApkPath("/dev/zero"));
-  ASSERT_FALSE(IsValidJarOrApkPath("/proc/self/exe"));
-  ASSERT_TRUE(IsValidJarOrApkPath(fibjar));
+  ASSERT_FALSE(IsValidJarOrApkPath(GetTestData("elf_file")));
+  ASSERT_TRUE(IsValidJarOrApkPath(GetTestData(fibjar)));
 }
 
 TEST(read_apk, CollectEmbeddedElfInfoFromApk) {
   ApkInspector inspector;
   ASSERT_TRUE(inspector.FindElfInApkByMmapOffset("/dev/null", 0) == nullptr);
-  ASSERT_TRUE(inspector.FindElfInApkByMmapOffset(fibjar, 0) == nullptr);
-  ASSERT_TRUE(inspector.FindElfInApkByMmapOffset(jniapk, 0) == nullptr);
-  EmbeddedElf *ee1 = inspector.FindElfInApkByMmapOffset(jniapk, 0x91000);
+  ASSERT_TRUE(inspector.FindElfInApkByMmapOffset(GetTestData(fibjar), 0) == nullptr);
+  ASSERT_TRUE(inspector.FindElfInApkByMmapOffset(GetTestData(jniapk), 0) == nullptr);
+  EmbeddedElf *ee1 = inspector.FindElfInApkByMmapOffset(GetTestData(jniapk), 0x91000);
   ASSERT_TRUE(ee1 != nullptr);
   ASSERT_EQ(ee1->entry_name(), "lib/armeabi-v7a/libframeworks_coretests_jni.so");
   ASSERT_TRUE(ee1->entry_offset() == 593920);

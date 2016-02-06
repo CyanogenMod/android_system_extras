@@ -25,6 +25,7 @@
 #include <vector>
 
 #include <android-base/logging.h>
+#include <android-base/parseint.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 
@@ -392,9 +393,9 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
       }
       std::vector<std::string> strs = android::base::Split(args[i], ",");
       std::vector<int> ids;
-      for (auto& s : strs) {
+      for (const auto& s : strs) {
         int id;
-        if (!StringToPid(s, &id)) {
+        if (!android::base::ParseInt(s.c_str(), &id, 0)) {
           LOG(ERROR) << "invalid id in " << args[i] << " option: " << s;
           return false;
         }

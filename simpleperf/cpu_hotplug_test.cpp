@@ -252,3 +252,9 @@ TEST(cpu_offline, offline_while_recording_on_another_cpu) {
     ASSERT_TRUE(event_fd != nullptr);
   }
 }
+
+int main(int argc, char** argv) {
+  InitLogging(argv, android::base::StderrLogger);
+  testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}

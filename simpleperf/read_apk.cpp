@@ -24,22 +24,22 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include <iostream>
 #include <map>
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <ziparchive/zip_archive.h>
 
 #include "read_elf.h"
 #include "utils.h"
-#include "ziparchive/zip_archive.h"
 
 bool IsValidJarOrApkPath(const std::string& filename) {
   static const char zip_preamble[] = {0x50, 0x4b, 0x03, 0x04 };
   if (!IsRegularFile(filename)) {
     return false;
   }
-  FILE* fp = fopen(filename.c_str(), "reb");
+  std::string mode = std::string("rb") + CLOSE_ON_EXEC_MODE;
+  FILE* fp = fopen(filename.c_str(), mode.c_str());
   if (fp == nullptr) {
     return false;
   }

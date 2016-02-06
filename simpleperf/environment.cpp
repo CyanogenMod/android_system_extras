@@ -27,6 +27,7 @@
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/parseint.h>
 #include <android-base/strings.h>
 #include <android-base/stringprintf.h>
 
@@ -305,9 +306,9 @@ static std::vector<pid_t> GetThreadsInProcess(pid_t pid) {
   std::string task_dirname = android::base::StringPrintf("/proc/%d/task", pid);
   std::vector<std::string> subdirs;
   GetEntriesInDir(task_dirname, nullptr, &subdirs);
-  for (auto& name : subdirs) {
+  for (const auto& name : subdirs) {
     int tid;
-    if (!StringToPid(name, &tid)) {
+    if (!android::base::ParseInt(name.c_str(), &tid, 0)) {
       continue;
     }
     result.push_back(tid);
@@ -341,7 +342,7 @@ bool GetThreadComms(std::vector<ThreadComm>* thread_comms) {
   GetEntriesInDir("/proc", nullptr, &subdirs);
   for (auto& name : subdirs) {
     int pid;
-    if (!StringToPid(name, &pid)) {
+    if (!android::base::ParseInt(name.c_str(), &pid, 0)) {
       continue;
     }
     if (!GetThreadComm(pid, thread_comms)) {
@@ -396,9 +397,9 @@ bool GetModuleBuildId(const std::string& module_name, BuildId* build_id) {
 
 bool GetValidThreadsFromProcessString(const std::string& pid_str, std::set<pid_t>* tid_set) {
   std::vector<std::string> strs = android::base::Split(pid_str, ",");
-  for (auto& s : strs) {
+  for (const auto& s : strs) {
     int pid;
-    if (!StringToPid(s, &pid)) {
+    if (!android::base::ParseInt(s.c_str(), &pid, 0)) {
       LOG(ERROR) << "Invalid pid '" << s << "'";
       return false;
     }
@@ -414,9 +415,9 @@ bool GetValidThreadsFromProcessString(const std::string& pid_str, std::set<pid_t
 
 bool GetValidThreadsFromThreadString(const std::string& tid_str, std::set<pid_t>* tid_set) {
   std::vector<std::string> strs = android::base::Split(tid_str, ",");
-  for (auto& s : strs) {
+  for (const auto& s : strs) {
     int tid;
-    if (!StringToPid(s, &tid)) {
+    if (!android::base::ParseInt(s.c_str(), &tid, 0)) {
       LOG(ERROR) << "Invalid tid '" << s << "'";
       return false;
     }

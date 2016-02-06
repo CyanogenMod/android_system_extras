@@ -18,8 +18,30 @@
 
 #include <android-base/logging.h>
 
+#include "get_test_data.h"
+#include "utils.h"
+
+static std::string testdata_dir;
+
 int main(int argc, char** argv) {
   InitLogging(argv, android::base::StderrLogger);
   testing::InitGoogleTest(&argc, argv);
+  for (int i = 1; i < argc; ++i) {
+    if (strcmp(argv[i], "-t") == 0 && i + 1 < argc) {
+      testdata_dir = argv[i + 1];
+      break;
+    }
+  }
+  if (testdata_dir.empty()) {
+    printf("Usage: simpleperf_unit_test -t <testdata_dir>\n");
+    return 1;
+  }
+  if (testdata_dir.back() != '/') {
+    testdata_dir.push_back('/');
+  }
   return RUN_ALL_TESTS();
+}
+
+std::string GetTestData(const std::string& filename) {
+  return testdata_dir + filename;
 }

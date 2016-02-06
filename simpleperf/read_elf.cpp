@@ -46,7 +46,7 @@
 
 FileHelper::FileHelper(const char *filename) : fd_(-1)
 {
-  fd_ = TEMP_FAILURE_RETRY(open(filename, O_RDONLY));
+  fd_ = TEMP_FAILURE_RETRY(open(filename, O_RDONLY | O_BINARY));
 }
 
 FileHelper::~FileHelper()
@@ -57,13 +57,7 @@ FileHelper::~FileHelper()
 bool IsValidElfFile(int fd) {
   static const char elf_magic[] = {0x7f, 'E', 'L', 'F'};
   char buf[4];
-  size_t sz4 = 4;
-
-  ssize_t rc = TEMP_FAILURE_RETRY(read(fd, buf, sz4));
-  if (rc < 0 || rc != 4 || memcmp(buf, elf_magic, 4) != 0) {
-    return false;
-  }
-  return true;
+  return android::base::ReadFully(fd, buf, 4) && memcmp(buf, elf_magic, 4) == 0;
 }
 
 bool IsValidElfPath(const std::string& filename) {

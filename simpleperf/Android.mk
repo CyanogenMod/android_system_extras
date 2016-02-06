@@ -41,19 +41,22 @@ simpleperf_shared_libraries_target := \
 simpleperf_static_libraries_target := \
   libziparchive \
 
-simpleperf_shared_libraries_host := libbase
-
 simpleperf_shared_libraries_host_linux := \
   libbacktrace \
   libbacktrace_offline \
-  libziparchive-host \
 
 simpleperf_shared_libraries_host_darwin := libLLVM
 
 simpleperf_shared_libraries_host_windows := libLLVM
 
-simpleperf_ldlibs_host_linux := -lrt
+simpleperf_static_libraries_host := \
+  libziparchive-host \
+  libbase \
+  liblog \
+  libz \
+  libutils \
 
+simpleperf_ldlibs_host_linux := -lrt
 
 # libsimpleperf
 # =========================================================
@@ -67,6 +70,7 @@ libsimpleperf_src_files := \
   event_attr.cpp \
   event_type.cpp \
   perf_regs.cpp \
+  read_apk.cpp \
   read_elf.cpp \
   record.cpp \
   record_file_reader.cpp \
@@ -82,7 +86,6 @@ libsimpleperf_src_files_linux := \
   environment.cpp \
   event_fd.cpp \
   event_selection_set.cpp \
-  read_apk.cpp \
   record_file_writer.cpp \
   workload.cpp \
 
@@ -103,6 +106,7 @@ LOCAL_SRC_FILES := \
   $(libsimpleperf_src_files) \
   $(libsimpleperf_src_files_linux) \
 
+LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_target)
 LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
 LOCAL_MULTILIB := first
 include $(LLVM_DEVICE_BUILD_MK)
@@ -121,6 +125,7 @@ LOCAL_SRC_FILES := $(libsimpleperf_src_files)
 LOCAL_SRC_FILES_darwin := $(libsimpleperf_src_files_darwin)
 LOCAL_SRC_FILES_linux := $(libsimpleperf_src_files_linux)
 LOCAL_SRC_FILES_windows := $(libsimpleperf_src_files_windows)
+LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_host)
 LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_host)
 LOCAL_SHARED_LIBRARIES_darwin := $(simpleperf_shared_libraries_host_darwin)
 LOCAL_SHARED_LIBRARIES_linux := $(simpleperf_shared_libraries_host_linux)
@@ -143,8 +148,8 @@ LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 LOCAL_CPPFLAGS := $(simpleperf_cppflags_target)
 LOCAL_SRC_FILES := main.cpp
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
-LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
 LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_target)
+LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
 LOCAL_MULTILIB := first
 include $(BUILD_EXECUTABLE)
 
@@ -158,6 +163,7 @@ LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
 LOCAL_CPPFLAGS_windows := $(simpleperf_cppflags_host_windows)
 LOCAL_SRC_FILES := main.cpp
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
+LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_host)
 LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_host)
 LOCAL_SHARED_LIBRARIES_darwin := $(simpleperf_shared_libraries_host_darwin)
 LOCAL_SHARED_LIBRARIES_linux := $(simpleperf_shared_libraries_host_linux)
@@ -172,6 +178,8 @@ include $(BUILD_HOST_EXECUTABLE)
 simpleperf_unit_test_src_files := \
   command_test.cpp \
   gtest_main.cpp \
+  read_apk_test.cpp \
+  read_elf_test.cpp \
   record_test.cpp \
   sample_tree_test.cpp \
 
@@ -182,8 +190,6 @@ simpleperf_unit_test_src_files_linux := \
   cmd_report_test.cpp \
   cmd_stat_test.cpp \
   environment_test.cpp \
-  read_elf_test.cpp \
-  read_apk_test.cpp \
   record_file_test.cpp \
   workload_test.cpp \
 
@@ -197,8 +203,8 @@ LOCAL_SRC_FILES := \
   $(simpleperf_unit_test_src_files_linux) \
 
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
-LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
 LOCAL_STATIC_LIBRARIES += $(simpleperf_static_libraries_target)
+LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
 LOCAL_MULTILIB := first
 include $(BUILD_NATIVE_TEST)
 
@@ -213,6 +219,7 @@ LOCAL_CPPFLAGS_windows := $(simpleperf_cppflags_host_windows)
 LOCAL_SRC_FILES := $(simpleperf_unit_test_src_files)
 LOCAL_SRC_FILES_linux := $(simpleperf_unit_test_src_files_linux)
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
+LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_host)
 LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_host)
 LOCAL_SHARED_LIBRARIES_darwin := $(simpleperf_shared_libraries_host_darwin)
 LOCAL_SHARED_LIBRARIES_linux := $(simpleperf_shared_libraries_host_linux)
@@ -225,7 +232,6 @@ include $(BUILD_HOST_NATIVE_TEST)
 # simpleperf_cpu_hotplug_test
 # =========================================================
 simpleperf_cpu_hotplug_test_src_files := \
-  gtest_main.cpp \
   cpu_hotplug_test.cpp \
 
 # simpleperf_cpu_hotplug_test target
@@ -249,6 +255,7 @@ LOCAL_CPPFLAGS := $(simpleperf_cppflags_host)
 LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
 LOCAL_SRC_FILES := $(simpleperf_cpu_hotplug_test_src_files)
 LOCAL_WHOLE_STATIC_LIBRARIES := libsimpleperf
+LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_host)
 LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_host)
 LOCAL_SHARED_LIBRARIES_linux := $(simpleperf_shared_libraries_host_linux)
 LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
