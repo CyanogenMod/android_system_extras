@@ -126,8 +126,6 @@ int e4crypt_set_directory_policy(const char* dir)
         "misc_ce", "misc_de",
         "media",
         "data", "user", "user_de",
-        // ext4enc:TODO workaround that must be removed b/26673855
-        "misc",
     };
     std::string prefix = "/data/";
     for (auto d: directories_to_exclude) {
