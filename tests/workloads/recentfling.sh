@@ -18,10 +18,12 @@ function processLocalOption {
 	(-A) unset appList;;
 	(-L) appList=$2; shift; ret=1;;
 	(-T) capturesystrace=1;;
+	(-B) echo $$ > /dev/cpuset/background/tasks;;
 	(*)
 		echo "$0: unrecognized option: $1"
 		echo; echo "Usage: $0 [options]"
 		echo "-A : use all known applications"
+		echo "-B : run in background cpuset"
 		echo "-L applist : list of applications"
 		echo "   default: $appList"
 		echo "-N : no app startups, just fling"
@@ -44,7 +46,7 @@ case $DEVICE in
 	upCount=6
 	UP="70 400 70 100 $flingtime"
 	DOWN="70 100 70 400 $flingtime";;
-(angler)
+(angler|ariel|mtp8996)
 	flingtime=150
 	downCount=4
 	upCount=3

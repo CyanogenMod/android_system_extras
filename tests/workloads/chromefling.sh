@@ -63,6 +63,12 @@ case $DEVICE in
 	upCount=5
 	UP="500 1400 500 400 $flingtime"
 	DOWN="500 400 500 1400 $flingtime";;
+(ariel)
+	flingtime=200
+	downCount=5
+	upCount=5
+	UP="500 1560 500 530 $flingtime"
+	DOWN="500 530 500 1560 $flingtime";;
 (*)
 	echo "Error: No display information available for $DEVICE"
 	exit 1;;
@@ -98,19 +104,6 @@ do
 	sleep $waittime
 	swipe "$UP" $upCount
 
-	t=$(startActivity $app)
-	sleep $waittime
-	swipe "$UP" $upCount
-
-	t=$(startActivity $app)
-	sleep $waittime
-	swipe "$UP" $upCount
-
-	doKeyevent BACK
-	sleep $waittime
-	swipe "$DOWN" $downCount
-
-	doKeyevent BACK
 	sleep $waittime
 	swipe "$DOWN" $downCount
 

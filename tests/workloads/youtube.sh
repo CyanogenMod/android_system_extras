@@ -7,17 +7,20 @@
 iterations=10
 app=youtube
 searchText="last week tonight with john oliver: online harassment"
+vidMinutes=15
 
 function processLocalOption {
 	ret=0
 	case "$1" in
 	(-S) searchText="$2"; shift;;
+	(-t) vidMinutes="$2"; shift;;
 	(*)
 		echo "$0: unrecognized option: $1"
 		echo; echo "Usage: $0 [options]"
 		echo "-i iterations"
 		echo "-S youtube search text"
 		echo "-d device"
+		echo "-t vidMinutes"
 		exit 1;;
 	esac
 	return $ret
@@ -52,6 +55,13 @@ case $DEVICE in
 	enableControls="1464 812"
 	fullScreen="1480 835"
 	;;
+(ariel)
+	searchButton="1440 70"
+	selectFirstVideo="228 224"
+	enableControls="1528 880"
+	fullScreen="1528 880"
+	;;
+
 (*)
 	echo "Error: No display information available for $DEVICE"
 	exit 1;;
@@ -95,7 +105,7 @@ do
 	sleep 0.5
 	doTap $fullScreen
 	# 15 minutes
-	((vidTime=60*15))
+	((vidTime=60*vidMinutes))
 	sleep $vidTime
 	doKeyevent BACK
 	sleep 0.5

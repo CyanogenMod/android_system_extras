@@ -38,7 +38,7 @@ function convert {
 
 
 case $DEVICE in
-(shamu|hammerhead|bullhead)
+(shamu|hammerhead|bullhead|ariel)
 	# no scaling necessary
 	xmax=0
 	ymax=0;;

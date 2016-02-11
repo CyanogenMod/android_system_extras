@@ -34,6 +34,7 @@
 #   a bash script which should include adb commands to set up device):
 #     ./pwrtest.sh -F devtunables
 #
+
 defaultTime=30
 garbageminutes=8
 
@@ -232,6 +233,8 @@ function restart_device {
 	echo Wait 30s to complete boot activities...
 	sleep 30
 	echo Restart complete.
+	doTap 897 1075
+	sleep 2
 	doSwipe $onSwipe
 	restartfile=${restartfile:="./restarthook"}
 	if [ -f $restartfile ]; then

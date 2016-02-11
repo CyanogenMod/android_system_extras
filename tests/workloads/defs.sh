@@ -10,8 +10,10 @@ generateActivities=0
 
 # default activities. Can dynamically generate with -g.
 gmailActivity='com.google.android.gm/com.google.android.gm.ConversationListActivityGmail'
+clockActivity='com.google.android.deskclock/com.android.deskclock.DeskClock'
 hangoutsActivity='com.google.android.talk/com.google.android.talk.SigningInActivity'
 chromeActivity='com.android.chrome/_not_used'
+contactsActivity='com.google.android.contacts/com.android.contacts.activities.PeopleActivity'
 youtubeActivity='com.google.android.youtube/com.google.android.apps.youtube.app.WatchWhileActivity'
 cameraActivity='com.google.android.GoogleCamera/com.android.camera.CameraActivity'
 playActivity='com.android.vending/com.google.android.finsky.activities.MainActivity'
@@ -21,6 +23,7 @@ mapsActivity='com.google.android.apps.maps/com.google.android.maps.MapsActivity'
 calendarActivity='com.google.android.calendar/com.android.calendar.AllInOneActivity'
 earthActivity='com.google.earth/com.google.earth.EarthActivity'
 calculatorActivity='com.google.android.calculator/com.android.calculator2.Calculator'
+calculatorLActivity='com.android.calculator2/com.android.calculator2.Calculator'
 sheetsActivity='com.google.android.apps.docs.editors.sheets/com.google.android.apps.docs.app.NewMainProxyActivity'
 docsActivity='com.google.android.apps.docs.editors.docs/com.google.android.apps.docs.app.NewMainProxyActivity'
 operaActivity='com.opera.mini.native/com.opera.mini.android.Browser'
@@ -94,7 +97,9 @@ else
 	fi
 	deviceName=$1
 	ADB="adb -s $deviceName shell "
-	DEVICE=$(echo $4 | sed 's/product://')
+	if [ "$DEVICE" = "" -o "$DEVICE" = unknown ]; then
+		DEVICE=$(echo $4 | sed 's/product://')
+	fi
 	isOnDevice=0
 fi
 
@@ -360,7 +365,7 @@ function startActivity {
 		echo 0
 		return 0
 	elif [ "$1" = chrome ]; then
-		if [ "$DEVICE" = volantis ]; then
+		if [ "$DEVICE" = volantis -o "$DEVICE" = ariel ]; then
 			vout $AM_START_NOWAIT -p "$(getPackageName $1)" http://www.theverge.com
 			$AM_START_NOWAIT -p "$(getPackageName $1)" http://www.theverge.com > /dev/null
 			set -- 0 0
