@@ -77,7 +77,7 @@ static int set_hwtime(struct rtc_time *tm) {
   return hwtime(O_WRONLY, RTC_SET_TIME, tm);
 }
 
-TEST(time, rtc_rollover) {
+static void rtc_rollover(int start, int end) {
   struct rtc_time roll;
   memset(&roll, 0, sizeof(roll));
   ASSERT_LE(0, rd_hwtime(&roll));
@@ -118,7 +118,7 @@ TEST(time, rtc_rollover) {
   roll.tm_isdst = 0;
 
   bool eacces = true;
-  for (roll.tm_year = 70; roll.tm_year < 137; ++roll.tm_year) {
+  for (roll.tm_year = start; roll.tm_year < end; ++roll.tm_year) {
     struct rtc_time tm = roll;
     int __set_hwtime = set_hwtime(&tm);
     // Allowed to be 100% denied for writing
@@ -126,8 +126,8 @@ TEST(time, rtc_rollover) {
       continue;
     }
     eacces = false;
-    // below 2015, permitted to error out.
-    if ((__set_hwtime == -EINVAL) && (roll.tm_year < 115)) {
+    // below 2016, permitted to error out.
+    if ((__set_hwtime == -EINVAL) && (roll.tm_year < 116)) {
       continue;
     }
     ASSERT_LE(0, __set_hwtime);
@@ -179,4 +179,20 @@ TEST(time, rtc_rollover) {
     ASSERT_EQ(save.tm_mon, roll.tm_mon);
     ASSERT_EQ(save.tm_year, roll.tm_year);
   }
+}
+
+TEST(time, rtc_rollover_1970_1990) {
+  rtc_rollover(70, 90);
+}
+
+TEST(time, rtc_rollover_1990_2010) {
+  rtc_rollover(90, 110);
+}
+
+TEST(time, rtc_rollover_2010_2030) {
+  rtc_rollover(110, 130);
+}
+
+TEST(time, rtc_rollover_2030_2037) {
+  rtc_rollover(130, 137);
 }
