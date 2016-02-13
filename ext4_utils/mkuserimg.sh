@@ -6,7 +6,7 @@ function usage() {
 cat<<EOT
 Usage:
 mkuserimg.sh [-s] SRC_DIR OUTPUT_FILE EXT_VARIANT MOUNT_POINT SIZE [-j <journal_size>]
-             [-T TIMESTAMP] [-C FS_CONFIG] [-D PRODUCT_OUT] [-B BLOCK_LIST_FILE] [-L LABEL] [FILE_CONTEXTS]
+             [-T TIMESTAMP] [-C FS_CONFIG] [-D PRODUCT_OUT] [-B BLOCK_LIST_FILE] [-Z BASE_FS_BLOCKS] [-L LABEL] [FILE_CONTEXTS]
 EOT
 }
 
@@ -67,6 +67,12 @@ if [[ "$1" == "-B" ]]; then
   shift; shift
 fi
 
+BASE_FS=
+if [[ "$1" == "-Z" ]]; then
+  BASE_FS=$2
+  shift; shift
+fi
+
 LABEL=
 if [[ "$1" == "-L" ]]; then
   LABEL=$2
@@ -99,6 +105,9 @@ if [ -n "$FS_CONFIG" ]; then
 fi
 if [ -n "$BLOCK_LIST" ]; then
   OPT="$OPT -B $BLOCK_LIST"
+fi
+if [ -n "$BASE_FS" ]; then
+  OPT="$OPT -Z $BASE_FS"
 fi
 if [ -n "$LABEL" ]; then
   OPT="$OPT -L $LABEL"

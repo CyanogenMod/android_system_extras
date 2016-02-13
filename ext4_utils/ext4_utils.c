@@ -49,6 +49,7 @@ int force = 0;
 struct fs_info info;
 struct fs_aux_info aux_info;
 struct sparse_file *ext4_sparse_file;
+struct block_allocation *base_fs_allocations = NULL;
 
 jmp_buf setjmp_env;
 
