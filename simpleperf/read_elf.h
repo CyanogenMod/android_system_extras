@@ -23,10 +23,8 @@
 
 bool GetBuildIdFromNoteFile(const std::string& filename, BuildId* build_id);
 bool GetBuildIdFromElfFile(const std::string& filename, BuildId* build_id);
-bool GetBuildIdFromEmbeddedElfFile(const std::string& filename,
-                                   uint64_t offsetInFile,
-                                   uint32_t sizeInFile,
-                                   BuildId* build_id);
+bool GetBuildIdFromEmbeddedElfFile(const std::string& filename, uint64_t file_offset,
+                                   uint32_t file_size, BuildId* build_id);
 
 // The symbol prefix used to indicate that the symbol belongs to android linker.
 static const std::string linker_prefix = "__dl_";
@@ -45,21 +43,13 @@ struct ElfFileSymbol {
 
 bool ParseSymbolsFromElfFile(const std::string& filename, const BuildId& expected_build_id,
                              std::function<void(const ElfFileSymbol&)> callback);
+bool ParseSymbolsFromEmbeddedElfFile(const std::string& filename, uint64_t file_offset,
+                                     uint32_t file_size, const BuildId& expected_build_id,
+                                     std::function<void(const ElfFileSymbol&)> callback);
 
 bool ReadMinExecutableVirtualAddressFromElfFile(const std::string& filename,
                                                 const BuildId& expected_build_id,
                                                 uint64_t* min_addr);
-
-// Opens file in constructor, then closes file when object is destroyed.
-class FileHelper {
- public:
-  explicit FileHelper(const char *filename);
-  ~FileHelper();
-  int fd() const { return fd_; }
-
- private:
-  int fd_;
-};
 
 // Expose the following functions for unit tests.
 bool IsArmMappingSymbol(const char* name);

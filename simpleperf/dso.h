@@ -93,6 +93,7 @@ struct Dso {
   bool LoadKernel();
   bool LoadKernelModule();
   bool LoadElfFile();
+  bool LoadEmbeddedElfFile();
   void InsertSymbol(const Symbol& symbol);
   void FixupSymbolLength();
 

@@ -49,6 +49,16 @@ TEST(stat_cmd, event_modifier) {
   ASSERT_TRUE(StatCmd()->Run({"-e", "cpu-cycles:u,sched:sched_switch:k", "sleep", "1"}));
 }
 
+void CreateProcesses(size_t count, std::vector<std::unique_ptr<Workload>>* workloads) {
+  workloads->clear();
+  for (size_t i = 0; i < count; ++i) {
+    auto workload = Workload::CreateWorkload({"sleep", "1"});
+    ASSERT_TRUE(workload != nullptr);
+    ASSERT_TRUE(workload->Start());
+    workloads->push_back(std::move(workload));
+  }
+}
+
 TEST(stat_cmd, existing_processes) {
   std::vector<std::unique_ptr<Workload>> workloads;
   CreateProcesses(2, &workloads);

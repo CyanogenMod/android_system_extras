@@ -24,6 +24,7 @@
 #include "command.h"
 
 static std::map<std::string, android::base::LogSeverity> log_severity_map = {
+    {"verbose", android::base::VERBOSE},
     {"debug", android::base::DEBUG},
     {"warning", android::base::WARNING},
     {"error", android::base::ERROR},
@@ -35,33 +36,32 @@ int main(int argc, char** argv) {
   std::vector<std::string> args;
   android::base::LogSeverity log_severity = android::base::WARNING;
 
-  if (argc == 1) {
-    args.push_back("help");
-  } else {
-    for (int i = 1; i < argc; ++i) {
-      if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
-        args.insert(args.begin(), "help");
-      } else if (strcmp(argv[i], "--log") == 0) {
-        if (i + 1 < argc) {
-          ++i;
-          auto it = log_severity_map.find(argv[i]);
-          if (it != log_severity_map.end()) {
-            log_severity = it->second;
-          } else {
-            LOG(ERROR) << "Unknown log severity: " << argv[i];
-            return 1;
-          }
+  for (int i = 1; i < argc; ++i) {
+    if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+      args.insert(args.begin(), "help");
+    } else if (strcmp(argv[i], "--log") == 0) {
+      if (i + 1 < argc) {
+        ++i;
+        auto it = log_severity_map.find(argv[i]);
+        if (it != log_severity_map.end()) {
+          log_severity = it->second;
         } else {
-          LOG(ERROR) << "Missing argument for --log option.\n";
+          LOG(ERROR) << "Unknown log severity: " << argv[i];
           return 1;
         }
       } else {
-        args.push_back(argv[i]);
+        LOG(ERROR) << "Missing argument for --log option.\n";
+        return 1;
       }
+    } else {
+      args.push_back(argv[i]);
     }
   }
   android::base::ScopedLogSeverity severity(log_severity);
 
+  if (args.empty()) {
+    args.push_back("help");
+  }
   std::unique_ptr<Command> command = CreateCommandInstance(args[0]);
   if (command == nullptr) {
     LOG(ERROR) << "malformed command line: unknown command " << args[0];

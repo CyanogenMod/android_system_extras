@@ -60,7 +60,8 @@ void HelpCommand::PrintShortHelp() {
       "common options:\n"
       "    -h/--help     Print this help information.\n"
       "    --log <severity> Set the minimum severity of logging. Possible severities\n"
-      "                     include debug, warning, error, fatal. Default is warning.\n"
+      "                     include verbose, debug, warning, error, fatal. Default is\n"
+      "                     warning.\n"
       "subcommands:\n");
   for (auto& cmd_name : GetAllCommandNames()) {
     std::unique_ptr<Command> cmd = CreateCommandInstance(cmd_name);

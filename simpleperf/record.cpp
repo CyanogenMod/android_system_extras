@@ -73,25 +73,7 @@ size_t SampleId::CreateContent(const perf_event_attr& attr) {
   sample_id_all = attr.sample_id_all;
   sample_type = attr.sample_type;
   // Other data are not necessary. TODO: Set missing SampleId data.
-  size_t size = 0;
-  if (sample_id_all) {
-    if (sample_type & PERF_SAMPLE_TID) {
-      size += sizeof(PerfSampleTidType);
-    }
-    if (sample_type & PERF_SAMPLE_TIME) {
-      size += sizeof(PerfSampleTimeType);
-    }
-    if (sample_type & PERF_SAMPLE_ID) {
-      size += sizeof(PerfSampleIdType);
-    }
-    if (sample_type & PERF_SAMPLE_STREAM_ID) {
-      size += sizeof(PerfSampleStreamIdType);
-    }
-    if (sample_type & PERF_SAMPLE_CPU) {
-      size += sizeof(PerfSampleCpuType);
-    }
-  }
-  return size;
+  return Size();
 }
 
 void SampleId::ReadFromBinaryFormat(const perf_event_attr& attr, const char* p, const char* end) {
@@ -161,6 +143,28 @@ void SampleId::Dump(size_t indent) const {
   }
 }
 
+size_t SampleId::Size() const {
+  size_t size = 0;
+  if (sample_id_all) {
+    if (sample_type & PERF_SAMPLE_TID) {
+      size += sizeof(PerfSampleTidType);
+    }
+    if (sample_type & PERF_SAMPLE_TIME) {
+      size += sizeof(PerfSampleTimeType);
+    }
+    if (sample_type & PERF_SAMPLE_ID) {
+      size += sizeof(PerfSampleIdType);
+    }
+    if (sample_type & PERF_SAMPLE_STREAM_ID) {
+      size += sizeof(PerfSampleStreamIdType);
+    }
+    if (sample_type & PERF_SAMPLE_CPU) {
+      size += sizeof(PerfSampleCpuType);
+    }
+  }
+  return size;
+}
+
 Record::Record() {
   memset(&header, 0, sizeof(header));
 }
@@ -202,6 +206,10 @@ std::vector<char> MmapRecord::BinaryFormat() const {
   return buf;
 }
 
+void MmapRecord::AdjustSizeBasedOnData() {
+  header.size = sizeof(header) + sizeof(data) + ALIGN(filename.size() + 1, 8) + sample_id.Size();
+}
+
 void MmapRecord::DumpData(size_t indent) const {
   PrintIndented(indent, "pid %u, tid %u, addr 0x%" PRIx64 ", len 0x%" PRIx64 "\n", data.pid,
                 data.tid, data.addr, data.len);
@@ -228,6 +236,10 @@ std::vector<char> Mmap2Record::BinaryFormat() const {
   p += ALIGN(filename.size() + 1, 8);
   sample_id.WriteToBinaryFormat(p);
   return buf;
+}
+
+void Mmap2Record::AdjustSizeBasedOnData() {
+  header.size = sizeof(header) + sizeof(data) + ALIGN(filename.size() + 1, 8) + sample_id.Size();
 }
 
 void Mmap2Record::DumpData(size_t indent) const {
@@ -437,7 +449,8 @@ std::vector<char> SampleRecord::BinaryFormat() const {
 
 void SampleRecord::AdjustSizeBasedOnData() {
   size_t size = BinaryFormat().size();
-  LOG(DEBUG) << "SampleRecord size is changed from " << header.size << " to " << size;
+  LOG(DEBUG) << "Record (type " << RecordTypeToString(header.type) << ") size is changed from "
+      << header.size << " to " << size;
   header.size = size;
 }
 
@@ -630,18 +643,6 @@ MmapRecord CreateMmapRecord(const perf_event_attr& attr, bool in_kernel, uint32_
   record.header.size = sizeof(record.header) + sizeof(record.data) +
                        ALIGN(record.filename.size() + 1, 8) + sample_id_size;
   return record;
-}
-
-void UpdateMmapRecord(MmapRecord *record, const std::string& new_filename, uint64_t new_pgoff)
-{
-  size_t new_filename_size = ALIGN(new_filename.size() + 1, 8);
-  size_t old_filename_size = ALIGN(record->filename.size() + 1, 8);
-  record->data.pgoff = new_pgoff;
-  record->filename = new_filename;
-  if (new_filename_size > old_filename_size)
-    record->header.size += (new_filename_size - old_filename_size);
-  else if (new_filename_size < old_filename_size)
-    record->header.size += (old_filename_size - new_filename_size);
 }
 
 CommRecord CreateCommRecord(const perf_event_attr& attr, uint32_t pid, uint32_t tid,

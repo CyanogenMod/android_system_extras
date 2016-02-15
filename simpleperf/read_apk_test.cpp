@@ -18,24 +18,44 @@
 
 #include <gtest/gtest.h>
 #include "get_test_data.h"
+#include "test_util.h"
 
-static const std::string fibjar = "fibonacci.jar";
-static const std::string jniapk = "has_embedded_native_libs.apk";
 
-TEST(read_apk, IsValidJarOrApkPath) {
-  ASSERT_FALSE(IsValidJarOrApkPath("/dev/zero"));
-  ASSERT_FALSE(IsValidJarOrApkPath(GetTestData("elf_file")));
-  ASSERT_TRUE(IsValidJarOrApkPath(GetTestData(fibjar)));
+TEST(read_apk, IsValidApkPath) {
+  ASSERT_FALSE(IsValidApkPath("/dev/zero"));
+  ASSERT_FALSE(IsValidApkPath(GetTestData("elf_file")));
+  ASSERT_TRUE(IsValidApkPath(GetTestData(APK_FILE)));
 }
 
-TEST(read_apk, CollectEmbeddedElfInfoFromApk) {
+TEST(read_apk, FindElfInApkByOffset) {
   ApkInspector inspector;
-  ASSERT_TRUE(inspector.FindElfInApkByMmapOffset("/dev/null", 0) == nullptr);
-  ASSERT_TRUE(inspector.FindElfInApkByMmapOffset(GetTestData(fibjar), 0) == nullptr);
-  ASSERT_TRUE(inspector.FindElfInApkByMmapOffset(GetTestData(jniapk), 0) == nullptr);
-  EmbeddedElf *ee1 = inspector.FindElfInApkByMmapOffset(GetTestData(jniapk), 0x91000);
-  ASSERT_TRUE(ee1 != nullptr);
-  ASSERT_EQ(ee1->entry_name(), "lib/armeabi-v7a/libframeworks_coretests_jni.so");
-  ASSERT_TRUE(ee1->entry_offset() == 593920);
-  ASSERT_TRUE(ee1->entry_size() == 13904);
+  ASSERT_TRUE(inspector.FindElfInApkByOffset("/dev/null", 0) == nullptr);
+  ASSERT_TRUE(inspector.FindElfInApkByOffset(GetTestData(APK_FILE), 0) == nullptr);
+  EmbeddedElf* ee = inspector.FindElfInApkByOffset(GetTestData(APK_FILE), 0x9000);
+  ASSERT_TRUE(ee != nullptr);
+  ASSERT_EQ(ee->entry_name(), NATIVELIB_IN_APK);
+  ASSERT_EQ(NATIVELIB_OFFSET_IN_APK, ee->entry_offset());
+  ASSERT_EQ(NATIVELIB_SIZE_IN_APK, ee->entry_size());
+}
+
+TEST(read_apk, FindElfInApkByName) {
+  ASSERT_TRUE(ApkInspector::FindElfInApkByName("/dev/null", "") == nullptr);
+  ASSERT_TRUE(ApkInspector::FindElfInApkByName(GetTestData(APK_FILE), "") == nullptr);
+  auto ee = ApkInspector::FindElfInApkByName(GetTestData(APK_FILE), NATIVELIB_IN_APK);
+  ASSERT_TRUE(ee != nullptr);
+  ASSERT_EQ(NATIVELIB_OFFSET_IN_APK, ee->entry_offset());
+  ASSERT_EQ(NATIVELIB_SIZE_IN_APK, ee->entry_size());
+}
+
+TEST(read_apk, GetBuildIdFromApkFile) {
+  BuildId build_id;
+  ASSERT_TRUE(GetBuildIdFromApkFile(GetTestData(APK_FILE), NATIVELIB_IN_APK, &build_id));
+  ASSERT_EQ(build_id, native_lib_build_id);
+}
+
+TEST(read_apk, ParseSymbolsFromApkFile) {
+  std::map<std::string, ElfFileSymbol> symbols;
+  ASSERT_TRUE(ParseSymbolsFromApkFile(GetTestData(APK_FILE), NATIVELIB_IN_APK, native_lib_build_id,
+                                      std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
+  CheckElfFileSymbols(symbols);
 }

@@ -211,6 +211,7 @@ bool EventSelectionSet::OpenEventFiles(const std::vector<pid_t>& threads,
       for (auto& cpu : cpus) {
         auto event_fd = EventFd::OpenEventFile(selection.event_attr, tid, cpu);
         if (event_fd != nullptr) {
+          LOG(VERBOSE) << "OpenEventFile for tid " << tid << ", cpu " << cpu;
           selection.event_fds.push_back(std::move(event_fd));
           ++open_per_thread;
         }

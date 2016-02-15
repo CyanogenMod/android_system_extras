@@ -17,13 +17,12 @@
 #ifndef SIMPLE_PERF_READ_APK_H_
 #define SIMPLE_PERF_READ_APK_H_
 
+#include <map>
 #include <memory>
 #include <string>
+#include <tuple>
 
-#include <android-base/file.h>
-
-// Exposed for unit testing
-bool IsValidJarOrApkPath(const std::string& filename);
+#include "read_elf.h"
 
 // Container for info an on ELF file embedded into an APK file
 class EmbeddedElf {
@@ -64,36 +63,38 @@ class EmbeddedElf {
   uint32_t entry_size_;  // size of ELF file in zip
 };
 
-struct EmbeddedElfComparator {
-  bool operator()(const EmbeddedElf& ee1, const EmbeddedElf& ee2) {
-    int res1 = ee1.filepath().compare(ee2.filepath());
-    if (res1 != 0) {
-      return res1 < 0;
-    }
-    int res2 = ee1.entry_name().compare(ee2.entry_name());
-    if (res2 != 0) {
-      return res2 < 0;
-    }
-    return ee1.entry_offset() < ee2.entry_offset();
-  }
-};
-
-class ApkInspectorImpl;
-
 // APK inspector helper class
 class ApkInspector {
  public:
-  ApkInspector();
-  ~ApkInspector();
-
   // Given an APK/ZIP/JAR file and an offset into that file, if the
   // corresponding region of the APK corresponds to an uncompressed
   // ELF file, then return pertinent info on the ELF.
-  EmbeddedElf *FindElfInApkByMmapOffset(const std::string& apk_path,
-                                        size_t mmap_offset);
+  static EmbeddedElf* FindElfInApkByOffset(const std::string& apk_path, off64_t file_offset);
+  static std::unique_ptr<EmbeddedElf> FindElfInApkByName(const std::string& apk_path,
+                                                         const std::string& elf_filename);
 
  private:
-  std::unique_ptr<ApkInspectorImpl> impl_;
+  static std::unique_ptr<EmbeddedElf> FindElfInApkByOffsetWithoutCache(const std::string& apk_path,
+                                                                        off64_t file_offset);
+
+  // First component of pair is APK file path, second is offset into APK.
+  typedef std::pair<std::string, size_t> ApkOffset;
+
+  static std::map<ApkOffset, std::unique_ptr<EmbeddedElf>> embedded_elf_cache_;
 };
+
+// Export for test only.
+bool IsValidApkPath(const std::string& apk_path);
+
+std::string GetUrlInApk(const std::string& apk_path, const std::string& elf_filename);
+std::tuple<bool, std::string, std::string> SplitUrlInApk(const std::string& path);
+
+bool GetBuildIdFromApkFile(const std::string& apk_path, const std::string& elf_filename,
+                           BuildId* build_id);
+
+bool ParseSymbolsFromApkFile(const std::string& apk_path, const std::string& elf_filename,
+                             const BuildId& expected_build_id,
+                             std::function<void(const ElfFileSymbol&)> callback);
+
 
 #endif  // SIMPLE_PERF_READ_APK_H_

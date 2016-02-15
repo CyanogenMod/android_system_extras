@@ -19,7 +19,6 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -44,15 +43,6 @@
 #define ELF_NOTE_GNU "GNU"
 #define NT_GNU_BUILD_ID 3
 
-FileHelper::FileHelper(const char *filename) : fd_(-1)
-{
-  fd_ = TEMP_FAILURE_RETRY(open(filename, O_RDONLY | O_BINARY));
-}
-
-FileHelper::~FileHelper()
-{
-  if (fd_ != -1) { close(fd_); }
-}
 
 bool IsValidElfFile(int fd) {
   static const char elf_magic[] = {0x7f, 'E', 'L', 'F'};
@@ -145,62 +135,65 @@ static bool GetBuildIdFromObjectFile(llvm::object::ObjectFile* obj, BuildId* bui
   return result;
 }
 
-bool GetBuildIdFromEmbeddedElfFile(const std::string& filename,
-                                   uint64_t offsetInFile,
-                                   uint32_t sizeInFile,
-                                   BuildId* build_id) {
-  FileHelper opener(filename.c_str());
-  if (opener.fd() == -1) {
-    LOG(DEBUG) << "unable to open " << filename
-               << "to collect embedded ELF build id";
-    return false;
+struct BinaryRet {
+  llvm::object::OwningBinary<llvm::object::Binary> binary;
+  llvm::object::ObjectFile* obj;
+
+  BinaryRet() : obj(nullptr) {
   }
-  llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> bufferOrErr =
-      llvm::MemoryBuffer::getOpenFileSlice(opener.fd(), filename, sizeInFile,
-                                           offsetInFile);
-  if (std::error_code EC = bufferOrErr.getError()) {
-    LOG(DEBUG) << "MemoryBuffer::getOpenFileSlice failed opening "
-               << filename << "while collecting embedded ELF build id: "
-               << EC.message();
-    return false;
+};
+
+static BinaryRet OpenObjectFile(const std::string& filename, uint64_t file_offset = 0,
+                                uint64_t file_size = 0) {
+  BinaryRet ret;
+  FileHelper fhelper(filename);
+  if (!fhelper) {
+    PLOG(DEBUG) << "failed to open " << filename;
+    return ret;
   }
-  std::unique_ptr<llvm::MemoryBuffer> buffer = std::move(bufferOrErr.get());
-  llvm::LLVMContext *context = nullptr;
-  llvm::ErrorOr<std::unique_ptr<llvm::object::Binary>> binaryOrErr =
-      llvm::object::createBinary(buffer->getMemBufferRef(), context);
-  if (std::error_code EC = binaryOrErr.getError()) {
-    LOG(DEBUG) << "llvm::object::createBinary failed opening "
-               << filename << "while collecting embedded ELF build id: "
-               << EC.message();
-    return false;
+  if (file_size == 0) {
+    file_size = GetFileSize(filename);
+    if (file_size == 0) {
+      PLOG(ERROR) << "failed to get size of file " << filename;
+      return ret;
+    }
   }
-  std::unique_ptr<llvm::object::Binary> binary = std::move(binaryOrErr.get());
-  auto obj = llvm::dyn_cast<llvm::object::ObjectFile>(binary.get());
-  if (obj == nullptr) {
-    LOG(DEBUG) << "unable to cast to interpret contents of " << filename
-               << "at offset " << offsetInFile
-               << ": failed to cast to llvm::object::ObjectFile";
-    return false;
+  auto buffer_or_err = llvm::MemoryBuffer::getOpenFileSlice(fhelper.fd(), filename, file_size, file_offset);
+  if (!buffer_or_err) {
+    LOG(ERROR) << "failed to read " << filename << " [" << file_offset << "-" << (file_offset + file_size)
+        << "]: " << buffer_or_err.getError().message();
+    return ret;
   }
-  return GetBuildIdFromObjectFile(obj, build_id);
+  auto binary_or_err = llvm::object::createBinary(buffer_or_err.get()->getMemBufferRef());
+  if (!binary_or_err) {
+    LOG(ERROR) << filename << " [" << file_offset << "-" << (file_offset + file_size)
+        << "] is not a binary file: " << binary_or_err.getError().message();
+    return ret;
+  }
+  ret.binary = llvm::object::OwningBinary<llvm::object::Binary>(std::move(binary_or_err.get()),
+                                                                std::move(buffer_or_err.get()));
+  ret.obj = llvm::dyn_cast<llvm::object::ObjectFile>(ret.binary.getBinary());
+  if (ret.obj == nullptr) {
+    LOG(ERROR) << filename << " [" << file_offset << "-" << (file_offset + file_size)
+        << "] is not an object file";
+  }
+  return ret;
 }
 
 bool GetBuildIdFromElfFile(const std::string& filename, BuildId* build_id) {
   if (!IsValidElfPath(filename)) {
     return false;
   }
-  auto owning_binary = llvm::object::createBinary(llvm::StringRef(filename));
-  if (owning_binary.getError()) {
-    PLOG(DEBUG) << "can't open file " << filename;
+  return GetBuildIdFromEmbeddedElfFile(filename, 0, 0, build_id);
+}
+
+bool GetBuildIdFromEmbeddedElfFile(const std::string& filename, uint64_t file_offset,
+                                   uint32_t file_size, BuildId* build_id) {
+  BinaryRet ret = OpenObjectFile(filename, file_offset, file_size);
+  if (ret.obj == nullptr) {
     return false;
   }
-  llvm::object::Binary* binary = owning_binary.get().getBinary();
-  auto obj = llvm::dyn_cast<llvm::object::ObjectFile>(binary);
-  if (obj == nullptr) {
-    LOG(DEBUG) << filename << " is not an object file";
-    return false;
-  }
-  return GetBuildIdFromObjectFile(obj, build_id);
+  return GetBuildIdFromObjectFile(ret.obj, build_id);
 }
 
 bool IsArmMappingSymbol(const char* name) {
@@ -274,31 +267,22 @@ void ParseSymbolsFromELFFile(const llvm::object::ELFFile<ELFT>* elf,
   }
 }
 
-static llvm::object::ObjectFile* GetObjectFile(
-    llvm::ErrorOr<llvm::object::OwningBinary<llvm::object::Binary>>& owning_binary,
-    const std::string& filename, const BuildId& expected_build_id) {
-  if (owning_binary.getError()) {
-    PLOG(DEBUG) << "can't open file '" << filename << "'";
-    return nullptr;
+bool MatchBuildId(llvm::object::ObjectFile* obj, const BuildId& expected_build_id,
+                  const std::string& debug_filename) {
+  if (expected_build_id.IsEmpty()) {
+    return true;
   }
-  llvm::object::Binary* binary = owning_binary.get().getBinary();
-  auto obj = llvm::dyn_cast<llvm::object::ObjectFile>(binary);
-  if (obj == nullptr) {
-    LOG(DEBUG) << filename << " is not an object file";
-    return nullptr;
+  BuildId real_build_id;
+  if (!GetBuildIdFromObjectFile(obj, &real_build_id)) {
+    return false;
   }
-  if (!expected_build_id.IsEmpty()) {
-    BuildId real_build_id;
-    GetBuildIdFromObjectFile(obj, &real_build_id);
-    bool result = (expected_build_id == real_build_id);
-    LOG(DEBUG) << "check build id for \"" << filename << "\" (" << (result ? "match" : "mismatch")
-               << "): expected " << expected_build_id.ToString() << ", real "
-               << real_build_id.ToString();
-    if (!result) {
-      return nullptr;
-    }
+  if (expected_build_id != real_build_id) {
+    LOG(DEBUG) << "build id for " << debug_filename << " mismatch: "
+               << "expected " << expected_build_id.ToString()
+               << ", real " << real_build_id.ToString();
+    return false;
   }
-  return obj;
+  return true;
 }
 
 bool ParseSymbolsFromElfFile(const std::string& filename, const BuildId& expected_build_id,
@@ -306,18 +290,22 @@ bool ParseSymbolsFromElfFile(const std::string& filename, const BuildId& expecte
   if (!IsValidElfPath(filename)) {
     return false;
   }
-  auto owning_binary = llvm::object::createBinary(llvm::StringRef(filename));
-  llvm::object::ObjectFile* obj = GetObjectFile(owning_binary, filename, expected_build_id);
-  if (obj == nullptr) {
+  return ParseSymbolsFromEmbeddedElfFile(filename, 0, 0, expected_build_id, callback);
+}
+
+bool ParseSymbolsFromEmbeddedElfFile(const std::string& filename, uint64_t file_offset,
+                                     uint32_t file_size, const BuildId& expected_build_id,
+                                     std::function<void(const ElfFileSymbol&)> callback) {
+  BinaryRet ret = OpenObjectFile(filename, file_offset, file_size);
+  if (ret.obj == nullptr || !MatchBuildId(ret.obj, expected_build_id, filename)) {
     return false;
   }
-
-  if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(obj)) {
+  if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(ret.obj)) {
     ParseSymbolsFromELFFile(elf->getELFFile(), callback);
-  } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(obj)) {
+  } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(ret.obj)) {
     ParseSymbolsFromELFFile(elf->getELFFile(), callback);
   } else {
-    LOG(ERROR) << "unknown elf format in file" << filename;
+    LOG(ERROR) << "unknown elf format in file " << filename;
     return false;
   }
   return true;
@@ -347,16 +335,15 @@ bool ReadMinExecutableVirtualAddressFromElfFile(const std::string& filename,
   if (!IsValidElfPath(filename)) {
     return false;
   }
-  auto owning_binary = llvm::object::createBinary(llvm::StringRef(filename));
-  llvm::object::ObjectFile* obj = GetObjectFile(owning_binary, filename, expected_build_id);
-  if (obj == nullptr) {
+  BinaryRet ret = OpenObjectFile(filename);
+  if (ret.obj == nullptr || !MatchBuildId(ret.obj, expected_build_id, filename)) {
     return false;
   }
 
   bool result = false;
-  if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(obj)) {
+  if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(ret.obj)) {
     result = ReadMinExecutableVirtualAddress(elf->getELFFile(), min_vaddr);
-  } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(obj)) {
+  } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(ret.obj)) {
     result = ReadMinExecutableVirtualAddress(elf->getELFFile(), min_vaddr);
   } else {
     LOG(ERROR) << "unknown elf format in file" << filename;

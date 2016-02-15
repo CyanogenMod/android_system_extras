@@ -45,3 +45,7 @@ int main(int argc, char** argv) {
 std::string GetTestData(const std::string& filename) {
   return testdata_dir + filename;
 }
+
+const std::string& GetTestDataDir() {
+  return testdata_dir;
+}

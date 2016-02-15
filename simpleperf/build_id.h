@@ -33,8 +33,27 @@ class BuildId {
     memset(data_, '\0', BUILD_ID_SIZE);
   }
 
-  BuildId(const void* data, size_t len = BUILD_ID_SIZE) : BuildId() {
+  // Copy build id from a byte array, like {0x76, 0x00, 0x32,...}.
+  BuildId(const void* data, size_t len) : BuildId() {
     memcpy(data_, data, std::min(len, BUILD_ID_SIZE));
+  }
+
+  // Read build id from a hex string, like "7600329e31058e12b145d153ef27cd40e1a5f7b9".
+  explicit BuildId(const std::string& s) : BuildId() {
+    for (size_t i = 0; i < s.size() && i < BUILD_ID_SIZE * 2; i += 2) {
+      unsigned char ch = 0;
+      for (size_t j = i; j < i + 2; ++j) {
+        ch <<= 4;
+        if (s[j] >= '0' && s[j] <= '9') {
+          ch |= s[j] - '0';
+        } else if (s[j] >= 'a' && s[j] <= 'f') {
+          ch |= s[j] - 'a' + 10;
+        } else if (s[j] >= 'A' && s[j] <= 'F') {
+          ch |= s[j] - 'A' + 10;
+        }
+      }
+      data_[i / 2] = ch;
+    }
   }
 
   const unsigned char* Data() const {
@@ -51,6 +70,10 @@ class BuildId {
 
   bool operator==(const BuildId& build_id) const {
     return memcmp(data_, build_id.data_, BUILD_ID_SIZE) == 0;
+  }
+
+  bool operator!=(const BuildId& build_id) const {
+    return !(*this == build_id);
   }
 
   bool IsEmpty() const {

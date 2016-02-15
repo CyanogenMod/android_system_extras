@@ -14,14 +14,12 @@
  * limitations under the License.
  */
 
+#include <map>
+
+#include "read_elf.h"
 #include "workload.h"
 
-static void CreateProcesses(size_t count, std::vector<std::unique_ptr<Workload>>* workloads) {
-  workloads->clear();
-  for (size_t i = 0; i < count; ++i) {
-    auto workload = Workload::CreateWorkload({"sleep", "1"});
-    ASSERT_TRUE(workload != nullptr);
-    ASSERT_TRUE(workload->Start());
-    workloads->push_back(std::move(workload));
-  }
-}
+void CreateProcesses(size_t count, std::vector<std::unique_ptr<Workload>>* workloads);
+
+void ParseSymbol(const ElfFileSymbol& symbol, std::map<std::string, ElfFileSymbol>* symbols);
+void CheckElfFileSymbols(const std::map<std::string, ElfFileSymbol>& symbols);

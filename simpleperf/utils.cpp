@@ -18,6 +18,7 @@
 
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <sys/stat.h>
@@ -26,6 +27,7 @@
 #include <algorithm>
 #include <string>
 
+#include <android-base/file.h>
 #include <android-base/logging.h>
 
 void OneTimeFreeAllocator::Clear() {
@@ -50,6 +52,19 @@ const char* OneTimeFreeAllocator::AllocateString(const std::string& s) {
   const char* result = cur_;
   cur_ += size;
   return result;
+}
+
+FileHelper::FileHelper() : fd_(-1) {
+}
+
+FileHelper::FileHelper(const std::string& filename) {
+  fd_ = TEMP_FAILURE_RETRY(open(filename.c_str(), O_RDONLY | O_BINARY));
+}
+
+FileHelper::~FileHelper() {
+  if (fd_ != -1) {
+    close(fd_);
+  }
 }
 
 void PrintIndented(size_t indent, const char* fmt, ...) {
@@ -113,4 +128,12 @@ bool IsRegularFile(const std::string& filename) {
     }
   }
   return false;
+}
+
+uint64_t GetFileSize(const std::string& filename) {
+  struct stat st;
+  if (stat(filename.c_str(), &st) == 0) {
+    return static_cast<uint64_t>(st.st_size);
+  }
+  return 0;
 }

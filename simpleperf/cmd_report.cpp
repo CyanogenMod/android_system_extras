@@ -256,6 +256,7 @@ class ReportCommand : public Command {
             "    -i <file>     Specify path of record file, default is perf.data.\n"
             "    -n            Print the sample count for each item.\n"
             "    --no-demangle        Don't demangle symbol names.\n"
+            "    -o report_file_name  Set report file name, default is stdout.\n"
             "    --pid pid1,pid2,...\n"
             "                  Report only for selected pids.\n"
             "    --sort key1,key2,...\n"
@@ -272,7 +273,8 @@ class ReportCommand : public Command {
         use_branch_address_(false),
         accumulate_callchain_(false),
         print_callgraph_(false),
-        callgraph_show_callee_(true) {
+        callgraph_show_callee_(true),
+        report_fp_(nullptr) {
     compare_sample_func_t compare_sample_callback = std::bind(
         &ReportCommand::CompareSampleEntry, this, std::placeholders::_1, std::placeholders::_2);
     sample_tree_ =
@@ -289,13 +291,15 @@ class ReportCommand : public Command {
   void ProcessSampleRecord(const SampleRecord& r);
   bool ReadFeaturesFromRecordFile();
   int CompareSampleEntry(const SampleEntry& sample1, const SampleEntry& sample2);
-  void PrintReport();
+  bool PrintReport();
   void PrintReportContext();
   void CollectReportWidth();
   void CollectReportEntryWidth(const SampleEntry& sample);
   void PrintReportHeader();
   void PrintReportEntry(const SampleEntry& sample);
   void PrintCallGraph(const SampleEntry& sample);
+  void PrintCallGraphEntry(size_t depth, std::string prefix, const std::unique_ptr<CallChainNode>& node,
+                           uint64_t parent_period, bool last);
 
   std::string record_filename_;
   std::unique_ptr<RecordFileReader> record_file_reader_;
@@ -309,6 +313,9 @@ class ReportCommand : public Command {
   bool accumulate_callchain_;
   bool print_callgraph_;
   bool callgraph_show_callee_;
+
+  std::string report_filename_;
+  FILE* report_fp_;
 };
 
 bool ReportCommand::Run(const std::vector<std::string>& args) {
@@ -332,7 +339,9 @@ bool ReportCommand::Run(const std::vector<std::string>& args) {
   ReadSampleTreeFromRecordFile();
 
   // 3. Show collected information.
-  PrintReport();
+  if (!PrintReport()) {
+    return false;
+  }
 
   return true;
 }
@@ -386,6 +395,11 @@ bool ReportCommand::ParseOptions(const std::vector<std::string>& args) {
 
     } else if (args[i] == "--no-demangle") {
       demangle = false;
+    } else if (args[i] == "-o") {
+      if (!NextArgumentOrError(args, &i)) {
+        return false;
+      }
+      report_filename_ = args[i];
 
     } else if (args[i] == "--pids" || args[i] == "--tids") {
       if (!NextArgumentOrError(args, &i)) {
@@ -641,13 +655,29 @@ int ReportCommand::CompareSampleEntry(const SampleEntry& sample1, const SampleEn
   return 0;
 }
 
-void ReportCommand::PrintReport() {
+bool ReportCommand::PrintReport() {
+  std::unique_ptr<FILE, decltype(&fclose)> file_handler(nullptr, fclose);
+  if (report_filename_.empty()) {
+    report_fp_ = stdout;
+  } else {
+    report_fp_ = fopen(report_filename_.c_str(), "w");
+    if (report_fp_ == nullptr) {
+      PLOG(ERROR) << "failed to open file " << report_filename_;
+      return false;
+    }
+    file_handler.reset(report_fp_);
+  }
   PrintReportContext();
   CollectReportWidth();
   PrintReportHeader();
   sample_tree_->VisitAllSamples(
       std::bind(&ReportCommand::PrintReportEntry, this, std::placeholders::_1));
-  fflush(stdout);
+  fflush(report_fp_);
+  if (ferror(report_fp_) != 0) {
+    PLOG(ERROR) << "print report failed";
+    return false;
+  }
+  return true;
 }
 
 void ReportCommand::PrintReportContext() {
@@ -660,11 +690,11 @@ void ReportCommand::PrintReportContext() {
         android::base::StringPrintf("(type %u, config %llu)", event_attr_.type, event_attr_.config);
   }
   if (!record_cmdline_.empty()) {
-    printf("Cmdline: %s\n", record_cmdline_.c_str());
+    fprintf(report_fp_, "Cmdline: %s\n", record_cmdline_.c_str());
   }
-  printf("Samples: %" PRIu64 " of event '%s'\n", sample_tree_->TotalSamples(),
-         event_type_name.c_str());
-  printf("Event count: %" PRIu64 "\n\n", sample_tree_->TotalPeriod());
+  fprintf(report_fp_, "Samples: %" PRIu64 " of event '%s'\n", sample_tree_->TotalSamples(),
+          event_type_name.c_str());
+  fprintf(report_fp_, "Event count: %" PRIu64 "\n\n", sample_tree_->TotalPeriod());
 }
 
 void ReportCommand::CollectReportWidth() {
@@ -682,9 +712,9 @@ void ReportCommand::PrintReportHeader() {
   for (size_t i = 0; i < displayable_items_.size(); ++i) {
     auto& item = displayable_items_[i];
     if (i != displayable_items_.size() - 1) {
-      printf("%-*s  ", static_cast<int>(item->Width()), item->Name().c_str());
+      fprintf(report_fp_, "%-*s  ", static_cast<int>(item->Width()), item->Name().c_str());
     } else {
-      printf("%s\n", item->Name().c_str());
+      fprintf(report_fp_, "%s\n", item->Name().c_str());
     }
   }
 }
@@ -693,9 +723,9 @@ void ReportCommand::PrintReportEntry(const SampleEntry& sample) {
   for (size_t i = 0; i < displayable_items_.size(); ++i) {
     auto& item = displayable_items_[i];
     if (i != displayable_items_.size() - 1) {
-      printf("%-*s  ", static_cast<int>(item->Width()), item->Show(sample).c_str());
+      fprintf(report_fp_, "%-*s  ", static_cast<int>(item->Width()), item->Show(sample).c_str());
     } else {
-      printf("%s\n", item->Show(sample).c_str());
+      fprintf(report_fp_, "%s\n", item->Show(sample).c_str());
     }
   }
   if (print_callgraph_) {
@@ -703,15 +733,26 @@ void ReportCommand::PrintReportEntry(const SampleEntry& sample) {
   }
 }
 
-static void PrintCallGraphEntry(size_t depth, std::string prefix,
-                                const std::unique_ptr<CallChainNode>& node, uint64_t parent_period,
-                                bool last) {
+void ReportCommand::PrintCallGraph(const SampleEntry& sample) {
+  std::string prefix = "       ";
+  fprintf(report_fp_, "%s|\n", prefix.c_str());
+  fprintf(report_fp_, "%s-- %s\n", prefix.c_str(), sample.symbol->DemangledName());
+  prefix.append(3, ' ');
+  for (size_t i = 0; i < sample.callchain.children.size(); ++i) {
+    PrintCallGraphEntry(1, prefix, sample.callchain.children[i], sample.callchain.children_period,
+                        (i + 1 == sample.callchain.children.size()));
+  }
+}
+
+void ReportCommand::PrintCallGraphEntry(size_t depth, std::string prefix,
+                                        const std::unique_ptr<CallChainNode>& node,
+                                        uint64_t parent_period, bool last) {
   if (depth > 20) {
     LOG(WARNING) << "truncated callgraph at depth " << depth;
     return;
   }
   prefix += "|";
-  printf("%s\n", prefix.c_str());
+  fprintf(report_fp_, "%s\n", prefix.c_str());
   if (last) {
     prefix.back() = ' ';
   }
@@ -720,26 +761,15 @@ static void PrintCallGraphEntry(size_t depth, std::string prefix,
     double percentage = 100.0 * (node->period + node->children_period) / parent_period;
     percentage_s = android::base::StringPrintf("--%.2lf%%-- ", percentage);
   }
-  printf("%s%s%s\n", prefix.c_str(), percentage_s.c_str(), node->chain[0]->symbol->DemangledName());
+  fprintf(report_fp_, "%s%s%s\n", prefix.c_str(), percentage_s.c_str(), node->chain[0]->symbol->DemangledName());
   prefix.append(percentage_s.size(), ' ');
   for (size_t i = 1; i < node->chain.size(); ++i) {
-    printf("%s%s\n", prefix.c_str(), node->chain[i]->symbol->DemangledName());
+    fprintf(report_fp_, "%s%s\n", prefix.c_str(), node->chain[i]->symbol->DemangledName());
   }
 
   for (size_t i = 0; i < node->children.size(); ++i) {
     PrintCallGraphEntry(depth + 1, prefix, node->children[i], node->children_period,
                         (i + 1 == node->children.size()));
-  }
-}
-
-void ReportCommand::PrintCallGraph(const SampleEntry& sample) {
-  std::string prefix = "       ";
-  printf("%s|\n", prefix.c_str());
-  printf("%s-- %s\n", prefix.c_str(), sample.symbol->DemangledName());
-  prefix.append(3, ' ');
-  for (size_t i = 0; i < sample.callchain.children.size(); ++i) {
-    PrintCallGraphEntry(1, prefix, sample.callchain.children[i], sample.callchain.children_period,
-                        (i + 1 == sample.callchain.children.size()));
   }
 }
 

@@ -21,22 +21,24 @@
 #include <map>
 #include "get_test_data.h"
 
-static const unsigned char elf_file_build_id[] = {
-    0x76, 0x00, 0x32, 0x9e, 0x31, 0x05, 0x8e, 0x12, 0xb1, 0x45,
-    0xd1, 0x53, 0xef, 0x27, 0xcd, 0x40, 0xe1, 0xa5, 0xf7, 0xb9
-};
-
 TEST(read_elf, GetBuildIdFromElfFile) {
   BuildId build_id;
   ASSERT_TRUE(GetBuildIdFromElfFile(GetTestData("elf_file"), &build_id));
   ASSERT_EQ(build_id, BuildId(elf_file_build_id));
 }
 
-static void ParseSymbol(const ElfFileSymbol& symbol, std::map<std::string, ElfFileSymbol>* symbols) {
+TEST(read_elf, GetBuildIdFromEmbeddedElfFile) {
+  BuildId build_id;
+  ASSERT_TRUE(GetBuildIdFromEmbeddedElfFile(GetTestData(APK_FILE), NATIVELIB_OFFSET_IN_APK,
+                                            NATIVELIB_SIZE_IN_APK, &build_id));
+  ASSERT_EQ(build_id, native_lib_build_id);
+}
+
+void ParseSymbol(const ElfFileSymbol& symbol, std::map<std::string, ElfFileSymbol>* symbols) {
   (*symbols)[symbol.name] = symbol;
 }
 
-static void CheckElfFileSymbols(const std::map<std::string, ElfFileSymbol>& symbols) {
+void CheckElfFileSymbols(const std::map<std::string, ElfFileSymbol>& symbols) {
   auto pos = symbols.find("GlobalVar");
   ASSERT_NE(pos, symbols.end());
   ASSERT_FALSE(pos->second.is_func);
@@ -47,26 +49,32 @@ static void CheckElfFileSymbols(const std::map<std::string, ElfFileSymbol>& symb
 }
 
 TEST(read_elf, parse_symbols_from_elf_file_with_correct_build_id) {
-  BuildId build_id(elf_file_build_id);
   std::map<std::string, ElfFileSymbol> symbols;
-  ASSERT_TRUE(ParseSymbolsFromElfFile(GetTestData("elf_file"), build_id,
+  ASSERT_TRUE(ParseSymbolsFromElfFile(GetTestData("elf_file"), elf_file_build_id,
                                       std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
   CheckElfFileSymbols(symbols);
 }
 
 TEST(read_elf, parse_symbols_from_elf_file_without_build_id) {
-  BuildId build_id;
   std::map<std::string, ElfFileSymbol> symbols;
-  ASSERT_TRUE(ParseSymbolsFromElfFile(GetTestData("elf_file"), build_id,
+  ASSERT_TRUE(ParseSymbolsFromElfFile(GetTestData("elf_file"), BuildId(),
                                       std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
   CheckElfFileSymbols(symbols);
 }
 
 TEST(read_elf, parse_symbols_from_elf_file_with_wrong_build_id) {
-  BuildId build_id("wrong_build_id");
+  BuildId build_id("01010101010101010101");
   std::map<std::string, ElfFileSymbol> symbols;
   ASSERT_FALSE(ParseSymbolsFromElfFile(GetTestData("elf_file"), build_id,
                                        std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
+}
+
+TEST(read_elf, ParseSymbolsFromEmbeddedElfFile) {
+  std::map<std::string, ElfFileSymbol> symbols;
+  ASSERT_TRUE(ParseSymbolsFromEmbeddedElfFile(GetTestData(APK_FILE), NATIVELIB_OFFSET_IN_APK,
+                                              NATIVELIB_SIZE_IN_APK, native_lib_build_id,
+                                              std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
+  CheckElfFileSymbols(symbols);
 }
 
 TEST(read_elf, arm_mapping_symbol) {

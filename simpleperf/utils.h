@@ -22,6 +22,8 @@
 #include <string>
 #include <vector>
 
+#include <android-base/macros.h>
+
 #define ALIGN(value, alignment) (((value) + (alignment)-1) & ~((alignment)-1))
 
 #ifdef _WIN32
@@ -52,6 +54,26 @@ class OneTimeFreeAllocator {
   char* end_;
 };
 
+class FileHelper {
+ public:
+  FileHelper();
+  explicit FileHelper(const std::string& filename);
+  ~FileHelper();
+
+  explicit operator bool() const {
+    return fd_ != -1;
+  }
+
+  int fd() const {
+    return fd_;
+  }
+
+ private:
+  int fd_;
+
+  DISALLOW_COPY_AND_ASSIGN(FileHelper);
+};
+
 template <class T>
 void MoveFromBinaryFormat(T& data, const char*& p) {
   data = *reinterpret_cast<const T*>(p);
@@ -66,5 +88,6 @@ void GetEntriesInDir(const std::string& dirpath, std::vector<std::string>* files
                      std::vector<std::string>* subdirs);
 bool IsDir(const std::string& dirpath);
 bool IsRegularFile(const std::string& filename);
+uint64_t GetFileSize(const std::string& filename);
 
 #endif  // SIMPLE_PERF_UTILS_H_
