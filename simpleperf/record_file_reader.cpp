@@ -75,9 +75,8 @@ bool RecordFileReader::ReadHeader() {
 bool RecordFileReader::ReadAttrSection() {
   size_t attr_count = header_.attrs.size / header_.attr_size;
   if (header_.attr_size != sizeof(FileAttr)) {
-    LOG(WARNING) << "attr size (" << header_.attr_size << ") in " << filename_
+    LOG(DEBUG) << "attr size (" << header_.attr_size << ") in " << filename_
                  << " doesn't match expected size (" << sizeof(FileAttr) << ")";
-    return false;
   }
   if (attr_count == 0) {
     LOG(ERROR) << "no attr in file " << filename_;
