@@ -56,7 +56,7 @@ class ArchiveHelper {
 
 std::map<ApkInspector::ApkOffset, std::unique_ptr<EmbeddedElf>> ApkInspector::embedded_elf_cache_;
 
-EmbeddedElf* ApkInspector::FindElfInApkByOffset(const std::string& apk_path, off64_t file_offset) {
+EmbeddedElf* ApkInspector::FindElfInApkByOffset(const std::string& apk_path, uint64_t file_offset) {
   // Already in cache?
   ApkOffset ami(apk_path, file_offset);
   auto it = embedded_elf_cache_.find(ami);
@@ -70,7 +70,7 @@ EmbeddedElf* ApkInspector::FindElfInApkByOffset(const std::string& apk_path, off
 }
 
 std::unique_ptr<EmbeddedElf> ApkInspector::FindElfInApkByOffsetWithoutCache(const std::string& apk_path,
-                                                                            off64_t file_offset) {
+                                                                            uint64_t file_offset) {
   // Crack open the apk(zip) file and take a look.
   if (!IsValidApkPath(apk_path)) {
     return nullptr;
@@ -99,8 +99,8 @@ std::unique_ptr<EmbeddedElf> ApkInspector::FindElfInApkByOffsetWithoutCache(cons
   int zrc;
   while ((zrc = Next(iteration_cookie, &zentry, &zname)) == 0) {
     if (zentry.method == kCompressStored &&
-        file_offset >= zentry.offset &&
-        file_offset < zentry.offset + zentry.uncompressed_length) {
+        file_offset >= static_cast<uint64_t>(zentry.offset) &&
+        file_offset < static_cast<uint64_t>(zentry.offset + zentry.uncompressed_length)) {
       // Found.
       found = true;
       break;

@@ -17,6 +17,8 @@
 #ifndef SIMPLE_PERF_READ_APK_H_
 #define SIMPLE_PERF_READ_APK_H_
 
+#include <stdint.h>
+
 #include <map>
 #include <memory>
 #include <string>
@@ -51,7 +53,7 @@ class EmbeddedElf {
   const std::string &entry_name() const { return entry_name_; }
 
   // Offset of zip entry from start of containing APK file
-  size_t entry_offset() const { return entry_offset_; }
+  uint64_t entry_offset() const { return entry_offset_; }
 
   // Size of zip entry (length of embedded ELF)
   uint32_t entry_size() const { return entry_size_; }
@@ -59,7 +61,7 @@ class EmbeddedElf {
  private:
   std::string filepath_; // containing APK path
   std::string entry_name_; // name of entry in zip index of embedded elf file
-  size_t entry_offset_; // offset of ELF from start of containing APK file
+  uint64_t entry_offset_; // offset of ELF from start of containing APK file
   uint32_t entry_size_;  // size of ELF file in zip
 };
 
@@ -69,16 +71,16 @@ class ApkInspector {
   // Given an APK/ZIP/JAR file and an offset into that file, if the
   // corresponding region of the APK corresponds to an uncompressed
   // ELF file, then return pertinent info on the ELF.
-  static EmbeddedElf* FindElfInApkByOffset(const std::string& apk_path, off64_t file_offset);
+  static EmbeddedElf* FindElfInApkByOffset(const std::string& apk_path, uint64_t file_offset);
   static std::unique_ptr<EmbeddedElf> FindElfInApkByName(const std::string& apk_path,
                                                          const std::string& elf_filename);
 
  private:
   static std::unique_ptr<EmbeddedElf> FindElfInApkByOffsetWithoutCache(const std::string& apk_path,
-                                                                        off64_t file_offset);
+                                                                       uint64_t file_offset);
 
   // First component of pair is APK file path, second is offset into APK.
-  typedef std::pair<std::string, size_t> ApkOffset;
+  typedef std::pair<std::string, uint64_t> ApkOffset;
 
   static std::map<ApkOffset, std::unique_ptr<EmbeddedElf>> embedded_elf_cache_;
 };
