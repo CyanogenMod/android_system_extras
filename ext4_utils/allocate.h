@@ -21,13 +21,7 @@
 
 #include "ext4_utils.h"
 
-struct region {
-	u32 block;
-	u32 len;
-	int bg;
-	struct region *next;
-	struct region *prev;
-};
+struct region;
 
 struct region_list {
 	struct region *first;
@@ -43,25 +37,6 @@ struct block_allocation {
 	struct block_allocation* next;
 };
 
-struct block_group_info {
-	u32 first_block;
-	int header_blocks;
-	int data_blocks_used;
-	int has_superblock;
-	u8 *bitmaps;
-	u8 *block_bitmap;
-	u8 *inode_bitmap;
-	u8 *inode_table;
-	u32 free_blocks;
-	u32 first_free_block;
-	u32 free_inodes;
-	u32 first_free_inode;
-	u16 flags;
-	u16 used_dirs;
-	int chunk_count;
-	int max_chunk_count;
-	struct region *chunks;
-};
 
 void block_allocator_init();
 void block_allocator_free();
@@ -94,8 +69,6 @@ void append_region(struct block_allocation *alloc,
 	u32 block, u32 len, int bg);
 struct block_allocation *create_allocation();
 int append_oob_allocation(struct block_allocation *alloc, u32 len);
-void region_list_append(struct region_list *list, struct region *reg);
 void print_blocks(FILE* f, struct block_allocation *alloc);
-void reserve_bg_chunk(int bg, u32 start_block, u32 size);
 
 #endif

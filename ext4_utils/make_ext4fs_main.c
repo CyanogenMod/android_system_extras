@@ -56,8 +56,7 @@ static void usage(char *path)
 	fprintf(stderr, "    [ -g <blocks per group> ] [ -i <inodes> ] [ -I <inode size> ]\n");
 	fprintf(stderr, "    [ -L <label> ] [ -f ] [ -a <android mountpoint> ] [ -u ]\n");
 	fprintf(stderr, "    [ -S file_contexts ] [ -C fs_config ] [ -T timestamp ]\n");
-	fprintf(stderr, "    [ -z | -s ] [ -w ] [ -c ] [ -J ] [ -v ]\n");
-	fprintf(stderr, "    [ -B <block_list_file> ] [ -Z <base_fs_file> ]\n");
+	fprintf(stderr, "    [ -z | -s ] [ -w ] [ -c ] [ -J ] [ -v ] [ -B <block_list_file> ]\n");
 	fprintf(stderr, "    <filename> [[<directory>] <target_out_directory>]\n");
 }
 
@@ -81,12 +80,11 @@ int main(int argc, char **argv)
 	time_t fixed_time = -1;
 	struct selabel_handle *sehnd = NULL;
 	FILE* block_list_file = NULL;
-	FILE* base_fs_file = NULL;
 #ifndef USE_MINGW
 	struct selinux_opt seopts[] = { { SELABEL_OPT_PATH, "" } };
 #endif
 
-	while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:S:T:C:B:Z:fwzJsctvu")) != -1) {
+	while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:S:T:C:B:fwzJsctvu")) != -1) {
 		switch (opt) {
 		case 'l':
 			info.len = parse_num(optarg);
@@ -168,13 +166,6 @@ int main(int argc, char **argv)
 				exit(EXIT_FAILURE);
 			}
 			break;
-		case 'Z':
-			base_fs_file = fopen(optarg, "r");
-			if (base_fs_file == NULL) {
-				fprintf(stderr, "failed to open base_fs_file: %s\n", strerror(errno));
-				exit(EXIT_FAILURE);
-			}
-			break;
 		default: /* '?' */
 			usage(argv[0]);
 			exit(EXIT_FAILURE);
@@ -246,12 +237,10 @@ int main(int argc, char **argv)
 	}
 
 	exitcode = make_ext4fs_internal(fd, directory, target_out_directory, mountpoint, fs_config_func, gzip,
-		sparse, crc, wipe, real_uuid, sehnd, verbose, fixed_time, block_list_file, base_fs_file);
+		sparse, crc, wipe, real_uuid, sehnd, verbose, fixed_time, block_list_file);
 	close(fd);
 	if (block_list_file)
 		fclose(block_list_file);
-	if (base_fs_file)
-		fclose(base_fs_file);
 	if (exitcode && strcmp(filename, "-"))
 		unlink(filename);
 	return exitcode;

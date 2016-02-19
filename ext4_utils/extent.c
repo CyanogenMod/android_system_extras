@@ -5,7 +5,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *	  http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -72,43 +72,23 @@ static void extent_create_backing_file(struct block_allocation *alloc,
 }
 
 static struct block_allocation *do_inode_allocate_extents(
-	struct ext4_inode *inode, u64 len, struct block_allocation *prealloc)
+	struct ext4_inode *inode, u64 len)
 {
-	u32 block_len = DIV_ROUND_UP(len, info.block_size), prealloc_block_len;
-	struct block_allocation *alloc;
+	u32 block_len = DIV_ROUND_UP(len, info.block_size);
+	struct block_allocation *alloc = allocate_blocks(block_len + 1);
 	u32 extent_block = 0;
 	u32 file_block = 0;
 	struct ext4_extent *extent;
 	u64 blocks;
 
-	if (!prealloc) {
-		alloc = allocate_blocks(block_len + 1);
-		if (alloc == NULL) {
-			error("Failed to allocate %d blocks\n", block_len + 1);
-			return NULL;
-		}
-	} else {
-		prealloc_block_len = block_allocation_len(prealloc);
-		if (block_len + 1 > prealloc_block_len) {
-			alloc = allocate_blocks(block_len + 1 - prealloc_block_len);
-			if (alloc == NULL) {
-				error("Failed to allocate %d blocks\n",
-						block_len + 1 - prealloc_block_len);
-				return NULL;
-			}
-			region_list_append(&prealloc->list, alloc->list.first);
-			free(alloc);
-		}
-		alloc = prealloc;
+	if (alloc == NULL) {
+		error("Failed to allocate %d blocks\n", block_len + 1);
+		return NULL;
 	}
 
 	int allocation_len = block_allocation_num_regions(alloc);
 	if (allocation_len <= 3) {
 		reduce_allocation(alloc, 1);
-		// IMPORTANT: reduce_allocation may have changed allocation
-		// length, otherwise file corruption happens when fs thinks
-		// a block is missing from extent header.
-		allocation_len = block_allocation_num_regions(alloc);
 	} else {
 		reserve_oob_blocks(alloc, 1);
 		extent_block = get_oob_block(alloc, 0);
@@ -203,7 +183,7 @@ u8 *inode_allocate_data_extents(struct ext4_inode *inode, u64 len,
 	struct block_allocation *alloc;
 	u8 *data = NULL;
 
-	alloc = do_inode_allocate_extents(inode, len, NULL);
+	alloc = do_inode_allocate_extents(inode, len);
 	if (alloc == NULL) {
 		error("failed to allocate extents for %"PRIu64" bytes", len);
 		return NULL;
@@ -225,26 +205,9 @@ u8 *inode_allocate_data_extents(struct ext4_inode *inode, u64 len,
 struct block_allocation* inode_allocate_file_extents(struct ext4_inode *inode, u64 len,
 	const char *filename)
 {
-	struct block_allocation *alloc, *prealloc = base_fs_allocations, *prev_prealloc = NULL;
-	// TODO(mkayyash): base_fs_allocations is sorted by filename, consider
-	// storing it in an array and then binary searching for a filename match instead
-	while (prealloc && prealloc->filename != NULL) {
-		if (!strcmp(filename, prealloc->filename)) {
-			break;
-		}
-		prev_prealloc = prealloc;
-		prealloc = prealloc->next;
-	}
-	if (prealloc) {
-		if (!prev_prealloc) {
-			base_fs_allocations = base_fs_allocations->next;
-		} else {
-			prev_prealloc->next = prealloc->next;
-		}
-		prealloc->next = NULL;
-	}
+	struct block_allocation *alloc;
 
-	alloc = do_inode_allocate_extents(inode, len, prealloc);
+	alloc = do_inode_allocate_extents(inode, len);
 	if (alloc == NULL) {
 		error("failed to allocate extents for %"PRIu64" bytes", len);
 		return NULL;
@@ -259,7 +222,7 @@ void inode_allocate_extents(struct ext4_inode *inode, u64 len)
 {
 	struct block_allocation *alloc;
 
-	alloc = do_inode_allocate_extents(inode, len, NULL);
+	alloc = do_inode_allocate_extents(inode, len);
 	if (alloc == NULL) {
 		error("failed to allocate extents for %"PRIu64" bytes", len);
 		return;
