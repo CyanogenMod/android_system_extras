@@ -5,7 +5,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *	  http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -79,6 +79,13 @@
 
 #endif
 
+#define MAX_PATH 4096
+#define MAX_BLK_MAPPING_STR 1000
+
+const int blk_file_major_ver = 1;
+const int blk_file_minor_ver = 0;
+const char *blk_file_header_fmt = "Base EXT4 version %d.%d";
+
 /* TODO: Not implemented:
    Allocating blocks in the same block group as the file inode
    Hash or binary tree directories
@@ -91,7 +98,7 @@ static int filter_dot(const struct dirent *d)
 }
 
 static u32 build_default_directory_structure(const char *dir_path,
-					     struct selabel_handle *sehnd)
+						 struct selabel_handle *sehnd)
 {
 	u32 inode;
 	u32 root_inode;
@@ -425,8 +432,8 @@ int make_ext4fs_sparse_fd_directory(int fd, long long len,
 	info.len = len;
 
 	return make_ext4fs_internal(fd, directory, NULL, mountpoint, NULL,
-	                            0, 1, 0, 0, 0,
-	                            sehnd, 0, -1, NULL);
+								0, 1, 0, 0, 0,
+								sehnd, 0, -1, NULL, NULL, NULL);
 }
 
 int make_ext4fs(const char *filename, long long len,
@@ -436,8 +443,8 @@ int make_ext4fs(const char *filename, long long len,
 }
 
 int make_ext4fs_directory(const char *filename, long long len,
-                          const char *mountpoint, struct selabel_handle *sehnd,
-                          const char *directory)
+						  const char *mountpoint, struct selabel_handle *sehnd,
+						  const char *directory)
 {
 	int fd;
 	int status;
@@ -452,8 +459,8 @@ int make_ext4fs_directory(const char *filename, long long len,
 	}
 
 	status = make_ext4fs_internal(fd, directory, NULL, mountpoint, NULL,
-	                              0, 0, 0, 1, 0,
-	                              sehnd, 0, -1, NULL);
+								  0, 0, 0, 1, 0,
+								  sehnd, 0, -1, NULL, NULL, NULL);
 	close(fd);
 
 	return status;
@@ -519,17 +526,158 @@ static char *canonicalize_rel_slashes(const char *str)
 	return canonicalize_slashes(str, false);
 }
 
+static int compare_chunks(const void* chunk1, const void* chunk2) {
+	struct region* c1 = (struct region*) chunk1;
+	struct region* c2 = (struct region*) chunk2;
+	return c1->block - c2->block;
+}
+
+static int get_block_group(u32 block) {
+	int i, group = 0;
+	for(i = 0; i < aux_info.groups; i++) {
+		if (block >= aux_info.bgs[i].first_block)
+			group = i;
+		else
+			break;
+	}
+	return group;
+}
+
+static void extract_base_fs_allocations(const char *directory, const char *mountpoint,
+										FILE* base_alloc_file_in) {
+#define err_msg "base file badly formatted"
+	// FORMAT Version 1.0: filename blk_mapping
+	const char *base_alloc_file_in_format = "%s %s";
+	const int base_file_format_param_count = 2;
+
+	char stored_file_name[MAX_PATH], real_file_name[MAX_PATH], file_map[MAX_BLK_MAPPING_STR];
+	struct block_allocation *fs_alloc;
+	struct block_group_info *bgs = aux_info.bgs;
+	int i, major_version = 0, minor_version = 0;
+	char *base_file_line = NULL;
+	size_t base_file_line_len = 0;
+
+	printf("[v%d.%d] Generating an Incremental EXT4 image\n",
+			blk_file_major_ver, blk_file_minor_ver);
+	if (base_fs_allocations == NULL)
+		base_fs_allocations = create_allocation();
+	fs_alloc = base_fs_allocations;
+
+	fscanf(base_alloc_file_in, blk_file_header_fmt, &major_version, &minor_version);
+	if (major_version == 0) {
+		critical_error("Invalid base file");
+	}
+
+	if (major_version != blk_file_major_ver) {
+		critical_error("Incompatible base file: version required is %d.X",
+				blk_file_major_ver);
+	}
+
+	if (minor_version < blk_file_minor_ver) {
+		critical_error("Incompatible base file: version required is %d.%d or above",
+				blk_file_major_ver, blk_file_minor_ver);
+	}
+
+	while (getline(&base_file_line, &base_file_line_len, base_alloc_file_in) != -1) {
+		if (sscanf(base_file_line, base_alloc_file_in_format, &stored_file_name, &file_map)
+				!= base_file_format_param_count) {
+			continue;
+		}
+		if (strlen(stored_file_name) < strlen(mountpoint)) {
+			continue;
+		}
+		snprintf(real_file_name, MAX_PATH, "%s%s", directory, stored_file_name + strlen(mountpoint));
+		if (!access(real_file_name, R_OK)) {
+			char *block_range, *end_string;
+			int real_file_fd;
+			u32 start_block, end_block, block_file_size;
+			u32 real_file_block_size;
+
+			real_file_fd = open(real_file_name, O_RDONLY);
+			if (real_file_fd == -1) {
+				critical_error(err_msg);
+			}
+			real_file_block_size = get_file_size(real_file_fd);
+			close(real_file_fd);
+			real_file_block_size = DIV_ROUND_UP(real_file_block_size, info.block_size);
+			fs_alloc->filename = strdup(real_file_name);
+			block_range = strtok_r(file_map, ",", &end_string);
+			while (block_range && real_file_block_size) {
+				int block_group;
+				char *range, *end_token = NULL;
+				range = strtok_r(block_range, "-", &end_token);
+				if (!range) {
+					critical_error(err_msg);
+				}
+				start_block = parse_num(range);
+				range = strtok_r(NULL, "-", &end_token);
+				if (!range) {
+					end_block = start_block;
+				} else {
+					end_block = parse_num(range);
+				}
+				block_file_size = end_block - start_block + 1;
+				if (block_file_size > real_file_block_size) {
+					block_file_size = real_file_block_size;
+				}
+				// Assummption is that allocations are within the same block group
+				block_group = get_block_group(start_block);
+				if (block_group != get_block_group(end_block)) {
+					critical_error("base file allocation's end block is in a different "
+								   "block group than start block. did you change fs params?");
+				}
+				block_range = strtok_r(NULL, ",", &end_string);
+				append_region(fs_alloc, start_block, block_file_size, block_group);
+				reserve_bg_chunk(block_group, start_block - bgs[block_group].first_block, block_file_size);
+				real_file_block_size -= block_file_size;
+			}
+			if (reserve_blocks_for_allocation(fs_alloc) < 0)
+				critical_error("failed to reserve base fs allocation");
+			fs_alloc->next = create_allocation();
+			fs_alloc = fs_alloc->next;
+		}
+	}
+
+	for (i = 0; i < aux_info.groups; i++) {
+		qsort(bgs[i].chunks, bgs[i].chunk_count, sizeof(struct region), compare_chunks);
+	}
+
+	free(base_file_line);
+
+#undef err_msg
+}
+
+void generate_base_alloc_file_out(FILE* base_alloc_file_out, char* dir, char* mountpoint,
+								  struct block_allocation* p)
+{
+	size_t dirlen = dir ? strlen(dir) : 0;
+	fprintf(base_alloc_file_out, blk_file_header_fmt, blk_file_major_ver, blk_file_minor_ver);
+	fputc('\n', base_alloc_file_out);
+	while (p) {
+		if (dir && strncmp(p->filename, dir, dirlen) == 0) {
+			// substitute mountpoint for the leading directory in the filename, in the output file
+			fprintf(base_alloc_file_out, "%s%s", mountpoint, p->filename + dirlen);
+		} else {
+			fprintf(base_alloc_file_out, "%s", p->filename);
+		}
+		print_blocks(base_alloc_file_out, p, ',');
+		struct block_allocation* pn = p->next;
+		p = pn;
+	}
+}
+
 int make_ext4fs_internal(int fd, const char *_directory, const char *_target_out_directory,
 						 const char *_mountpoint, fs_config_func_t fs_config_func, int gzip,
 						 int sparse, int crc, int wipe, int real_uuid,
 						 struct selabel_handle *sehnd, int verbose, time_t fixed_time,
-						 FILE* block_list_file)
+						 FILE* block_list_file, FILE* base_alloc_file_in, FILE* base_alloc_file_out)
 {
 	u32 root_inode_num;
 	u16 root_mode;
 	char *mountpoint;
 	char *directory = NULL;
 	char *target_out_directory = NULL;
+	struct block_allocation* p;
 
 	if (setjmp(setjmp_env))
 		return EXIT_FAILURE; /* Handle a call to longjmp() */
@@ -627,6 +775,9 @@ int make_ext4fs_internal(int fd, const char *_directory, const char *_target_out
 
 	ext4_fill_in_sb(real_uuid);
 
+	if (base_alloc_file_in) {
+		extract_base_fs_allocations(directory, mountpoint, base_alloc_file_in);
+	}
 	if (reserve_inodes(0, 10) == EXT4_ALLOCATE_FAILED)
 		error("failed to reserve first 10 inodes");
 
@@ -670,6 +821,8 @@ int make_ext4fs_internal(int fd, const char *_directory, const char *_target_out
 
 	ext4_update_free();
 
+	// TODO: Consider migrating the OTA tools to the new base alloc file format
+	// used for generating incremental images (see go/incremental-ext4)
 	if (block_list_file) {
 		size_t dirlen = directory ? strlen(directory) : 0;
 		struct block_allocation* p = get_saved_allocation_chain();
@@ -680,11 +833,15 @@ int make_ext4fs_internal(int fd, const char *_directory, const char *_target_out
 			} else {
 				fprintf(block_list_file, "%s", p->filename);
 			}
-			print_blocks(block_list_file, p);
+			print_blocks(block_list_file, p, ' ');
 			struct block_allocation* pn = p->next;
-			free_alloc(p);
 			p = pn;
 		}
+	}
+
+	if (base_alloc_file_out) {
+		struct block_allocation* p = get_saved_allocation_chain();
+		generate_base_alloc_file_out(base_alloc_file_out, directory, mountpoint, p);
 	}
 
 	printf("Created filesystem with %d/%d inodes and %d/%d blocks\n",
@@ -701,6 +858,13 @@ int make_ext4fs_internal(int fd, const char *_directory, const char *_target_out
 
 	sparse_file_destroy(ext4_sparse_file);
 	ext4_sparse_file = NULL;
+
+	p = get_saved_allocation_chain();
+	while (p) {
+		struct block_allocation* pn = p->next;
+		free_alloc(p);
+		p = pn;
+	}
 
 	free(mountpoint);
 	free(directory);

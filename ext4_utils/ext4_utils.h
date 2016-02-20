@@ -119,6 +119,7 @@ struct fs_aux_info {
 extern struct fs_info info;
 extern struct fs_aux_info aux_info;
 extern struct sparse_file *ext4_sparse_file;
+extern struct block_allocation *base_fs_allocations;
 
 extern jmp_buf setjmp_env;
 
@@ -161,7 +162,7 @@ int make_ext4fs_internal(int fd, const char *directory, const char *_target_out_
 						 const char *mountpoint, fs_config_func_t fs_config_func, int gzip,
 						 int sparse, int crc, int wipe, int real_uuid,
 						 struct selabel_handle *sehnd, int verbose, time_t fixed_time,
-						 FILE* block_list_file);
+						 FILE* block_list_file, FILE* base_alloc_file_in, FILE* base_alloc_file_out);
 
 int read_ext(int fd, int verbose);
 

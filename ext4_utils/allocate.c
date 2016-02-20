@@ -5,7 +5,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *	  http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,31 +21,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-
-struct region {
-	u32 block;
-	u32 len;
-	int bg;
-	struct region *next;
-	struct region *prev;
-};
-
-struct block_group_info {
-	u32 first_block;
-	int header_blocks;
-	int data_blocks_used;
-	int has_superblock;
-	u8 *bitmaps;
-	u8 *block_bitmap;
-	u8 *inode_bitmap;
-	u8 *inode_table;
-	u32 free_blocks;
-	u32 first_free_block;
-	u32 free_inodes;
-	u32 first_free_inode;
-	u16 flags;
-	u16 used_dirs;
-};
 
 struct xattr_list_element {
 	struct ext4_inode *inode;
@@ -106,7 +81,7 @@ static void region_list_remove(struct region_list *list, struct region *reg)
 	reg->prev = NULL;
 }
 
-static void region_list_append(struct region_list *list, struct region *reg)
+void region_list_append(struct region_list *list, struct region *reg)
 {
 	if (list->first == NULL) {
 		list->first = reg;
@@ -141,15 +116,17 @@ static void dump_region_lists(struct block_allocation *alloc) {
 }
 #endif
 
-void print_blocks(FILE* f, struct block_allocation *alloc)
+void print_blocks(FILE* f, struct block_allocation *alloc, char separator)
 {
 	struct region *reg;
+	fputc(' ', f);
 	for (reg = alloc->list.first; reg; reg = reg->next) {
 		if (reg->len == 1) {
-			fprintf(f, " %d", reg->block);
+			fprintf(f, "%d", reg->block);
 		} else {
-			fprintf(f, " %d-%d", reg->block, reg->block + reg->len - 1);
+			fprintf(f, "%d-%d", reg->block, reg->block + reg->len - 1);
 		}
+		fputc(separator, f);
 	}
 	fputc('\n', f);
 }
@@ -210,45 +187,38 @@ static int reserve_blocks(struct block_group_info *bg, u32 start, u32 num)
 	unsigned int i = 0;
 
 	u32 block = start;
-	if (num > bg->free_blocks)
-		return -1;
-
 	for (i = 0; i < num && block % 8 != 0; i++, block++) {
 		if (bitmap_set_bit(bg->block_bitmap, block)) {
-			error("attempted to reserve already reserved block");
+			error("attempted to reserve already reserved block %d and num is %d", block, num);
 			return -1;
 		}
 	}
 
 	for (; i + 8 <= (num & ~7); i += 8, block += 8) {
 		if (bitmap_set_8_bits(bg->block_bitmap, block)) {
-			error("attempted to reserve already reserved block");
+			error("attempted to reserve already reserved block %d and num is %d", block, num);
 			return -1;
 		}
 	}
 
 	for (; i < num; i++, block++) {
 		if (bitmap_set_bit(bg->block_bitmap, block)) {
-			error("attempted to reserve already reserved block");
+			error("attempted to reserve already reserved block %d and num is %d", block, num);
 			return -1;
 		}
 	}
 
 	bg->free_blocks -= num;
-	if (start == bg->first_free_block)
-		bg->first_free_block = start + num;
 
 	return 0;
 }
 
-static void free_blocks(struct block_group_info *bg, u32 num_blocks)
+static void free_blocks(struct block_group_info *bg, u32 block, u32 num_blocks)
 {
 	unsigned int i;
-	u32 block = bg->first_free_block - 1;
 	for (i = 0; i < num_blocks; i++, block--)
 		bg->block_bitmap[block / 8] &= ~(1 << (block % 8));
 	bg->free_blocks += num_blocks;
-	bg->first_free_block -= num_blocks;
 }
 
 /* Reduces an existing allocation by len blocks by return the last blocks
@@ -258,14 +228,15 @@ void reduce_allocation(struct block_allocation *alloc, u32 len)
 {
 	while (len) {
 		struct region *last_reg = alloc->list.last;
+		struct block_group_info *bg = &aux_info.bgs[last_reg->bg];
 
 		if (last_reg->len > len) {
-			free_blocks(&aux_info.bgs[last_reg->bg], len);
+			free_blocks(bg, last_reg->block + last_reg->len - bg->first_block - 1, len);
 			last_reg->len -= len;
 			len = 0;
 		} else {
 			struct region *reg = alloc->list.last->prev;
-			free_blocks(&aux_info.bgs[last_reg->bg], last_reg->len);
+			free_blocks(bg, last_reg->block + last_reg->len - bg->first_block - 1, last_reg->len);
 			len -= last_reg->len;
 			if (reg) {
 				reg->next = NULL;
@@ -304,18 +275,28 @@ static void init_bg(struct block_group_info *bg, unsigned int i)
 
 	bg->data_blocks_used = 0;
 	bg->free_blocks = info.blocks_per_group;
-	bg->first_free_block = 0;
 	bg->free_inodes = info.inodes_per_group;
 	bg->first_free_inode = 1;
 	bg->flags = 0;
 
-	if (reserve_blocks(bg, bg->first_free_block, bg->header_blocks) < 0)
+	bg->chunk_count = 0;
+	bg->max_chunk_count = 1;
+	bg->chunks = (struct region*) calloc(bg->max_chunk_count, sizeof(struct region));
+
+	if (reserve_blocks(bg, 0, bg->header_blocks) < 0)
 		error("failed to reserve %u blocks in block group %u\n", bg->header_blocks, i);
+	// Add empty starting delimiter chunk
+	reserve_bg_chunk(i, bg->header_blocks, 0);
 
 	if (bg->first_block + info.blocks_per_group > aux_info.len_blocks) {
 		u32 overrun = bg->first_block + info.blocks_per_group - aux_info.len_blocks;
 		reserve_blocks(bg, info.blocks_per_group - overrun, overrun);
+		// Add empty ending delimiter chunk
+		reserve_bg_chunk(i, info.blocks_per_group - overrun, 0);
+	} else {
+		reserve_bg_chunk(i, info.blocks_per_group - 1, 0);
 	}
+
 }
 
 void block_allocator_init()
@@ -341,73 +322,79 @@ void block_allocator_free()
 	free(aux_info.bgs);
 }
 
-static u32 ext4_allocate_blocks_from_block_group(u32 len, int bg_num)
-{
-	if (get_free_blocks(bg_num) < len)
-		return EXT4_ALLOCATE_FAILED;
-
-	u32 block = aux_info.bgs[bg_num].first_free_block;
-	struct block_group_info *bg = &aux_info.bgs[bg_num];
-	if (reserve_blocks(bg, bg->first_free_block, len) < 0) {
-		error("failed to reserve %u blocks in block group %u\n", len, bg_num);
-		return EXT4_ALLOCATE_FAILED;
-	}
-
-	aux_info.bgs[bg_num].data_blocks_used += len;
-
-	return bg->first_block + block;
-}
-
 /* Allocate a single block and return its block number */
 u32 allocate_block()
 {
-	unsigned int i;
-	for (i = 0; i < aux_info.groups; i++) {
-		u32 block = ext4_allocate_blocks_from_block_group(1, i);
-
-		if (block != EXT4_ALLOCATE_FAILED)
-			return block;
+	u32 block;
+	struct block_allocation *blk_alloc = allocate_blocks(1);
+	if (!blk_alloc) {
+		return EXT4_ALLOCATE_FAILED;
 	}
-
-	return EXT4_ALLOCATE_FAILED;
+	block = blk_alloc->list.first->block;
+	free_alloc(blk_alloc);
+	return block;
 }
 
 static struct region *ext4_allocate_best_fit_partial(u32 len)
 {
-	unsigned int i;
-	unsigned int found_bg = 0;
-	u32 found_bg_len = 0;
+	unsigned int i, j;
+	unsigned int found_bg = 0, found_prev_chunk = 0, found_block = 0;
+	u32 found_allocate_len = 0;
+	bool minimize = false;
+	struct block_group_info *bgs = aux_info.bgs;
+	struct region *reg;
 
 	for (i = 0; i < aux_info.groups; i++) {
-		u32 bg_len = aux_info.bgs[i].free_blocks;
-
-		if ((len <= bg_len && (found_bg_len == 0 || bg_len < found_bg_len)) ||
-		    (len > found_bg_len && bg_len > found_bg_len)) {
-			found_bg = i;
-			found_bg_len = bg_len;
+		for (j = 1; j < bgs[i].chunk_count; j++) {
+			u32 hole_start, hole_size;
+			hole_start = bgs[i].chunks[j-1].block + bgs[i].chunks[j-1].len;
+			hole_size =  bgs[i].chunks[j].block - hole_start;
+			if (hole_size == len) {
+				// Perfect fit i.e. right between 2 chunks no need to keep searching
+				found_bg = i;
+				found_prev_chunk = j - 1;
+				found_block = hole_start;
+				found_allocate_len = hole_size;
+				goto done;
+			} else if (hole_size > len && (found_allocate_len == 0 || (found_allocate_len > hole_size))) {
+				found_bg = i;
+				found_prev_chunk = j - 1;
+				found_block = hole_start;
+				found_allocate_len = hole_size;
+				minimize = true;
+			} else if (!minimize) {
+				if (found_allocate_len < hole_size) {
+					found_bg = i;
+					found_prev_chunk = j - 1;
+					found_block = hole_start;
+					found_allocate_len = hole_size;
+				}
+			}
 		}
 	}
 
-	if (found_bg_len) {
-		u32 allocate_len = min(len, found_bg_len);
-		struct region *reg;
-		u32 block = ext4_allocate_blocks_from_block_group(allocate_len, found_bg);
-		if (block == EXT4_ALLOCATE_FAILED) {
-			error("failed to allocate %d blocks in block group %d", allocate_len, found_bg);
-			return NULL;
-		}
-		reg = malloc(sizeof(struct region));
-		reg->block = block;
-		reg->len = allocate_len;
-		reg->next = NULL;
-		reg->prev = NULL;
-		reg->bg = found_bg;
-		return reg;
-	} else {
+	if (found_allocate_len == 0) {
 		error("failed to allocate %u blocks, out of space?", len);
+		return NULL;
 	}
-
-	return NULL;
+	if (found_allocate_len > len) found_allocate_len = len;
+done:
+	// reclaim allocated space in chunk
+	bgs[found_bg].chunks[found_prev_chunk].len += found_allocate_len;
+	if (reserve_blocks(&bgs[found_bg],
+				found_block,
+				found_allocate_len) < 0) {
+		error("failed to reserve %u blocks in block group %u\n", found_allocate_len, found_bg);
+		return NULL;
+	}
+	bgs[found_bg].data_blocks_used += found_allocate_len;
+	reg = malloc(sizeof(struct region));
+	reg->block = found_block + bgs[found_bg].first_block;
+	reg->len = found_allocate_len;
+	reg->next = NULL;
+	reg->prev = NULL;
+	reg->bg = found_bg;
+	return reg;
 }
 
 static struct region *ext4_allocate_best_fit(u32 len)
@@ -439,9 +426,9 @@ static struct region *ext4_allocate_best_fit(u32 len)
 /* Allocate len blocks.  The blocks may be spread across multiple block groups,
    and are returned in a linked list of the blocks in each block group.  The
    allocation algorithm is:
-      1.  If the remaining allocation is larger than any available contiguous region,
-          allocate the largest contiguous region and loop
-      2.  Otherwise, allocate the smallest contiguous region that it fits in
+	  1.  If the remaining allocation is larger than any available contiguous region,
+		  allocate the largest contiguous region and loop
+	  2.  Otherwise, allocate the smallest contiguous region that it fits in
 */
 struct block_allocation *allocate_blocks(u32 len)
 {
@@ -452,6 +439,8 @@ struct block_allocation *allocate_blocks(u32 len)
 
 	struct block_allocation *alloc = create_allocation();
 	alloc->list.first = reg;
+	while (reg->next != NULL)
+		reg = reg->next;
 	alloc->list.last = reg;
 	alloc->list.iter = alloc->list.first;
 	alloc->list.partial_iter = 0;
@@ -779,3 +768,34 @@ void free_alloc(struct block_allocation *alloc)
 
 	free(alloc);
 }
+
+void reserve_bg_chunk(int bg, u32 start_block, u32 size) {
+	struct block_group_info *bgs = aux_info.bgs;
+	int chunk_count;
+	if (bgs[bg].chunk_count == bgs[bg].max_chunk_count) {
+		bgs[bg].max_chunk_count *= 2;
+		bgs[bg].chunks = realloc(bgs[bg].chunks, bgs[bg].max_chunk_count * sizeof(struct region));
+		if (!bgs[bg].chunks)
+			critical_error("realloc failed");
+	}
+	chunk_count = bgs[bg].chunk_count;
+	bgs[bg].chunks[chunk_count].block = start_block;
+	bgs[bg].chunks[chunk_count].len = size;
+	bgs[bg].chunks[chunk_count].bg = bg;
+	bgs[bg].chunk_count++;
+}
+
+int reserve_blocks_for_allocation(struct block_allocation *alloc) {
+	struct region *reg;
+	struct block_group_info *bgs = aux_info.bgs;
+
+	if (!alloc) return 0;
+	reg = alloc->list.first;
+	while (reg != NULL) {
+		if (reserve_blocks(&bgs[reg->bg], reg->block - bgs[reg->bg].first_block, reg->len) < 0)
+			return -1;
+		reg = reg->next;
+	}
+	return 0;
+}
+

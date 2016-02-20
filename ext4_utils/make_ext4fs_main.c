@@ -57,6 +57,7 @@ static void usage(char *path)
 	fprintf(stderr, "    [ -L <label> ] [ -f ] [ -a <android mountpoint> ] [ -u ]\n");
 	fprintf(stderr, "    [ -S file_contexts ] [ -C fs_config ] [ -T timestamp ]\n");
 	fprintf(stderr, "    [ -z | -s ] [ -w ] [ -c ] [ -J ] [ -v ] [ -B <block_list_file> ]\n");
+	fprintf(stderr, "    [ -d <base_alloc_file_in> ] [ -D <base_alloc_file_out> ]\n");
 	fprintf(stderr, "    <filename> [[<directory>] <target_out_directory>]\n");
 }
 
@@ -80,11 +81,13 @@ int main(int argc, char **argv)
 	time_t fixed_time = -1;
 	struct selabel_handle *sehnd = NULL;
 	FILE* block_list_file = NULL;
+	FILE* base_alloc_file_in = NULL;
+	FILE* base_alloc_file_out = NULL;
 #ifndef USE_MINGW
 	struct selinux_opt seopts[] = { { SELABEL_OPT_PATH, "" } };
 #endif
 
-	while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:S:T:C:B:fwzJsctvu")) != -1) {
+	while ((opt = getopt(argc, argv, "l:j:b:g:i:I:L:a:S:T:C:B:d:D:fwzJsctvu")) != -1) {
 		switch (opt) {
 		case 'l':
 			info.len = parse_num(optarg);
@@ -166,6 +169,20 @@ int main(int argc, char **argv)
 				exit(EXIT_FAILURE);
 			}
 			break;
+		case 'd':
+			base_alloc_file_in = fopen(optarg, "r");
+			if (base_alloc_file_in == NULL) {
+				fprintf(stderr, "failed to open base_alloc_file_in: %s\n", strerror(errno));
+				exit(EXIT_FAILURE);
+			}
+			break;
+		case 'D':
+			base_alloc_file_out = fopen(optarg, "w");
+			if (base_alloc_file_out == NULL) {
+				fprintf(stderr, "failed to open base_alloc_file_out: %s\n", strerror(errno));
+				exit(EXIT_FAILURE);
+			}
+			break;
 		default: /* '?' */
 			usage(argv[0]);
 			exit(EXIT_FAILURE);
@@ -237,10 +254,15 @@ int main(int argc, char **argv)
 	}
 
 	exitcode = make_ext4fs_internal(fd, directory, target_out_directory, mountpoint, fs_config_func, gzip,
-		sparse, crc, wipe, real_uuid, sehnd, verbose, fixed_time, block_list_file);
+		sparse, crc, wipe, real_uuid, sehnd, verbose, fixed_time,
+		block_list_file, base_alloc_file_in, base_alloc_file_out);
 	close(fd);
 	if (block_list_file)
 		fclose(block_list_file);
+	if (base_alloc_file_out)
+		fclose(base_alloc_file_out);
+	if (base_alloc_file_in)
+		fclose(base_alloc_file_in);
 	if (exitcode && strcmp(filename, "-"))
 		unlink(filename);
 	return exitcode;
