@@ -546,6 +546,7 @@ static int get_block_group(u32 block) {
 static void extract_base_fs_allocations(const char *directory, const char *mountpoint,
 										FILE* base_alloc_file_in) {
 #define err_msg "base file badly formatted"
+#ifndef USE_MINGW
 	// FORMAT Version 1.0: filename blk_mapping
 	const char *base_alloc_file_in_format = "%s %s";
 	const int base_file_format_param_count = 2;
@@ -644,6 +645,9 @@ static void extract_base_fs_allocations(const char *directory, const char *mount
 
 	free(base_file_line);
 
+#else
+    return;
+#endif
 #undef err_msg
 }
 
