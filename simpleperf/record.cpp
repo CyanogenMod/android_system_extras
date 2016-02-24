@@ -534,7 +534,7 @@ BuildIdRecord::BuildIdRecord(const perf_event_header* pheader) : Record(pheader)
   const char* p = reinterpret_cast<const char*>(pheader + 1);
   const char* end = reinterpret_cast<const char*>(pheader) + pheader->size;
   MoveFromBinaryFormat(pid, p);
-  build_id = BuildId(p);
+  build_id = BuildId(p, BUILD_ID_SIZE);
   p += ALIGN(build_id.Size(), 8);
   filename = p;
   p += ALIGN(filename.size() + 1, 64);

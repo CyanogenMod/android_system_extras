@@ -176,6 +176,7 @@ include $(BUILD_HOST_EXECUTABLE)
 # simpleperf_unit_test
 # =========================================================
 simpleperf_unit_test_src_files := \
+  cmd_report_test.cpp \
   command_test.cpp \
   gtest_main.cpp \
   read_apk_test.cpp \
@@ -187,7 +188,6 @@ simpleperf_unit_test_src_files_linux := \
   cmd_dumprecord_test.cpp \
   cmd_list_test.cpp \
   cmd_record_test.cpp \
-  cmd_report_test.cpp \
   cmd_stat_test.cpp \
   environment_test.cpp \
   record_file_test.cpp \

@@ -15,9 +15,12 @@
  */
 
 #include <map>
+#include <string>
 
 #include "read_elf.h"
 #include "workload.h"
+
+static const std::string SLEEP_SEC = "0.001";
 
 void CreateProcesses(size_t count, std::vector<std::unique_ptr<Workload>>* workloads);
 

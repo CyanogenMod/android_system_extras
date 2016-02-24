@@ -23,7 +23,7 @@
 
 TEST(read_elf, GetBuildIdFromElfFile) {
   BuildId build_id;
-  ASSERT_TRUE(GetBuildIdFromElfFile(GetTestData("elf_file"), &build_id));
+  ASSERT_TRUE(GetBuildIdFromElfFile(GetTestData(ELF_FILE), &build_id));
   ASSERT_EQ(build_id, BuildId(elf_file_build_id));
 }
 
@@ -50,14 +50,14 @@ void CheckElfFileSymbols(const std::map<std::string, ElfFileSymbol>& symbols) {
 
 TEST(read_elf, parse_symbols_from_elf_file_with_correct_build_id) {
   std::map<std::string, ElfFileSymbol> symbols;
-  ASSERT_TRUE(ParseSymbolsFromElfFile(GetTestData("elf_file"), elf_file_build_id,
+  ASSERT_TRUE(ParseSymbolsFromElfFile(GetTestData(ELF_FILE), elf_file_build_id,
                                       std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
   CheckElfFileSymbols(symbols);
 }
 
 TEST(read_elf, parse_symbols_from_elf_file_without_build_id) {
   std::map<std::string, ElfFileSymbol> symbols;
-  ASSERT_TRUE(ParseSymbolsFromElfFile(GetTestData("elf_file"), BuildId(),
+  ASSERT_TRUE(ParseSymbolsFromElfFile(GetTestData(ELF_FILE), BuildId(),
                                       std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
   CheckElfFileSymbols(symbols);
 }
@@ -65,7 +65,7 @@ TEST(read_elf, parse_symbols_from_elf_file_without_build_id) {
 TEST(read_elf, parse_symbols_from_elf_file_with_wrong_build_id) {
   BuildId build_id("01010101010101010101");
   std::map<std::string, ElfFileSymbol> symbols;
-  ASSERT_FALSE(ParseSymbolsFromElfFile(GetTestData("elf_file"), build_id,
+  ASSERT_FALSE(ParseSymbolsFromElfFile(GetTestData(ELF_FILE), build_id,
                                        std::bind(ParseSymbol, std::placeholders::_1, &symbols)));
 }
 
@@ -87,5 +87,5 @@ TEST(read_elf, arm_mapping_symbol) {
 TEST(read_elf, IsValidElfPath) {
   ASSERT_FALSE(IsValidElfPath("/dev/zero"));
   ASSERT_FALSE(IsValidElfPath("/sys/devices/system/cpu/online"));
-  ASSERT_TRUE(IsValidElfPath(GetTestData("elf_file")));
+  ASSERT_TRUE(IsValidElfPath(GetTestData(ELF_FILE)));
 }

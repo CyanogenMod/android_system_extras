@@ -16,17 +16,17 @@
 
 #include <gtest/gtest.h>
 
+#include <set>
+#include <unordered_map>
+
 #include <android-base/file.h>
+#include <android-base/strings.h>
 #include <android-base/test_utils.h>
 
 #include "command.h"
-#include "event_selection_set.h"
 #include "get_test_data.h"
 #include "read_apk.h"
-
-static std::unique_ptr<Command> RecordCmd() {
-  return CreateCommandInstance("record");
-}
+#include "test_util.h"
 
 static std::unique_ptr<Command> ReportCmd() {
   return CreateCommandInstance("report");
@@ -34,86 +34,242 @@ static std::unique_ptr<Command> ReportCmd() {
 
 class ReportCommandTest : public ::testing::Test {
  protected:
-  static void SetUpTestCase() {
-    ASSERT_TRUE(RecordCmd()->Run({"-a", "sleep", "1"}));
-    ASSERT_TRUE(RecordCmd()->Run({"-a", "-o", "perf2.data", "sleep", "1"}));
-    ASSERT_TRUE(RecordCmd()->Run({"--call-graph", "fp", "-o", "perf_g.data", "sleep", "1"}));
+  void Report(const std::string perf_data,
+              const std::vector<std::string>& add_args = std::vector<std::string>()) {
+    ReportRaw(GetTestData(perf_data), add_args);
   }
+
+  void ReportRaw(const std::string perf_data,
+                 const std::vector<std::string>& add_args = std::vector<std::string>()) {
+    success = false;
+    std::vector<std::string> args = {"-i", perf_data,
+        "--symfs", GetTestDataDir(), "-o", tmp_file.path};
+    args.insert(args.end(), add_args.begin(), add_args.end());
+    ASSERT_TRUE(ReportCmd()->Run(args));
+    ASSERT_TRUE(android::base::ReadFileToString(tmp_file.path, &content));
+    ASSERT_TRUE(!content.empty());
+    std::vector<std::string> raw_lines = android::base::Split(content, "\n");
+    lines.clear();
+    for (const auto& line : raw_lines) {
+      std::string s = android::base::Trim(line);
+      if (!s.empty()) {
+        lines.push_back(s);
+      }
+    }
+    ASSERT_GE(lines.size(), 2u);
+    success = true;
+  }
+
+  TemporaryFile tmp_file;
+  std::string content;
+  std::vector<std::string> lines;
+  bool success;
 };
 
-TEST_F(ReportCommandTest, no_options) {
-  ASSERT_TRUE(ReportCmd()->Run({}));
-}
-
-TEST_F(ReportCommandTest, input_file_option) {
-  ASSERT_TRUE(ReportCmd()->Run({"-i", "perf2.data"}));
+TEST_F(ReportCommandTest, no_option) {
+  Report(PERF_DATA);
+  ASSERT_TRUE(success);
+  ASSERT_NE(content.find("GlobalFunc"), std::string::npos);
 }
 
 TEST_F(ReportCommandTest, sort_option_pid) {
-  ASSERT_TRUE(ReportCmd()->Run({"--sort", "pid"}));
+  Report(PERF_DATA, {"--sort", "pid"});
+  ASSERT_TRUE(success);
+  size_t line_index = 0;
+  while (line_index < lines.size() && lines[line_index].find("Pid") == std::string::npos) {
+    line_index++;
+  }
+  ASSERT_LT(line_index + 2, lines.size());
 }
 
-TEST_F(ReportCommandTest, sort_option_all) {
-  ASSERT_TRUE(ReportCmd()->Run({"--sort", "comm,pid,dso,symbol"}));
+TEST_F(ReportCommandTest, sort_option_more_than_one) {
+  Report(PERF_DATA, {"--sort", "comm,pid,dso,symbol"});
+  ASSERT_TRUE(success);
+  size_t line_index = 0;
+  while (line_index < lines.size() && lines[line_index].find("Overhead") == std::string::npos) {
+    line_index++;
+  }
+  ASSERT_LT(line_index + 1, lines.size());
+  ASSERT_NE(lines[line_index].find("Command"), std::string::npos);
+  ASSERT_NE(lines[line_index].find("Pid"), std::string::npos);
+  ASSERT_NE(lines[line_index].find("Shared Object"), std::string::npos);
+  ASSERT_NE(lines[line_index].find("Symbol"), std::string::npos);
+  ASSERT_EQ(lines[line_index].find("Tid"), std::string::npos);
 }
 
 TEST_F(ReportCommandTest, children_option) {
-  ASSERT_TRUE(ReportCmd()->Run({"--children", "-i", "perf_g.data"}));
+  Report(CALLGRAPH_FP_PERF_DATA, {"--children", "--sort", "symbol"});
+  ASSERT_TRUE(success);
+  std::unordered_map<std::string, std::pair<double, double>> map;
+  for (size_t i = 0; i < lines.size(); ++i) {
+    char name[1024];
+    std::pair<double, double> pair;
+    if (sscanf(lines[i].c_str(), "%lf%%%lf%%%s", &pair.first, &pair.second, name) == 3) {
+      map.insert(std::make_pair(name, pair));
+    }
+  }
+  ASSERT_NE(map.find("GlobalFunc"), map.end());
+  ASSERT_NE(map.find("main"), map.end());
+  auto func_pair = map["GlobalFunc"];
+  auto main_pair = map["main"];
+  ASSERT_GE(main_pair.first, func_pair.first);
+  ASSERT_GE(func_pair.first, func_pair.second);
+  ASSERT_GE(func_pair.second, main_pair.second);
+}
+
+static bool CheckCalleeMode(std::vector<std::string>& lines) {
+  bool found = false;
+  for (size_t i = 0; i + 2 < lines.size(); ++i) {
+    if (lines[i].find("GlobalFunc") != std::string::npos &&
+        lines[i + 1].find("|") != std::string::npos &&
+        lines[i + 2].find("main") != std::string::npos) {
+      found = true;
+      break;
+    }
+  }
+  return found;
+}
+
+static bool CheckCallerMode(std::vector<std::string>& lines) {
+  bool found = false;
+  for (size_t i = 0; i + 2 < lines.size(); ++i) {
+    if (lines[i].find("main") != std::string::npos &&
+        lines[i + 1].find("|") != std::string::npos &&
+        lines[i + 2].find("GlobalFunc") != std::string::npos) {
+      found = true;
+      break;
+    }
+  }
+  return found;
 }
 
 TEST_F(ReportCommandTest, callgraph_option) {
-  ASSERT_TRUE(ReportCmd()->Run({"-g", "-i", "perf_g.data"}));
-  ASSERT_TRUE(ReportCmd()->Run({"-g", "callee", "-i", "perf_g.data"}));
-  ASSERT_TRUE(ReportCmd()->Run({"-g", "caller", "-i", "perf_g.data"}));
+  Report(CALLGRAPH_FP_PERF_DATA, {"-g"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(CheckCalleeMode(lines));
+  Report(CALLGRAPH_FP_PERF_DATA, {"-g", "callee"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(CheckCalleeMode(lines));
+  Report(CALLGRAPH_FP_PERF_DATA, {"-g", "caller"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(CheckCallerMode(lines));
+}
+
+static bool AllItemsWithString(std::vector<std::string>& lines, const std::vector<std::string>& strs) {
+  size_t line_index = 0;
+  while (line_index < lines.size() && lines[line_index].find("Overhead") == std::string::npos) {
+    line_index++;
+  }
+  if (line_index == lines.size() || line_index + 1 == lines.size()) {
+    return false;
+  }
+  line_index++;
+  for (; line_index < lines.size(); ++line_index) {
+    bool exist = false;
+    for (auto& s : strs) {
+      if (lines[line_index].find(s) != std::string::npos) {
+        exist = true;
+        break;
+      }
+    }
+    if (!exist) {
+      return false;
+    }
+  }
+  return true;
 }
 
 TEST_F(ReportCommandTest, pid_filter_option) {
-  ASSERT_TRUE(ReportCmd()->Run({"--pids", "0"}));
-  ASSERT_TRUE(ReportCmd()->Run({"--pids", "0,1"}));
+  Report(PERF_DATA);
+  ASSERT_TRUE("success");
+  ASSERT_FALSE(AllItemsWithString(lines, {"26083"}));
+  ASSERT_FALSE(AllItemsWithString(lines, {"26083", "26090"}));
+  Report(PERF_DATA, {"--pids", "26083"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(AllItemsWithString(lines, {"26083"}));
+  Report(PERF_DATA, {"--pids", "26083,26090"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(AllItemsWithString(lines, {"26083", "26090"}));
 }
 
 TEST_F(ReportCommandTest, tid_filter_option) {
-  ASSERT_TRUE(ReportCmd()->Run({"--tids", "0"}));
-  ASSERT_TRUE(ReportCmd()->Run({"--tids", "0,1"}));
+  Report(PERF_DATA);
+  ASSERT_TRUE("success");
+  ASSERT_FALSE(AllItemsWithString(lines, {"26083"}));
+  ASSERT_FALSE(AllItemsWithString(lines, {"26083", "26090"}));
+  Report(PERF_DATA, {"--tids", "26083"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(AllItemsWithString(lines, {"26083"}));
+  Report(PERF_DATA, {"--tids", "26083,26090"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(AllItemsWithString(lines, {"26083", "26090"}));
 }
 
 TEST_F(ReportCommandTest, comm_filter_option) {
-  ASSERT_TRUE(ReportCmd()->Run({"--comms", "swapper"}));
-  ASSERT_TRUE(ReportCmd()->Run({"--comms", "swapper,simpleperf"}));
+  Report(PERF_DATA, {"--sort", "comm"});
+  ASSERT_TRUE(success);
+  ASSERT_FALSE(AllItemsWithString(lines, {"t1"}));
+  ASSERT_FALSE(AllItemsWithString(lines, {"t1", "t2"}));
+  Report(PERF_DATA, {"--sort", "comm", "--comms", "t1"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(AllItemsWithString(lines, {"t1"}));
+  Report(PERF_DATA, {"--sort", "comm", "--comms", "t1,t2"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(AllItemsWithString(lines, {"t1", "t2"}));
 }
 
 TEST_F(ReportCommandTest, dso_filter_option) {
-  ASSERT_TRUE(ReportCmd()->Run({"--dsos", "[kernel.kallsyms]"}));
-  ASSERT_TRUE(ReportCmd()->Run({"--dsos", "[kernel.kallsyms],/init"}));
+  Report(PERF_DATA, {"--sort", "dso"});
+  ASSERT_TRUE(success);
+  ASSERT_FALSE(AllItemsWithString(lines, {"/t1"}));
+  ASSERT_FALSE(AllItemsWithString(lines, {"/t1", "/t2"}));
+  Report(PERF_DATA, {"--sort", "dso", "--dsos", "/t1"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(AllItemsWithString(lines, {"/t1"}));
+  Report(PERF_DATA, {"--sort", "dso", "--dsos", "/t1,/t2"});
+  ASSERT_TRUE(success);
+  ASSERT_TRUE(AllItemsWithString(lines, {"/t1", "/t2"}));
 }
 
-TEST(report_cmd, use_branch_address) {
-  if (IsBranchSamplingSupported()) {
-    ASSERT_TRUE(RecordCmd()->Run({"-b", "sleep", "1"}));
-    ASSERT_TRUE(
-        ReportCmd()->Run({"-b", "--sort", "comm,pid,dso_from,symbol_from,dso_to,symbol_to"}));
-  } else {
-    GTEST_LOG_(INFO)
-        << "This test does nothing as branch stack sampling is not supported on this device.";
+TEST_F(ReportCommandTest, use_branch_address) {
+  Report(BRANCH_PERF_DATA, {"-b", "--sort", "symbol_from,symbol_to"});
+  std::set<std::pair<std::string, std::string>> hit_set;
+  bool after_overhead = false;
+  for (const auto& line : lines) {
+    if (!after_overhead && line.find("Overhead") != std::string::npos) {
+      after_overhead = true;
+    } else if (after_overhead) {
+      char from[80];
+      char to[80];
+      if (sscanf(line.c_str(), "%*f%%%s%s", from, to) == 2) {
+        hit_set.insert(std::make_pair<std::string, std::string>(from, to));
+      }
+    }
   }
+  ASSERT_NE(hit_set.find(std::make_pair<std::string, std::string>("GlobalFunc", "CalledFunc")),
+            hit_set.end());
+  ASSERT_NE(hit_set.find(std::make_pair<std::string, std::string>("CalledFunc", "GlobalFunc")),
+            hit_set.end());
 }
 
-TEST(report_cmd, dwarf_callgraph) {
-  if (IsDwarfCallChainSamplingSupported()) {
-    ASSERT_TRUE(RecordCmd()->Run({"-g", "-o", "perf_dwarf.data", "sleep", "1"}));
-    ASSERT_TRUE(ReportCmd()->Run({"-g", "-i", "perf_dwarf.data"}));
-  } else {
-    GTEST_LOG_(INFO)
-        << "This test does nothing as dwarf callchain sampling is not supported on this device.";
-  }
+#if defined(__ANDROID__) || defined(__linux__)
+
+static std::unique_ptr<Command> RecordCmd() {
+  return CreateCommandInstance("record");
 }
 
-TEST(report_cmd, report_symbols_of_nativelib_in_apk) {
+TEST_F(ReportCommandTest, dwarf_callgraph) {
   TemporaryFile tmp_file;
-  ASSERT_TRUE(ReportCmd()->Run({"-i", GetTestData(NATIVELIB_IN_APK_PERF_DATA),
-                                "--symfs", GetTestDataDir(), "-o", tmp_file.path}));
-  std::string content;
-  ASSERT_TRUE(android::base::ReadFileToString(tmp_file.path, &content));
+  ASSERT_TRUE(RecordCmd()->Run({"-g", "-o", tmp_file.path, "sleep", SLEEP_SEC}));
+  ReportRaw(tmp_file.path, {"-g"});
+  ASSERT_TRUE(success);
+}
+
+#endif
+
+TEST_F(ReportCommandTest, report_symbols_of_nativelib_in_apk) {
+  Report(NATIVELIB_IN_APK_PERF_DATA);
+  ASSERT_TRUE(success);
   ASSERT_NE(content.find(GetUrlInApk(APK_FILE, NATIVELIB_IN_APK)), std::string::npos);
   ASSERT_NE(content.find("GlobalFunc"), std::string::npos);
 }

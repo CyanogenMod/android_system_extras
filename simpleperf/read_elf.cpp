@@ -184,7 +184,9 @@ bool GetBuildIdFromElfFile(const std::string& filename, BuildId* build_id) {
   if (!IsValidElfPath(filename)) {
     return false;
   }
-  return GetBuildIdFromEmbeddedElfFile(filename, 0, 0, build_id);
+  bool result = GetBuildIdFromEmbeddedElfFile(filename, 0, 0, build_id);
+  LOG(VERBOSE) << "GetBuildIdFromElfFile(" << filename << ") => " << build_id->ToString();
+  return result;
 }
 
 bool GetBuildIdFromEmbeddedElfFile(const std::string& filename, uint64_t file_offset,

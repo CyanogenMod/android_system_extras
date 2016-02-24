@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 
 #include "command.h"
+#include "test_util.h"
 
 class DumpRecordCommandTest : public ::testing::Test {
  protected:
@@ -32,11 +33,11 @@ class DumpRecordCommandTest : public ::testing::Test {
 };
 
 TEST_F(DumpRecordCommandTest, no_options) {
-  ASSERT_TRUE(record_cmd->Run({"-a", "sleep", "1"}));
+  ASSERT_TRUE(record_cmd->Run({"-a", "sleep", SLEEP_SEC}));
   ASSERT_TRUE(dumprecord_cmd->Run({}));
 }
 
 TEST_F(DumpRecordCommandTest, record_file_option) {
-  ASSERT_TRUE(record_cmd->Run({"-a", "-o", "perf2.data", "sleep", "1"}));
+  ASSERT_TRUE(record_cmd->Run({"-a", "-o", "perf2.data", "sleep", SLEEP_SEC}));
   ASSERT_TRUE(dumprecord_cmd->Run({"perf2.data"}));
 }

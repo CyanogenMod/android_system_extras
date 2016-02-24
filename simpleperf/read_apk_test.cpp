@@ -23,7 +23,7 @@
 
 TEST(read_apk, IsValidApkPath) {
   ASSERT_FALSE(IsValidApkPath("/dev/zero"));
-  ASSERT_FALSE(IsValidApkPath(GetTestData("elf_file")));
+  ASSERT_FALSE(IsValidApkPath(GetTestData(ELF_FILE)));
   ASSERT_TRUE(IsValidApkPath(GetTestData(APK_FILE)));
 }
 
