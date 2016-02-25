@@ -73,6 +73,6 @@ void HelpCommand::PrintLongHelpForOneCommand(const Command& command) {
   printf("%s\n", command.LongHelpString().c_str());
 }
 
-__attribute__((constructor)) static void RegisterHelpCommand() {
+void RegisterHelpCommand() {
   RegisterCommand("help", [] { return std::unique_ptr<Command>(new HelpCommand); });
 }

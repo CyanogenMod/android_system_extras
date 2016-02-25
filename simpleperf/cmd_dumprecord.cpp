@@ -207,6 +207,6 @@ void DumpRecordCommand::DumpFeatureSection() {
   }
 }
 
-__attribute__((constructor)) static void RegisterDumpRecordCommand() {
+void RegisterDumpRecordCommand() {
   RegisterCommand("dump", [] { return std::unique_ptr<Command>(new DumpRecordCommand); });
 }

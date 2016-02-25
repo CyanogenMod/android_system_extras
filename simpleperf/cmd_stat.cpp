@@ -411,6 +411,6 @@ bool StatCommand::ShowCounters(const std::vector<CountersInfo>& counters, double
   return true;
 }
 
-__attribute__((constructor)) static void RegisterStatCommand() {
+void RegisterStatCommand() {
   RegisterCommand("stat", [] { return std::unique_ptr<Command>(new StatCommand); });
 }

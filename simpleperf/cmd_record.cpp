@@ -844,6 +844,6 @@ void RecordCommand::CollectHitFileInfo(Record* record) {
   }
 }
 
-__attribute__((constructor)) static void RegisterRecordCommand() {
+void RegisterRecordCommand() {
   RegisterCommand("record", [] { return std::unique_ptr<Command>(new RecordCommand()); });
 }

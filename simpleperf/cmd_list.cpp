@@ -82,6 +82,6 @@ bool ListCommand::Run(const std::vector<std::string>& args) {
   return true;
 }
 
-__attribute__((constructor)) static void RegisterListCommand() {
+void RegisterListCommand() {
   RegisterCommand("list", [] { return std::unique_ptr<Command>(new ListCommand); });
 }

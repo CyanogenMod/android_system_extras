@@ -68,3 +68,26 @@ const std::vector<std::string> GetAllCommandNames() {
   }
   return names;
 }
+
+extern void RegisterDumpRecordCommand();
+extern void RegisterHelpCommand();
+extern void RegisterListCommand();
+extern void RegisterRecordCommand();
+extern void RegisterReportCommand();
+extern void RegisterStatCommand();
+
+class CommandRegister {
+ public:
+  CommandRegister() {
+    RegisterDumpRecordCommand();
+    RegisterHelpCommand();
+    RegisterReportCommand();
+#if defined(__linux__)
+    RegisterListCommand();
+    RegisterRecordCommand();
+    RegisterStatCommand();
+#endif
+  }
+};
+
+CommandRegister command_register;

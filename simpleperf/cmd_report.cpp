@@ -773,6 +773,6 @@ void ReportCommand::PrintCallGraphEntry(size_t depth, std::string prefix,
   }
 }
 
-__attribute__((constructor)) static void RegisterReportCommand() {
+void RegisterReportCommand() {
   RegisterCommand("report", [] { return std::unique_ptr<Command>(new ReportCommand()); });
 }
