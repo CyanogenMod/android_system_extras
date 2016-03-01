@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 
-#include <gtest/gtest.h>
-
 #include <pagemap/pagemap.h>
+
+#include <string>
+
+#include <gtest/gtest.h>
 
 TEST(pagemap, maps) {
   pm_kernel_t* kernel;
@@ -32,8 +34,9 @@ TEST(pagemap, maps) {
   bool found_heap = false;
   bool found_stack = false;
   for (size_t i = 0; i < num_maps; i++) {
-    if (strcmp(maps[i]->name, "[heap]") == 0) found_heap = true;
-    if (strcmp(maps[i]->name, "[stack]") == 0) found_stack = true;
+    std::string name(maps[i]->name);
+    if (name == "[heap]" || name == "[anon:libc_malloc]") found_heap = true;
+    if (name == "[stack]") found_stack = true;
   }
 
   ASSERT_TRUE(found_heap);
