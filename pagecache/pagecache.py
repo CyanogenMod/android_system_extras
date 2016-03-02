@@ -227,7 +227,7 @@ class AdbUtils():
     dump = ''.join(dump)
     return dump
 
-def parse_atrace_line(line, pagecache_stats):
+def parse_atrace_line(line, pagecache_stats, app_name):
   # Find a mm_filemap_add_to_page_cache entry
   m = re.match('.* (mm_filemap_add_to_page_cache|mm_filemap_delete_from_page_cache): dev (\d+):(\d+) ino ([0-9a-z]+) page=([0-9a-z]+) pfn=\d+ ofs=(\d+).*', line)
   if m != None:
@@ -236,6 +236,8 @@ def parse_atrace_line(line, pagecache_stats):
     if device_number == 0:
       return
     inode = int(m.group(4), 16)
+    if app_name != None and not (app_name in m.group(0)):
+      return
     if m.group(1) == 'mm_filemap_add_to_page_cache':
       pagecache_stats.add_page(device_number, inode, m.group(4))
     elif m.group(1) == 'mm_filemap_delete_from_page_cache':
@@ -275,12 +277,12 @@ def get_inode_data(datafile, dumpfile, adb_serial):
 
   return stat_dump
 
-def read_and_parse_trace_file(trace_file, pagecache_stats):
+def read_and_parse_trace_file(trace_file, pagecache_stats, app_name):
   for line in trace_file:
-    parse_atrace_line(line, pagecache_stats)
+    parse_atrace_line(line, pagecache_stats, app_name)
   pagecache_stats.print_stats();
 
-def read_and_parse_trace_data_live(stdout, stderr, pagecache_stats):
+def read_and_parse_trace_data_live(stdout, stderr, pagecache_stats, app_name):
   # Start reading trace data
   stdout_queue = Queue.Queue(maxsize=128)
   stderr_queue = Queue.Queue()
@@ -359,6 +361,8 @@ def parse_options(argv):
                     help='adb device serial number')
   parser.add_option('-f', dest='trace_file', metavar='FILE',
                     help='Show stats from a trace file, instead of running live.')
+  parser.add_option('-a', dest='app_name', type='string',
+                    help='filter a particular app')
 
   options, categories = parser.parse_args(argv[1:])
   if options.inode_dump_file and options.inode_data_file:
@@ -381,7 +385,7 @@ def main():
       print >> sys.stderr, ('Couldn\'t load trace file.')
       sys.exit(1)
     trace_file = open(options.trace_file, 'r')
-    read_and_parse_trace_file(trace_file, pagecache_stats)
+    read_and_parse_trace_file(trace_file, pagecache_stats, options.app_name)
   else:
     # Construct and execute trace command
     trace_cmd = AdbUtils.construct_adb_shell_command(['atrace', '--stream', 'pagecache'],
@@ -394,7 +398,7 @@ def main():
       print >> sys.stderr, ('The command failed')
       sys.exit(1)
 
-    read_and_parse_trace_data_live(atrace.stdout, atrace.stderr, pagecache_stats)
+    read_and_parse_trace_data_live(atrace.stdout, atrace.stderr, pagecache_stats, app_name)
 
 if __name__ == "__main__":
   main()
