@@ -18,6 +18,7 @@
 
 #include <functional>
 #include <android-base/file.h>
+#include <android-base/test_utils.h>
 
 #include "environment.h"
 
@@ -28,10 +29,21 @@ TEST(environment, GetCpusFromString) {
   ASSERT_EQ(GetCpusFromString("1,0-3,3,4"), std::vector<int>({0, 1, 2, 3, 4}));
 }
 
-static bool FindKernelSymbol(const KernelSymbol& sym1, const KernelSymbol& sym2) {
-  return sym1.addr == sym2.addr && sym1.type == sym2.type && strcmp(sym1.name, sym2.name) == 0 &&
-         ((sym1.module == nullptr && sym2.module == nullptr) ||
-          (strcmp(sym1.module, sym2.module) == 0));
+static bool ModulesMatch(const char* p, const char* q) {
+  if (p == nullptr && q == nullptr) {
+    return true;
+  }
+  if (p != nullptr && q != nullptr) {
+    return strcmp(p, q) == 0;
+  }
+  return false;
+}
+
+static bool KernelSymbolsMatch(const KernelSymbol& sym1, const KernelSymbol& sym2) {
+  return sym1.addr == sym2.addr &&
+         sym1.type == sym2.type &&
+         strcmp(sym1.name, sym2.name) == 0 &&
+         ModulesMatch(sym1.module, sym2.module);
 }
 
 TEST(environment, ProcessKernelSymbols) {
@@ -39,25 +51,24 @@ TEST(environment, ProcessKernelSymbols) {
       "ffffffffa005c4e4 d __warned.41698   [libsas]\n"
       "aaaaaaaaaaaaaaaa T _text\n"
       "cccccccccccccccc c ccccc\n";
-  const char* tempfile = "tempfile_process_kernel_symbols";
-  ASSERT_TRUE(android::base::WriteStringToFile(data, tempfile));
+  TemporaryFile tempfile;
+  ASSERT_TRUE(android::base::WriteStringToFile(data, tempfile.path));
   KernelSymbol expected_symbol;
   expected_symbol.addr = 0xffffffffa005c4e4ULL;
   expected_symbol.type = 'd';
   expected_symbol.name = "__warned.41698";
   expected_symbol.module = "libsas";
   ASSERT_TRUE(ProcessKernelSymbols(
-      tempfile, std::bind(&FindKernelSymbol, std::placeholders::_1, expected_symbol)));
+      tempfile.path, std::bind(&KernelSymbolsMatch, std::placeholders::_1, expected_symbol)));
 
   expected_symbol.addr = 0xaaaaaaaaaaaaaaaaULL;
   expected_symbol.type = 'T';
   expected_symbol.name = "_text";
   expected_symbol.module = nullptr;
   ASSERT_TRUE(ProcessKernelSymbols(
-      tempfile, std::bind(&FindKernelSymbol, std::placeholders::_1, expected_symbol)));
+      tempfile.path, std::bind(&KernelSymbolsMatch, std::placeholders::_1, expected_symbol)));
 
   expected_symbol.name = "non_existent_symbol";
   ASSERT_FALSE(ProcessKernelSymbols(
-      tempfile, std::bind(&FindKernelSymbol, std::placeholders::_1, expected_symbol)));
-  ASSERT_EQ(0, unlink(tempfile));
+      tempfile.path, std::bind(&KernelSymbolsMatch, std::placeholders::_1, expected_symbol)));
 }

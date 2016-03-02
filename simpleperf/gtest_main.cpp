@@ -16,29 +16,112 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+
+#include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/test_utils.h>
+#include <ziparchive/zip_archive.h>
 
 #include "get_test_data.h"
+#include "read_elf.h"
 #include "utils.h"
 
 static std::string testdata_dir;
 
+#if defined(IN_CTS_TEST)
+static const std::string testdata_section = ".testzipdata";
+
+static bool ExtractTestDataFromElfSection() {
+  if (!MkdirWithParents(testdata_dir)) {
+    PLOG(ERROR) << "failed to create testdata_dir " << testdata_dir;
+    return false;
+  }
+  std::string content;
+  if (!ReadSectionFromElfFile("/proc/self/exe", testdata_section, &content)) {
+    LOG(ERROR) << "failed to read section " << testdata_section;
+    return false;
+  }
+  TemporaryFile tmp_file;
+  if (!android::base::WriteStringToFile(content, tmp_file.path)) {
+    PLOG(ERROR) << "failed to write file " << tmp_file.path;
+    return false;
+  }
+  ArchiveHelper ahelper(tmp_file.fd, tmp_file.path);
+  if (!ahelper) {
+    LOG(ERROR) << "failed to open archive " << tmp_file.path;
+    return false;
+  }
+  ZipArchiveHandle& handle = ahelper.archive_handle();
+  void* cookie;
+  int ret = StartIteration(handle, &cookie, nullptr, nullptr);
+  if (ret != 0) {
+    LOG(ERROR) << "failed to start iterating zip entries";
+    return false;
+  }
+  ZipEntry entry;
+  ZipString name;
+  while (Next(cookie, &entry, &name) == 0) {
+    std::string entry_name(name.name, name.name + name.name_length);
+    std::string path = testdata_dir + entry_name;
+    // Skip dir.
+    if (path.back() == '/') {
+      continue;
+    }
+    if (!MkdirWithParents(path)) {
+      LOG(ERROR) << "failed to create dir for " << path;
+      return false;
+    }
+    FileHelper fhelper = FileHelper::OpenWriteOnly(path);
+    if (!fhelper) {
+      PLOG(ERROR) << "failed to create file " << path;
+      return false;
+    }
+    std::vector<uint8_t> data(entry.uncompressed_length);
+    if (ExtractToMemory(handle, &entry, data.data(), data.size()) != 0) {
+      LOG(ERROR) << "failed to extract entry " << entry_name;
+      return false;
+    }
+    if (!android::base::WriteFully(fhelper.fd(), data.data(), data.size())) {
+      LOG(ERROR) << "failed to write file " << path;
+      return false;
+    }
+  }
+  EndIteration(cookie);
+  return true;
+}
+#endif  // defined(IN_CTS_TEST)
+
 int main(int argc, char** argv) {
   InitLogging(argv, android::base::StderrLogger);
   testing::InitGoogleTest(&argc, argv);
+
   for (int i = 1; i < argc; ++i) {
     if (strcmp(argv[i], "-t") == 0 && i + 1 < argc) {
       testdata_dir = argv[i + 1];
-      break;
+      i++;
     }
   }
-  if (testdata_dir.empty()) {
-    printf("Usage: simpleperf_unit_test -t <testdata_dir>\n");
+
+#if defined(IN_CTS_TEST)
+  std::unique_ptr<TemporaryDir> tmp_dir;
+  if (!::testing::GTEST_FLAG(list_tests) && testdata_dir.empty()) {
+    tmp_dir.reset(new TemporaryDir);
+    testdata_dir = std::string(tmp_dir->path) + "/";
+    if (!ExtractTestDataFromElfSection()) {
+      LOG(ERROR) << "failed to extract test data from elf section";
+      return 1;
+    }
+  }
+#endif
+  if (!::testing::GTEST_FLAG(list_tests) && testdata_dir.empty()) {
+    printf("Usage: %s -t <testdata_dir>\n", argv[0]);
     return 1;
   }
   if (testdata_dir.back() != '/') {
     testdata_dir.push_back('/');
   }
+  LOG(INFO) << "testdata is in " << testdata_dir;
   return RUN_ALL_TESTS();
 }
 
@@ -48,4 +131,16 @@ std::string GetTestData(const std::string& filename) {
 
 const std::string& GetTestDataDir() {
   return testdata_dir;
+}
+
+bool IsRoot() {
+  static int is_root = -1;
+  if (is_root == -1) {
+#if defined(__linux__)
+    is_root = (getuid() == 0) ? 1 : 0;
+#else
+    is_root = 0;
+#endif
+  }
+  return is_root == 1;
 }

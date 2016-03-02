@@ -51,6 +51,9 @@ bool ReadMinExecutableVirtualAddressFromElfFile(const std::string& filename,
                                                 const BuildId& expected_build_id,
                                                 uint64_t* min_addr);
 
+bool ReadSectionFromElfFile(const std::string& filename, const std::string& section_name,
+                            std::string* content);
+
 // Expose the following functions for unit tests.
 bool IsArmMappingSymbol(const char* name);
 bool IsValidElfFile(int fd);

@@ -253,4 +253,40 @@ LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
 LOCAL_MULTILIB := first
 include $(BUILD_HOST_NATIVE_TEST)
 
+
+# libsimpleperf_cts_test
+# =========================================================
+libsimpleperf_cts_test_src_files := \
+  $(libsimpleperf_src_files) \
+  $(libsimpleperf_src_files_linux) \
+  $(simpleperf_unit_test_src_files) \
+  $(simpleperf_unit_test_src_files_linux) \
+
+# libsimpleperf_cts_test target
+include $(CLEAR_VARS)
+LOCAL_CLANG := true
+LOCAL_MODULE := libsimpleperf_cts_test
+LOCAL_CPPFLAGS := $(simpleperf_cppflags_target) -DIN_CTS_TEST
+LOCAL_SRC_FILES := $(libsimpleperf_cts_test_src_files)
+LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_target)
+LOCAL_SHARED_LIBRARIES := $(simpleperf_shared_libraries_target)
+LOCAL_MULTILIB := both
+include $(LLVM_DEVICE_BUILD_MK)
+include $(BUILD_STATIC_TEST_LIBRARY)
+
+# libsimpleperf_cts_test linux host
+include $(CLEAR_VARS)
+LOCAL_CLANG := true
+LOCAL_MODULE := libsimpleperf_cts_test
+LOCAL_MODULE_HOST_OS := linux
+LOCAL_CPPFLAGS := $(simpleperf_cppflags_host) -DIN_CTS_TEST
+LOCAL_CPPFLAGS_linux := $(simpleperf_cppflags_host_linux)
+LOCAL_SRC_FILES := $(libsimpleperf_cts_test_src_files)
+LOCAL_STATIC_LIBRARIES := $(simpleperf_static_libraries_host)
+LOCAL_SHARED_LIBRARIES_linux := $(simpleperf_shared_libraries_host_linux)
+LOCAL_LDLIBS_linux := $(simpleperf_ldlibs_host_linux)
+LOCAL_MULTILIB := both
+include $(LLVM_HOST_BUILD_MK)
+include $(BUILD_HOST_STATIC_TEST_LIBRARY)
+
 include $(call first-makefiles-under,$(LOCAL_PATH))

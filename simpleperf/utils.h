@@ -23,6 +23,7 @@
 #include <vector>
 
 #include <android-base/macros.h>
+#include <ziparchive/zip_archive.h>
 
 #define ALIGN(value, alignment) (((value) + (alignment)-1) & ~((alignment)-1))
 
@@ -56,8 +57,14 @@ class OneTimeFreeAllocator {
 
 class FileHelper {
  public:
-  FileHelper();
-  explicit FileHelper(const std::string& filename);
+  static FileHelper OpenReadOnly(const std::string& filename);
+  static FileHelper OpenWriteOnly(const std::string& filename);
+
+  FileHelper(FileHelper&& other) {
+    fd_ = other.fd_;
+    other.fd_ = -1;
+  }
+
   ~FileHelper();
 
   explicit operator bool() const {
@@ -69,9 +76,30 @@ class FileHelper {
   }
 
  private:
+  FileHelper(int fd) : fd_(fd) {}
   int fd_;
 
   DISALLOW_COPY_AND_ASSIGN(FileHelper);
+};
+
+
+class ArchiveHelper {
+ public:
+  ArchiveHelper(int fd, const std::string& debug_filename);
+  ~ArchiveHelper();
+
+  explicit operator bool() const {
+    return valid_;
+  }
+  ZipArchiveHandle &archive_handle() {
+    return handle_;
+  }
+
+ private:
+  ZipArchiveHandle handle_;
+  bool valid_;
+
+  DISALLOW_COPY_AND_ASSIGN(ArchiveHelper);
 };
 
 template <class T>
@@ -89,5 +117,6 @@ void GetEntriesInDir(const std::string& dirpath, std::vector<std::string>* files
 bool IsDir(const std::string& dirpath);
 bool IsRegularFile(const std::string& filename);
 uint64_t GetFileSize(const std::string& filename);
+bool MkdirWithParents(const std::string& path);
 
 #endif  // SIMPLE_PERF_UTILS_H_

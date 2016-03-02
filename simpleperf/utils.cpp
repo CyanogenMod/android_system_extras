@@ -54,16 +54,35 @@ const char* OneTimeFreeAllocator::AllocateString(const std::string& s) {
   return result;
 }
 
-FileHelper::FileHelper() : fd_(-1) {
+
+FileHelper FileHelper::OpenReadOnly(const std::string& filename) {
+    int fd = TEMP_FAILURE_RETRY(open(filename.c_str(), O_RDONLY | O_BINARY));
+    return FileHelper(fd);
 }
 
-FileHelper::FileHelper(const std::string& filename) {
-  fd_ = TEMP_FAILURE_RETRY(open(filename.c_str(), O_RDONLY | O_BINARY));
+FileHelper FileHelper::OpenWriteOnly(const std::string& filename) {
+    int fd = TEMP_FAILURE_RETRY(open(filename.c_str(), O_WRONLY | O_BINARY | O_CREAT, 0644));
+    return FileHelper(fd);
 }
 
 FileHelper::~FileHelper() {
   if (fd_ != -1) {
     close(fd_);
+  }
+}
+
+ArchiveHelper::ArchiveHelper(int fd, const std::string& debug_filename) : valid_(false) {
+  int rc = OpenArchiveFd(fd, "", &handle_, false);
+  if (rc == 0) {
+    valid_ = true;
+  } else {
+    LOG(ERROR) << "Failed to open archive " << debug_filename << ": " << ErrorCodeString(rc);
+  }
+}
+
+ArchiveHelper::~ArchiveHelper() {
+  if (valid_) {
+    CloseArchive(handle_);
   }
 }
 
@@ -136,4 +155,28 @@ uint64_t GetFileSize(const std::string& filename) {
     return static_cast<uint64_t>(st.st_size);
   }
   return 0;
+}
+
+bool MkdirWithParents(const std::string& path) {
+  size_t prev_end = 0;
+  while (prev_end < path.size()) {
+    size_t next_end = path.find('/', prev_end + 1);
+    if (next_end == std::string::npos) {
+      break;
+    }
+    std::string dir_path = path.substr(0, next_end);
+    if (!IsDir(dir_path)) {
+#if defined(_WIN32)
+      int ret = mkdir(dir_path.c_str());
+#else
+      int ret = mkdir(dir_path.c_str(), 0755);
+#endif
+      if (ret != 0) {
+        PLOG(ERROR) << "failed to create dir " << dir_path;
+        return false;
+      }
+    }
+    prev_end = next_end;
+  }
+  return true;
 }

@@ -20,6 +20,8 @@
 
 #include <memory>
 
+#include <android-base/test_utils.h>
+
 #include "environment.h"
 #include "event_attr.h"
 #include "event_type.h"
@@ -32,10 +34,6 @@ using namespace PerfFileFormat;
 
 class RecordFileTest : public ::testing::Test {
  protected:
-  virtual void SetUp() {
-    filename_ = "temporary.record_file";
-  }
-
   void AddEventType(const std::string& event_type_str) {
     std::unique_ptr<EventTypeAndModifier> event_type_modifier = ParseEventType(event_type_str);
     ASSERT_TRUE(event_type_modifier != nullptr);
@@ -47,14 +45,14 @@ class RecordFileTest : public ::testing::Test {
     attr_ids_.push_back(attr_id);
   }
 
-  std::string filename_;
+  TemporaryFile tmpfile_;
   std::vector<std::unique_ptr<perf_event_attr>> attrs_;
   std::vector<AttrWithId> attr_ids_;
 };
 
 TEST_F(RecordFileTest, smoke) {
   // Write to a record file.
-  std::unique_ptr<RecordFileWriter> writer = RecordFileWriter::CreateInstance(filename_);
+  std::unique_ptr<RecordFileWriter> writer = RecordFileWriter::CreateInstance(tmpfile_.path);
   ASSERT_TRUE(writer != nullptr);
 
   // Write attr section.
@@ -78,7 +76,7 @@ TEST_F(RecordFileTest, smoke) {
   ASSERT_TRUE(writer->Close());
 
   // Read from a record file.
-  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(filename_);
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile_.path);
   ASSERT_TRUE(reader != nullptr);
   const std::vector<FileAttr>& file_attrs = reader->AttrSection();
   ASSERT_EQ(1u, file_attrs.size());
@@ -102,7 +100,7 @@ TEST_F(RecordFileTest, smoke) {
 
 TEST_F(RecordFileTest, records_sorted_by_time) {
   // Write to a record file.
-  std::unique_ptr<RecordFileWriter> writer = RecordFileWriter::CreateInstance(filename_);
+  std::unique_ptr<RecordFileWriter> writer = RecordFileWriter::CreateInstance(tmpfile_.path);
   ASSERT_TRUE(writer != nullptr);
 
   // Write attr section.
@@ -125,7 +123,7 @@ TEST_F(RecordFileTest, records_sorted_by_time) {
   ASSERT_TRUE(writer->Close());
 
   // Read from a record file.
-  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(filename_);
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile_.path);
   ASSERT_TRUE(reader != nullptr);
   std::vector<std::unique_ptr<Record>> records = reader->DataSection();
   ASSERT_EQ(3u, records.size());
@@ -138,7 +136,7 @@ TEST_F(RecordFileTest, records_sorted_by_time) {
 
 TEST_F(RecordFileTest, record_more_than_one_attr) {
   // Write to a record file.
-  std::unique_ptr<RecordFileWriter> writer = RecordFileWriter::CreateInstance(filename_);
+  std::unique_ptr<RecordFileWriter> writer = RecordFileWriter::CreateInstance(tmpfile_.path);
   ASSERT_TRUE(writer != nullptr);
 
   // Write attr section.
@@ -150,7 +148,7 @@ TEST_F(RecordFileTest, record_more_than_one_attr) {
   ASSERT_TRUE(writer->Close());
 
   // Read from a record file.
-  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(filename_);
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile_.path);
   ASSERT_TRUE(reader != nullptr);
   const std::vector<FileAttr>& file_attrs = reader->AttrSection();
   ASSERT_EQ(3u, file_attrs.size());

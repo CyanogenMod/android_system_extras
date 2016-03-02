@@ -19,6 +19,7 @@
 #include <android-base/stringprintf.h>
 
 #include "command.h"
+#include "get_test_data.h"
 #include "test_util.h"
 
 static std::unique_ptr<Command> StatCmd() {
@@ -34,7 +35,9 @@ TEST(stat_cmd, event_option) {
 }
 
 TEST(stat_cmd, system_wide_option) {
-  ASSERT_TRUE(StatCmd()->Run({"-a", "sleep", "1"}));
+  if (IsRoot()) {
+    ASSERT_TRUE(StatCmd()->Run({"-a", "sleep", "1"}));
+  }
 }
 
 TEST(stat_cmd, verbose_option) {
@@ -42,11 +45,13 @@ TEST(stat_cmd, verbose_option) {
 }
 
 TEST(stat_cmd, tracepoint_event) {
-  ASSERT_TRUE(StatCmd()->Run({"-a", "-e", "sched:sched_switch", "sleep", "1"}));
+  if (IsRoot()) {
+    ASSERT_TRUE(StatCmd()->Run({"-a", "-e", "sched:sched_switch", "sleep", "1"}));
+  }
 }
 
 TEST(stat_cmd, event_modifier) {
-  ASSERT_TRUE(StatCmd()->Run({"-e", "cpu-cycles:u,sched:sched_switch:k", "sleep", "1"}));
+  ASSERT_TRUE(StatCmd()->Run({"-e", "cpu-cycles:u,cpu-cycles:k", "sleep", "1"}));
 }
 
 void CreateProcesses(size_t count, std::vector<std::unique_ptr<Workload>>* workloads) {
@@ -82,5 +87,7 @@ TEST(stat_cmd, no_monitored_threads) {
 
 TEST(stat_cmd, cpu_option) {
   ASSERT_TRUE(StatCmd()->Run({"--cpu", "0", "sleep", "1"}));
-  ASSERT_TRUE(StatCmd()->Run({"--cpu", "0", "-a", "sleep", "1"}));
+  if (IsRoot()) {
+    ASSERT_TRUE(StatCmd()->Run({"--cpu", "0", "-a", "sleep", "1"}));
+  }
 }

@@ -24,6 +24,8 @@
 std::string GetTestData(const std::string& filename);
 const std::string& GetTestDataDir();
 
+bool IsRoot();
+
 static const std::string PERF_DATA = "perf.data";
 static const std::string CALLGRAPH_FP_PERF_DATA = "perf_g_fp.data";
 static const std::string BRANCH_PERF_DATA = "perf_b.data";

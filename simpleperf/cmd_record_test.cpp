@@ -17,10 +17,14 @@
 #include <gtest/gtest.h>
 
 #include <android-base/stringprintf.h>
+#include <android-base/test_utils.h>
+
+#include <memory>
 
 #include "command.h"
 #include "environment.h"
 #include "event_selection_set.h"
+#include "get_test_data.h"
 #include "record.h"
 #include "record_file.h"
 #include "test_util.h"
@@ -31,34 +35,51 @@ static std::unique_ptr<Command> RecordCmd() {
   return CreateCommandInstance("record");
 }
 
+static bool RunRecordCmd(std::vector<std::string> v, const char* output_file = nullptr) {
+  std::unique_ptr<TemporaryFile> tmpfile;
+  std::string out_file;
+  if (output_file != nullptr) {
+    out_file = output_file;
+  } else {
+    tmpfile.reset(new TemporaryFile);
+    out_file = tmpfile->path;
+  }
+  v.insert(v.end(), {"-o", out_file, "sleep", SLEEP_SEC});
+  return RecordCmd()->Run(v);
+}
+
 TEST(record_cmd, no_options) {
-  ASSERT_TRUE(RecordCmd()->Run({"sleep", SLEEP_SEC}));
+  ASSERT_TRUE(RunRecordCmd({}));
 }
 
 TEST(record_cmd, system_wide_option) {
-  ASSERT_TRUE(RecordCmd()->Run({"-a", "sleep", SLEEP_SEC}));
+  if (IsRoot()) {
+    ASSERT_TRUE(RunRecordCmd({"-a"}));
+  }
 }
 
 TEST(record_cmd, sample_period_option) {
-  ASSERT_TRUE(RecordCmd()->Run({"-c", "100000", "sleep", SLEEP_SEC}));
+  ASSERT_TRUE(RunRecordCmd({"-c", "100000"}));
 }
 
 TEST(record_cmd, event_option) {
-  ASSERT_TRUE(RecordCmd()->Run({"-e", "cpu-clock", "sleep", SLEEP_SEC}));
+  ASSERT_TRUE(RunRecordCmd({"-e", "cpu-clock"}));
 }
 
 TEST(record_cmd, freq_option) {
-  ASSERT_TRUE(RecordCmd()->Run({"-f", "99", "sleep", SLEEP_SEC}));
-  ASSERT_TRUE(RecordCmd()->Run({"-F", "99", "sleep", SLEEP_SEC}));
+  ASSERT_TRUE(RunRecordCmd({"-f", "99"}));
+  ASSERT_TRUE(RunRecordCmd({"-F", "99"}));
 }
 
 TEST(record_cmd, output_file_option) {
-  ASSERT_TRUE(RecordCmd()->Run({"-o", "perf2.data", "sleep", SLEEP_SEC}));
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RecordCmd()->Run({"-o", tmpfile.path, "sleep", SLEEP_SEC}));
 }
 
 TEST(record_cmd, dump_kernel_mmap) {
-  ASSERT_TRUE(RecordCmd()->Run({"sleep", SLEEP_SEC}));
-  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance("perf.data");
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RunRecordCmd({}, tmpfile.path));
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
   ASSERT_TRUE(reader != nullptr);
   std::vector<std::unique_ptr<Record>> records = reader->DataSection();
   ASSERT_GT(records.size(), 0U);
@@ -76,8 +97,9 @@ TEST(record_cmd, dump_kernel_mmap) {
 }
 
 TEST(record_cmd, dump_build_id_feature) {
-  ASSERT_TRUE(RecordCmd()->Run({"sleep", SLEEP_SEC}));
-  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance("perf.data");
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RunRecordCmd({}, tmpfile.path));
+  std::unique_ptr<RecordFileReader> reader = RecordFileReader::CreateInstance(tmpfile.path);
   ASSERT_TRUE(reader != nullptr);
   const FileHeader& file_header = reader->FileHeader();
   ASSERT_TRUE(file_header.features[FEAT_BUILD_ID / 8] & (1 << (FEAT_BUILD_ID % 8)));
@@ -85,16 +107,18 @@ TEST(record_cmd, dump_build_id_feature) {
 }
 
 TEST(record_cmd, tracepoint_event) {
-  ASSERT_TRUE(RecordCmd()->Run({"-a", "-e", "sched:sched_switch", "sleep", SLEEP_SEC}));
+  if (IsRoot()) {
+    ASSERT_TRUE(RunRecordCmd({"-a", "-e", "sched:sched_switch"}));
+  }
 }
 
 TEST(record_cmd, branch_sampling) {
   if (IsBranchSamplingSupported()) {
-    ASSERT_TRUE(RecordCmd()->Run({"-a", "-b", "sleep", SLEEP_SEC}));
-    ASSERT_TRUE(RecordCmd()->Run({"-j", "any,any_call,any_ret,ind_call", "sleep", SLEEP_SEC}));
-    ASSERT_TRUE(RecordCmd()->Run({"-j", "any,k", "sleep", SLEEP_SEC}));
-    ASSERT_TRUE(RecordCmd()->Run({"-j", "any,u", "sleep", SLEEP_SEC}));
-    ASSERT_FALSE(RecordCmd()->Run({"-j", "u", "sleep", SLEEP_SEC}));
+    ASSERT_TRUE(RunRecordCmd({"-b"}));
+    ASSERT_TRUE(RunRecordCmd({"-j", "any,any_call,any_ret,ind_call"}));
+    ASSERT_TRUE(RunRecordCmd({"-j", "any,k"}));
+    ASSERT_TRUE(RunRecordCmd({"-j", "any,u"}));
+    ASSERT_FALSE(RunRecordCmd({"-j", "u"}));
   } else {
     GTEST_LOG_(INFO)
         << "This test does nothing as branch stack sampling is not supported on this device.";
@@ -102,18 +126,18 @@ TEST(record_cmd, branch_sampling) {
 }
 
 TEST(record_cmd, event_modifier) {
-  ASSERT_TRUE(RecordCmd()->Run({"-e", "cpu-cycles:u", "sleep", SLEEP_SEC}));
+  ASSERT_TRUE(RunRecordCmd({"-e", "cpu-cycles:u"}));
 }
 
 TEST(record_cmd, fp_callchain_sampling) {
-  ASSERT_TRUE(RecordCmd()->Run({"--call-graph", "fp", "sleep", SLEEP_SEC}));
+  ASSERT_TRUE(RunRecordCmd({"--call-graph", "fp"}));
 }
 
 TEST(record_cmd, dwarf_callchain_sampling) {
   if (IsDwarfCallChainSamplingSupported()) {
-    ASSERT_TRUE(RecordCmd()->Run({"--call-graph", "dwarf", "sleep", SLEEP_SEC}));
-    ASSERT_TRUE(RecordCmd()->Run({"--call-graph", "dwarf,16384", "sleep", SLEEP_SEC}));
-    ASSERT_TRUE(RecordCmd()->Run({"-g", "sleep", SLEEP_SEC}));
+    ASSERT_TRUE(RunRecordCmd({"--call-graph", "dwarf"}));
+    ASSERT_TRUE(RunRecordCmd({"--call-graph", "dwarf,16384"}));
+    ASSERT_TRUE(RunRecordCmd({"-g"}));
   } else {
     GTEST_LOG_(INFO)
         << "This test does nothing as dwarf callchain sampling is not supported on this device.";
@@ -122,24 +146,24 @@ TEST(record_cmd, dwarf_callchain_sampling) {
 
 TEST(record_cmd, no_unwind_option) {
   if (IsDwarfCallChainSamplingSupported()) {
-    ASSERT_TRUE(RecordCmd()->Run({"--call-graph", "dwarf", "--no-unwind", "sleep", SLEEP_SEC}));
+    ASSERT_TRUE(RunRecordCmd({"--call-graph", "dwarf", "--no-unwind"}));
   } else {
     GTEST_LOG_(INFO)
         << "This test does nothing as dwarf callchain sampling is not supported on this device.";
   }
-  ASSERT_FALSE(RecordCmd()->Run({"--no-unwind", "sleep", SLEEP_SEC}));
+  ASSERT_FALSE(RunRecordCmd({"--no-unwind"}));
 }
 
 TEST(record_cmd, post_unwind_option) {
   if (IsDwarfCallChainSamplingSupported()) {
-    ASSERT_TRUE(RecordCmd()->Run({"--call-graph", "dwarf", "--post-unwind", "sleep", SLEEP_SEC}));
+    ASSERT_TRUE(RunRecordCmd({"--call-graph", "dwarf", "--post-unwind"}));
   } else {
     GTEST_LOG_(INFO)
         << "This test does nothing as dwarf callchain sampling is not supported on this device.";
   }
-  ASSERT_FALSE(RecordCmd()->Run({"--post-unwind", "sleep", SLEEP_SEC}));
+  ASSERT_FALSE(RunRecordCmd({"--post-unwind"}));
   ASSERT_FALSE(
-      RecordCmd()->Run({"--call-graph", "dwarf", "--no-unwind", "--post-unwind", "sleep", SLEEP_SEC}));
+      RunRecordCmd({"--call-graph", "dwarf", "--no-unwind", "--post-unwind"}));
 }
 
 TEST(record_cmd, existing_processes) {
@@ -147,7 +171,8 @@ TEST(record_cmd, existing_processes) {
   CreateProcesses(2, &workloads);
   std::string pid_list =
       android::base::StringPrintf("%d,%d", workloads[0]->GetPid(), workloads[1]->GetPid());
-  ASSERT_TRUE(RecordCmd()->Run({"-p", pid_list}));
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RecordCmd()->Run({"-p", pid_list, "-o", tmpfile.path}));
 }
 
 TEST(record_cmd, existing_threads) {
@@ -156,7 +181,8 @@ TEST(record_cmd, existing_threads) {
   // Process id can also be used as thread id in linux.
   std::string tid_list =
       android::base::StringPrintf("%d,%d", workloads[0]->GetPid(), workloads[1]->GetPid());
-  ASSERT_TRUE(RecordCmd()->Run({"-t", tid_list}));
+  TemporaryFile tmpfile;
+  ASSERT_TRUE(RecordCmd()->Run({"-t", tid_list, "-o", tmpfile.path}));
 }
 
 TEST(record_cmd, no_monitored_threads) {
@@ -164,17 +190,19 @@ TEST(record_cmd, no_monitored_threads) {
 }
 
 TEST(record_cmd, more_than_one_event_types) {
-  ASSERT_TRUE(RecordCmd()->Run({"-e", "cpu-cycles,cpu-clock", "sleep", SLEEP_SEC}));
-  ASSERT_TRUE(RecordCmd()->Run({"-e", "cpu-cycles", "-e", "cpu-clock", "sleep", SLEEP_SEC}));
+  ASSERT_TRUE(RunRecordCmd({"-e", "cpu-cycles,cpu-clock"}));
+  ASSERT_TRUE(RunRecordCmd({"-e", "cpu-cycles", "-e", "cpu-clock"}));
 }
 
 TEST(record_cmd, cpu_option) {
-  ASSERT_TRUE(RecordCmd()->Run({"--cpu", "0", "sleep", SLEEP_SEC}));
-  ASSERT_TRUE(RecordCmd()->Run({"--cpu", "0", "-a", "sleep", SLEEP_SEC}));
+  ASSERT_TRUE(RunRecordCmd({"--cpu", "0"}));
+  if (IsRoot()) {
+    ASSERT_TRUE(RunRecordCmd({"--cpu", "0", "-a"}));
+  }
 }
 
 TEST(record_cmd, mmap_page_option) {
-  ASSERT_TRUE(RecordCmd()->Run({"-m", "1", "sleep", SLEEP_SEC}));
-  ASSERT_FALSE(RecordCmd()->Run({"-m", "0", "sleep", SLEEP_SEC}));
-  ASSERT_FALSE(RecordCmd()->Run({"-m", "7", "sleep", SLEEP_SEC}));
+  ASSERT_TRUE(RunRecordCmd({"-m", "1"}));
+  ASSERT_FALSE(RunRecordCmd({"-m", "0"}));
+  ASSERT_FALSE(RunRecordCmd({"-m", "7"}));
 }

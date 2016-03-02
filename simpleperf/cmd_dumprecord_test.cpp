@@ -17,27 +17,12 @@
 #include <gtest/gtest.h>
 
 #include "command.h"
-#include "test_util.h"
+#include "get_test_data.h"
 
-class DumpRecordCommandTest : public ::testing::Test {
- protected:
-  virtual void SetUp() {
-    record_cmd = CreateCommandInstance("record");
-    ASSERT_TRUE(record_cmd != nullptr);
-    dumprecord_cmd = CreateCommandInstance("dump");
-    ASSERT_TRUE(dumprecord_cmd != nullptr);
-  }
-
-  std::unique_ptr<Command> record_cmd;
-  std::unique_ptr<Command> dumprecord_cmd;
-};
-
-TEST_F(DumpRecordCommandTest, no_options) {
-  ASSERT_TRUE(record_cmd->Run({"-a", "sleep", SLEEP_SEC}));
-  ASSERT_TRUE(dumprecord_cmd->Run({}));
+static std::unique_ptr<Command> DumpCmd() {
+  return CreateCommandInstance("dump");
 }
 
-TEST_F(DumpRecordCommandTest, record_file_option) {
-  ASSERT_TRUE(record_cmd->Run({"-a", "-o", "perf2.data", "sleep", SLEEP_SEC}));
-  ASSERT_TRUE(dumprecord_cmd->Run({"perf2.data"}));
+TEST(cmd_dump, record_file_option) {
+  ASSERT_TRUE(DumpCmd()->Run({GetTestData("perf.data")}));
 }

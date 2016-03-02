@@ -146,7 +146,7 @@ struct BinaryRet {
 static BinaryRet OpenObjectFile(const std::string& filename, uint64_t file_offset = 0,
                                 uint64_t file_size = 0) {
   BinaryRet ret;
-  FileHelper fhelper(filename);
+  FileHelper fhelper = FileHelper::OpenReadOnly(filename);
   if (!fhelper) {
     PLOG(DEBUG) << "failed to open " << filename;
     return ret;
@@ -354,6 +354,46 @@ bool ReadMinExecutableVirtualAddressFromElfFile(const std::string& filename,
 
   if (!result) {
     LOG(ERROR) << "no program header in file " << filename;
+  }
+  return result;
+}
+
+template <class ELFT>
+bool ReadSectionFromELFFile(const llvm::object::ELFFile<ELFT>* elf, const std::string& section_name,
+                            std::string* content) {
+  for (auto it = elf->begin_sections(); it != elf->end_sections(); ++it) {
+    auto name_or_err = elf->getSectionName(&*it);
+    if (name_or_err && *name_or_err == section_name) {
+      auto data_or_err = elf->getSectionContents(&*it);
+      if (!data_or_err) {
+        LOG(ERROR) << "failed to read section " << section_name;
+        return false;
+      }
+      content->append(data_or_err->begin(), data_or_err->end());
+      return true;
+    }
+  }
+  LOG(ERROR) << "can't find section " << section_name;
+  return false;
+}
+
+bool ReadSectionFromElfFile(const std::string& filename, const std::string& section_name,
+                            std::string* content) {
+  if (!IsValidElfPath(filename)) {
+    return false;
+  }
+  BinaryRet ret = OpenObjectFile(filename);
+  if (ret.obj == nullptr) {
+    return false;
+  }
+  bool result = false;
+  if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(ret.obj)) {
+    result = ReadSectionFromELFFile(elf->getELFFile(), section_name, content);
+  } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(ret.obj)) {
+    result = ReadSectionFromELFFile(elf->getELFFile(), section_name, content);
+  } else {
+    LOG(ERROR) << "unknown elf format in file" << filename;
+    return false;
   }
   return result;
 }
