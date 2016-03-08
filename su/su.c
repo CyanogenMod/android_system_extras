@@ -122,8 +122,13 @@ int main(int argc, char** argv) {
     setenv("PATH", _PATH_DEFPATH, 1);
     unsetenv("IFS");
     struct passwd* pw = getpwuid(uid);
-    setenv("LOGNAME", pw->pw_name, 1);
-    setenv("USER", pw->pw_name, 1);
+    if (pw) {
+        setenv("LOGNAME", pw->pw_name, 1);
+        setenv("USER", pw->pw_name, 1);
+    } else {
+        unsetenv("LOGNAME");
+        unsetenv("USER");
+    }
 
     // Set up the arguments for exec.
     char* exec_args[argc + 1];  // Having too much space is fine.
