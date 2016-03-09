@@ -182,28 +182,28 @@ static int bitmap_set_8_bits(u8 *bitmap, u32 bit)
 
 /* Marks a the first num_blocks blocks in a block group as used, and accounts
  for them in the block group free block info. */
-static int reserve_blocks(struct block_group_info *bg, u32 start, u32 num)
+static int reserve_blocks(struct block_group_info *bg, u32 bg_num, u32 start, u32 num)
 {
 	unsigned int i = 0;
 
 	u32 block = start;
 	for (i = 0; i < num && block % 8 != 0; i++, block++) {
 		if (bitmap_set_bit(bg->block_bitmap, block)) {
-			error("attempted to reserve already reserved block %d and num is %d", block, num);
+			error("attempted to reserve already reserved block %d in block group %d", block, bg_num);
 			return -1;
 		}
 	}
 
 	for (; i + 8 <= (num & ~7); i += 8, block += 8) {
 		if (bitmap_set_8_bits(bg->block_bitmap, block)) {
-			error("attempted to reserve already reserved block %d and num is %d", block, num);
+			error("attempted to reserve already reserved block %d in block group %d", block, bg_num);
 			return -1;
 		}
 	}
 
 	for (; i < num; i++, block++) {
 		if (bitmap_set_bit(bg->block_bitmap, block)) {
-			error("attempted to reserve already reserved block %d and num is %d", block, num);
+			error("attempted to reserve already reserved block %d in block group %d", block, bg_num);
 			return -1;
 		}
 	}
@@ -283,14 +283,14 @@ static void init_bg(struct block_group_info *bg, unsigned int i)
 	bg->max_chunk_count = 1;
 	bg->chunks = (struct region*) calloc(bg->max_chunk_count, sizeof(struct region));
 
-	if (reserve_blocks(bg, 0, bg->header_blocks) < 0)
+	if (reserve_blocks(bg, i, 0, bg->header_blocks) < 0)
 		error("failed to reserve %u blocks in block group %u\n", bg->header_blocks, i);
 	// Add empty starting delimiter chunk
 	reserve_bg_chunk(i, bg->header_blocks, 0);
 
 	if (bg->first_block + info.blocks_per_group > aux_info.len_blocks) {
 		u32 overrun = bg->first_block + info.blocks_per_group - aux_info.len_blocks;
-		reserve_blocks(bg, info.blocks_per_group - overrun, overrun);
+		reserve_blocks(bg, i, info.blocks_per_group - overrun, overrun);
 		// Add empty ending delimiter chunk
 		reserve_bg_chunk(i, info.blocks_per_group - overrun, 0);
 	} else {
@@ -382,6 +382,7 @@ done:
 	// reclaim allocated space in chunk
 	bgs[found_bg].chunks[found_prev_chunk].len += found_allocate_len;
 	if (reserve_blocks(&bgs[found_bg],
+				found_bg,
 				found_block,
 				found_allocate_len) < 0) {
 		error("failed to reserve %u blocks in block group %u\n", found_allocate_len, found_bg);
@@ -792,8 +793,9 @@ int reserve_blocks_for_allocation(struct block_allocation *alloc) {
 	if (!alloc) return 0;
 	reg = alloc->list.first;
 	while (reg != NULL) {
-		if (reserve_blocks(&bgs[reg->bg], reg->block - bgs[reg->bg].first_block, reg->len) < 0)
+		if (reserve_blocks(&bgs[reg->bg], reg->bg, reg->block - bgs[reg->bg].first_block, reg->len) < 0) {
 			return -1;
+		}
 		reg = reg->next;
 	}
 	return 0;
