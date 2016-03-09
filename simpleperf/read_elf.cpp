@@ -102,7 +102,7 @@ bool GetBuildIdFromNoteFile(const std::string& filename, BuildId* build_id) {
 
 template <class ELFT>
 bool GetBuildIdFromELFFile(const llvm::object::ELFFile<ELFT>* elf, BuildId* build_id) {
-  for (auto section_iterator = elf->begin_sections(); section_iterator != elf->end_sections();
+  for (auto section_iterator = elf->section_begin(); section_iterator != elf->section_end();
        ++section_iterator) {
     if (section_iterator->sh_type == llvm::ELF::SHT_NOTE) {
       auto contents = elf->getSectionContents(&*section_iterator);
@@ -206,48 +206,44 @@ bool IsArmMappingSymbol(const char* name) {
 }
 
 template <class ELFT>
-void ParseSymbolsFromELFFile(const llvm::object::ELFFile<ELFT>* elf,
+void ParseSymbolsFromELFFile(const llvm::object::ELFObjectFile<ELFT>* elf_obj,
                              std::function<void(const ElfFileSymbol&)> callback) {
+  auto elf = elf_obj->getELFFile();
   bool is_arm = (elf->getHeader()->e_machine == llvm::ELF::EM_ARM ||
                  elf->getHeader()->e_machine == llvm::ELF::EM_AARCH64);
-  auto begin = elf->begin_symbols();
-  auto end = elf->end_symbols();
+  auto begin = elf_obj->symbol_begin();
+  auto end = elf_obj->symbol_end();
   if (begin == end) {
-    begin = elf->begin_dynamic_symbols();
-    end = elf->end_dynamic_symbols();
+    begin = elf_obj->dynamic_symbol_begin();
+    end = elf_obj->dynamic_symbol_end();
   }
   for (; begin != end; ++begin) {
-    auto& elf_symbol = *begin;
-
     ElfFileSymbol symbol;
-
-    auto shdr = elf->getSection(&elf_symbol);
-    if (shdr == nullptr) {
+    auto elf_symbol = static_cast<const llvm::object::ELFSymbolRef*>(&*begin);
+    auto section_it = elf_symbol->getSection();
+    if (!section_it) {
       continue;
     }
-    auto section_name = elf->getSectionName(shdr);
-    if (section_name.getError() || section_name.get().empty()) {
+    llvm::StringRef section_name;
+    if (section_it.get()->getName(section_name) || section_name.empty()) {
       continue;
     }
-    if (section_name.get() == ".text") {
+    if (section_name.str() == ".text") {
       symbol.is_in_text_section = true;
     }
 
-    auto symbol_name = elf->getSymbolName(begin);
-    if (symbol_name.getError()) {
+    auto symbol_name = elf_symbol->getName();
+    if (!symbol_name || symbol_name.get().empty()) {
       continue;
     }
     symbol.name = symbol_name.get();
-    if (symbol.name.empty()) {
-      continue;
-    }
-    symbol.vaddr = elf_symbol.st_value;
+    symbol.vaddr = elf_symbol->getValue();
     if ((symbol.vaddr & 1) != 0 && is_arm) {
       // Arm sets bit 0 to mark it as thumb code, remove the flag.
       symbol.vaddr &= ~1;
     }
-    symbol.len = elf_symbol.st_size;
-    int type = elf_symbol.getType();
+    symbol.len = elf_symbol->getSize();
+    int type = elf_symbol->getELFType();
     if (type == llvm::ELF::STT_FUNC) {
       symbol.is_func = true;
     } else if (type == llvm::ELF::STT_NOTYPE) {
@@ -303,9 +299,9 @@ bool ParseSymbolsFromEmbeddedElfFile(const std::string& filename, uint64_t file_
     return false;
   }
   if (auto elf = llvm::dyn_cast<llvm::object::ELF32LEObjectFile>(ret.obj)) {
-    ParseSymbolsFromELFFile(elf->getELFFile(), callback);
+    ParseSymbolsFromELFFile(elf, callback);
   } else if (auto elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(ret.obj)) {
-    ParseSymbolsFromELFFile(elf->getELFFile(), callback);
+    ParseSymbolsFromELFFile(elf, callback);
   } else {
     LOG(ERROR) << "unknown elf format in file " << filename;
     return false;
@@ -317,7 +313,7 @@ template <class ELFT>
 bool ReadMinExecutableVirtualAddress(const llvm::object::ELFFile<ELFT>* elf, uint64_t* p_vaddr) {
   bool has_vaddr = false;
   uint64_t min_addr = std::numeric_limits<uint64_t>::max();
-  for (auto it = elf->begin_program_headers(); it != elf->end_program_headers(); ++it) {
+  for (auto it = elf->program_header_begin(); it != elf->program_header_end(); ++it) {
     if ((it->p_type == llvm::ELF::PT_LOAD) && (it->p_flags & llvm::ELF::PF_X)) {
       if (it->p_vaddr < min_addr) {
         min_addr = it->p_vaddr;
@@ -361,7 +357,7 @@ bool ReadMinExecutableVirtualAddressFromElfFile(const std::string& filename,
 template <class ELFT>
 bool ReadSectionFromELFFile(const llvm::object::ELFFile<ELFT>* elf, const std::string& section_name,
                             std::string* content) {
-  for (auto it = elf->begin_sections(); it != elf->end_sections(); ++it) {
+  for (auto it = elf->section_begin(); it != elf->section_end(); ++it) {
     auto name_or_err = elf->getSectionName(&*it);
     if (name_or_err && *name_or_err == section_name) {
       auto data_or_err = elf->getSectionContents(&*it);
