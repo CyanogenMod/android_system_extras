@@ -17,7 +17,6 @@
 #ifndef SIMPLE_PERF_EVENT_FD_H_
 #define SIMPLE_PERF_EVENT_FD_H_
 
-#include <poll.h>
 #include <sys/types.h>
 
 #include <memory>
@@ -34,6 +33,8 @@ struct PerfCounter {
   uint64_t time_running;  // The running time.
   uint64_t id;            // The id of the perf_event_file.
 };
+
+struct pollfd;
 
 // EventFd represents an opened perf_event_file.
 class EventFd {

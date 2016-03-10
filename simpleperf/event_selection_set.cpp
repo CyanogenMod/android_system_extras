@@ -16,6 +16,8 @@
 
 #include "event_selection_set.h"
 
+#include <poll.h>
+
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
 

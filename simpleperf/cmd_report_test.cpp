@@ -24,6 +24,7 @@
 #include <android-base/test_utils.h>
 
 #include "command.h"
+#include "event_selection_set.h"
 #include "get_test_data.h"
 #include "read_apk.h"
 #include "test_util.h"
@@ -252,17 +253,22 @@ TEST_F(ReportCommandTest, use_branch_address) {
             hit_set.end());
 }
 
-#if defined(__ANDROID__) || defined(__linux__)
+#if defined(__linux__)
 
 static std::unique_ptr<Command> RecordCmd() {
   return CreateCommandInstance("record");
 }
 
 TEST_F(ReportCommandTest, dwarf_callgraph) {
-  TemporaryFile tmp_file;
-  ASSERT_TRUE(RecordCmd()->Run({"-g", "-o", tmp_file.path, "sleep", SLEEP_SEC}));
-  ReportRaw(tmp_file.path, {"-g"});
-  ASSERT_TRUE(success);
+  if (IsDwarfCallChainSamplingSupported()) {
+    TemporaryFile tmp_file;
+    ASSERT_TRUE(RecordCmd()->Run({"-g", "-o", tmp_file.path, "sleep", SLEEP_SEC}));
+    ReportRaw(tmp_file.path, {"-g"});
+    ASSERT_TRUE(success);
+  } else {
+    GTEST_LOG_(INFO)
+        << "This test does nothing as dwarf callchain sampling is not supported on this device.";
+  }
 }
 
 #endif
