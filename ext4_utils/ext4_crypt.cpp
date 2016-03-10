@@ -50,44 +50,45 @@ static void policy_to_hex(const char* policy, char* hex) {
     hex[EXT4_KEY_DESCRIPTOR_SIZE_HEX - 1] = '\0';
 }
 
-static int is_dir_empty(const char *dirname)
+static bool is_dir_empty(const char *dirname, bool *is_empty)
 {
     int n = 0;
-    struct dirent *d;
-    DIR *dir;
-
-    dir = opendir(dirname);
-    while ((d = readdir(dir)) != NULL) {
-        if (strcmp(d->d_name, "lost+found") == 0) {
-            // Skip lost+found directory
-        } else if (++n > 2) {
+    auto dirp = std::unique_ptr<DIR, int (*)(DIR*)>(opendir(dirname), closedir);
+    if (!dirp) {
+        PLOG(ERROR) << "Unable to read directory: " << dirname;
+        return false;
+    }
+    for (;;) {
+        errno = 0;
+        auto entry = readdir(dirp.get());
+        if (!entry) {
+            if (errno) {
+                PLOG(ERROR) << "Unable to read directory: " << dirname;
+                return false;
+            }
             break;
         }
+        if (strcmp(entry->d_name, "lost+found") != 0) { // Skip lost+found
+            ++n;
+            if (n > 2) {
+                *is_empty = false;
+                return true;
+            }
+        }
     }
-    closedir(dir);
-    return n <= 2;
+    *is_empty = true;
+    return true;
 }
 
-int e4crypt_policy_set(const char *directory, const char *policy, size_t policy_length) {
+static bool e4crypt_policy_set(const char *directory, const char *policy, size_t policy_length) {
     if (policy_length != EXT4_KEY_DESCRIPTOR_SIZE) {
         LOG(ERROR) << "Policy wrong length: " << policy_length;
-        return -1;
+        return false;
     }
-
-    if (access(directory, W_OK)) {
-        PLOG(ERROR) << "Failed to access directory " << directory;
-        return -1;
-    }
-
     int fd = open(directory, O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (fd == -1) {
         PLOG(ERROR) << "Failed to open directory " << directory;
-        return -1;
-    }
-
-    if (!is_dir_empty(directory)) {
-        LOG(ERROR) << "Can only set policy on an empty directory " << directory;
-        return -1;
+        return false;
     }
 
     ext4_encryption_policy eep;
@@ -99,81 +100,79 @@ int e4crypt_policy_set(const char *directory, const char *policy, size_t policy_
     if (ioctl(fd, EXT4_IOC_SET_ENCRYPTION_POLICY, &eep)) {
         PLOG(ERROR) << "Failed to set encryption policy for " << directory;
         close(fd);
-        return -1;
-    } else {
-        close(fd);
+        return false;
     }
+    close(fd);
 
     char policy_hex[EXT4_KEY_DESCRIPTOR_SIZE_HEX];
     policy_to_hex(policy, policy_hex);
     LOG(INFO) << "Policy for " << directory << " set to " << policy_hex;
-    return 0;
+    return true;
 }
 
-int e4crypt_policy_get(const char *directory, char *policy, size_t policy_length) {
+static bool e4crypt_policy_get(const char *directory, char *policy, size_t policy_length) {
     if (policy_length != EXT4_KEY_DESCRIPTOR_SIZE) {
         LOG(ERROR) << "Policy wrong length: " << policy_length;
-        return -1;
-    }
-
-    if (access(directory, W_OK)) {
-        PLOG(ERROR) << "Failed to access directory " << directory;
-        return -1;
+        return false;
     }
 
     int fd = open(directory, O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (fd == -1) {
         PLOG(ERROR) << "Failed to open directory " << directory;
-        return -1;
+        return false;
     }
 
     ext4_encryption_policy eep;
     memset(&eep, 0, sizeof(ext4_encryption_policy));
-
-    if (ioctl(fd, EXT4_IOC_GET_ENCRYPTION_POLICY, &eep)) {
-        PLOG(WARNING) << "Failed to get encryption policy for " << directory;
+    if (ioctl(fd, EXT4_IOC_GET_ENCRYPTION_POLICY, &eep) != 0) {
+        PLOG(ERROR) << "Failed to get encryption policy for " << directory;
         close(fd);
         return -1;
-    } else {
-        close(fd);
     }
+    close(fd);
 
-    if ((eep.version == 0)
-            && (eep.contents_encryption_mode == EXT4_ENCRYPTION_MODE_AES_256_XTS)
-            && (eep.filenames_encryption_mode == EXT4_ENCRYPTION_MODE_AES_256_CTS)
-            && (eep.flags == 0)) {
-        memcpy(policy, eep.master_key_descriptor, EXT4_KEY_DESCRIPTOR_SIZE);
-        return 0;
+    if ((eep.version != 0)
+            || (eep.contents_encryption_mode != EXT4_ENCRYPTION_MODE_AES_256_XTS)
+            || (eep.filenames_encryption_mode != EXT4_ENCRYPTION_MODE_AES_256_CTS)
+            || (eep.flags != 0)) {
+        LOG(ERROR) << "Failed to find matching encryption policy for " << directory;
+        return false;
     }
+    memcpy(policy, eep.master_key_descriptor, EXT4_KEY_DESCRIPTOR_SIZE);
 
-    LOG(ERROR) << "Failed to find matching encryption policy for " << directory;
-    return -1;
+    return true;
+}
+
+static bool e4crypt_policy_check(const char *directory, const char *policy, size_t policy_length) {
+    if (policy_length != EXT4_KEY_DESCRIPTOR_SIZE) {
+        LOG(ERROR) << "Policy wrong length: " << policy_length;
+        return false;
+    }
+    char existing_policy[EXT4_KEY_DESCRIPTOR_SIZE];
+    if (!e4crypt_policy_get(directory, existing_policy, EXT4_KEY_DESCRIPTOR_SIZE)) return false;
+    char existing_policy_hex[EXT4_KEY_DESCRIPTOR_SIZE_HEX];
+
+    policy_to_hex(existing_policy, existing_policy_hex);
+
+    if (memcmp(policy, existing_policy, EXT4_KEY_DESCRIPTOR_SIZE) != 0) {
+        char policy_hex[EXT4_KEY_DESCRIPTOR_SIZE_HEX];
+        policy_to_hex(policy, policy_hex);
+        LOG(ERROR) << "Found policy " << existing_policy_hex << " at " << directory
+                   << " which doesn't match expected value " << policy_hex;
+        return false;
+    }
+    LOG(INFO) << "Found policy " << existing_policy_hex << " at " << directory
+              << " which matches expected value";
+    return true;
 }
 
 int e4crypt_policy_ensure(const char *directory, const char *policy, size_t policy_length) {
-    if (policy_length != EXT4_KEY_DESCRIPTOR_SIZE) {
-        LOG(ERROR) << "Policy wrong length: " << policy_length;
-        return -1;
+    bool is_empty;
+    if (!is_dir_empty(directory, &is_empty)) return -1;
+    if (is_empty) {
+        if (!e4crypt_policy_set(directory, policy, policy_length)) return -1;
+    } else {
+        if (!e4crypt_policy_check(directory, policy, policy_length)) return -1;
     }
-
-    char existing_policy[EXT4_KEY_DESCRIPTOR_SIZE];
-    if (e4crypt_policy_get(directory, existing_policy, EXT4_KEY_DESCRIPTOR_SIZE) == 0) {
-        char policy_hex[EXT4_KEY_DESCRIPTOR_SIZE_HEX];
-        char existing_policy_hex[EXT4_KEY_DESCRIPTOR_SIZE_HEX];
-
-        policy_to_hex(policy, policy_hex);
-        policy_to_hex(existing_policy, existing_policy_hex);
-
-        if (memcmp(policy, existing_policy, EXT4_KEY_DESCRIPTOR_SIZE) == 0) {
-            LOG(INFO) << "Found policy " << existing_policy_hex << " at " << directory
-                    << " which matches expected value";
-            return 0;
-        } else {
-            LOG(ERROR) << "Found policy " << existing_policy_hex << " at " << directory
-                    << " which doesn't match expected value " << policy_hex;
-            return -1;
-        }
-    }
-
-    return e4crypt_policy_set(directory, policy, policy_length);
+    return 0;
 }
