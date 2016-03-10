@@ -20,8 +20,6 @@
 
 __BEGIN_DECLS
 
-int e4crypt_policy_get(const char *directory, char* policy, size_t policy_length);
-int e4crypt_policy_set(const char *directory, const char* policy, size_t policy_length);
 int e4crypt_policy_ensure(const char *directory, const char* policy, size_t policy_length);
 
 static const char* e4crypt_unencrypted_folder = "/unencrypted";
