@@ -17,7 +17,6 @@
 #ifndef SIMPLE_PERF_EVENT_SELECTION_SET_H_
 #define SIMPLE_PERF_EVENT_SELECTION_SET_H_
 
-#include <poll.h>
 #include <functional>
 #include <map>
 #include <vector>
@@ -37,6 +36,8 @@ struct CountersInfo {
   };
   std::vector<CounterInfo> counters;
 };
+
+struct pollfd;
 
 // EventSelectionSet helps to monitor events.
 // Firstly, the user creates an EventSelectionSet, and adds the specific event types to monitor.
