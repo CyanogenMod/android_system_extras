@@ -48,9 +48,26 @@ declare_sort(swap);
 int (*compfn)(const void *a, const void *b);
 static int order;
 
-void print_mem_info() {
+enum {
+    MEMINFO_TOTAL,
+    MEMINFO_FREE,
+    MEMINFO_BUFFERS,
+    MEMINFO_CACHED,
+    MEMINFO_SHMEM,
+    MEMINFO_SLAB,
+    MEMINFO_SWAP_TOTAL,
+    MEMINFO_SWAP_FREE,
+    MEMINFO_ZRAM_TOTAL,
+    MEMINFO_MAPPED,
+    MEMINFO_VMALLOC_USED,
+    MEMINFO_PAGE_TABLES,
+    MEMINFO_KERNEL_STACK,
+    MEMINFO_COUNT
+};
+
+void get_mem_info(uint64_t mem[]) {
     char buffer[1024];
-    int numFound = 0;
+    unsigned int numFound = 0;
 
     int fd = open("/proc/meminfo", O_RDONLY);
 
@@ -75,6 +92,13 @@ void print_mem_info() {
             "Cached:",
             "Shmem:",
             "Slab:",
+            "SwapTotal:",
+            "SwapFree:",
+            "ZRam:",            /* not read from meminfo but from /sys/block/zram0 */
+            "Mapped:",
+            "VmallocUsed:",
+            "PageTables:",
+            "KernelStack:",
             NULL
     };
     static const int tagsLen[] = {
@@ -84,12 +108,18 @@ void print_mem_info() {
             7,
             6,
             5,
+            10,
+            9,
+            5,
+            7,
+            12,
+            11,
+            12,
             0
     };
-    uint64_t mem[] = { 0, 0, 0, 0, 0, 0 };
 
     char* p = buffer;
-    while (*p && numFound < 6) {
+    while (*p && (numFound < (sizeof(tagsLen) / sizeof(tagsLen[0])))) {
         int i = 0;
         while (tags[i]) {
             if (strncmp(p, tags[i], tagsLen[i]) == 0) {
@@ -112,10 +142,6 @@ void print_mem_info() {
         }
         if (*p) p++;
     }
-
-    printf("RAM: %" PRIu64 "K total, %" PRIu64 "K free, %" PRIu64 "K buffers, "
-            "%" PRIu64 "K cached, %" PRIu64 "K shmem, %" PRIu64 "K slab\n",
-            mem[0], mem[1], mem[2], mem[3], mem[4], mem[5]);
 }
 
 int main(int argc, char *argv[]) {
@@ -127,9 +153,12 @@ int main(int argc, char *argv[]) {
     uint64_t total_pss;
     uint64_t total_uss;
     uint64_t total_swap;
+    uint64_t total_pswap;
+    uint64_t total_uswap;
+    uint64_t total_zswap;
     char cmdline[256]; // this must be within the range of int
     int error;
-    bool has_swap = false;
+    bool has_swap = false, has_zram = false;
     uint64_t required_flags = 0;
     uint64_t flags_mask = 0;
 
@@ -140,6 +169,12 @@ int main(int argc, char *argv[]) {
 
     int arg;
     size_t i, j;
+
+    uint64_t mem[MEMINFO_COUNT] = { };
+    pm_proportional_swap_t *p_swap;
+    int fd, len;
+    char buffer[1024];
+    float zram_cr = 0.0;
 
     signal(SIGPIPE, SIG_IGN);
     compfn = &sort_by_pss;
@@ -163,6 +198,9 @@ int main(int argc, char *argv[]) {
         usage(argv[0]);
         exit(EXIT_FAILURE);
     }
+
+    get_mem_info(mem);
+    p_swap = pm_memusage_pswap_create(mem[MEMINFO_SWAP_TOTAL] * 1024);
 
     error = pm_kernel_create(&ker);
     if (error) {
@@ -191,6 +229,7 @@ int main(int argc, char *argv[]) {
         }
         procs[i]->pid = pids[i];
         pm_memusage_zero(&procs[i]->usage);
+        pm_memusage_pswap_init_handle(&procs[i]->usage, p_swap);
         error = pm_process_create(ker, pids[i], &proc);
         if (error) {
             fprintf(stderr, "warning: could not create process interface for %d\n", pids[i]);
@@ -237,16 +276,37 @@ int main(int argc, char *argv[]) {
 
     qsort(procs, num_procs, sizeof(procs[0]), compfn);
 
+    if (has_swap) {
+        fd = open("/sys/block/zram0/mem_used_total", O_RDONLY);
+        if (fd >= 0) {
+            len = read(fd, buffer, sizeof(buffer)-1);
+            close(fd);
+            if (len > 0) {
+                buffer[len] = 0;
+                mem[MEMINFO_ZRAM_TOTAL] = atoll(buffer)/1024;
+                zram_cr = (float) mem[MEMINFO_ZRAM_TOTAL] /
+                        (mem[MEMINFO_SWAP_TOTAL] - mem[MEMINFO_SWAP_FREE]);
+                has_zram = true;
+            }
+        }
+    }
+
     printf("%5s  ", "PID");
     if (ws) {
-        printf("%s  %7s  %7s  ", "WRss", "WPss", "WUss");
+        printf("%7s  %7s  %7s  ", "WRss", "WPss", "WUss");
         if (has_swap) {
-            printf("%7s  ", "WSwap");
+            printf("%7s  %7s  %7s  ", "WSwap", "WPSwap", "WUSwap");
+            if (has_zram) {
+                printf("%7s  ", "WZSwap");
+            }
         }
     } else {
         printf("%8s  %7s  %7s  %7s  ", "Vss", "Rss", "Pss", "Uss");
         if (has_swap) {
-            printf("%7s  ", "Swap");
+            printf("%7s  %7s  %7s  ", "Swap", "PSwap", "USwap");
+            if (has_zram) {
+                printf("%7s  ", "ZSwap");
+            }
         }
     }
 
@@ -255,6 +315,9 @@ int main(int argc, char *argv[]) {
     total_pss = 0;
     total_uss = 0;
     total_swap = 0;
+    total_pswap = 0;
+    total_uswap = 0;
+    total_zswap = 0;
 
     for (i = 0; i < num_procs; i++) {
         if (getprocname(procs[i]->pid, cmdline, (int)sizeof(cmdline)) < 0) {
@@ -288,7 +351,20 @@ int main(int argc, char *argv[]) {
         }
 
         if (has_swap) {
+            pm_swapusage_t su;
+
+            pm_memusage_pswap_get_usage(&procs[i]->usage, &su);
             printf("%6zuK  ", procs[i]->usage.swap / 1024);
+            printf("%6zuK  ", su.proportional / 1024);
+            printf("%6zuK  ", su.unique / 1024);
+            total_pswap += su.proportional;
+            total_uswap += su.unique;
+            pm_memusage_pswap_free(&procs[i]->usage);
+            if (has_zram) {
+                size_t zpswap = su.proportional * zram_cr;
+                printf("%6zuK  ", zpswap / 1024);
+                total_zswap += zpswap;
+            }
         }
 
         printf("%s\n", cmdline);
@@ -297,6 +373,7 @@ int main(int argc, char *argv[]) {
     }
 
     free(procs);
+    pm_memusage_pswap_destroy(p_swap);
 
     /* Print the separator line */
     printf("%5s  ", "");
@@ -308,7 +385,10 @@ int main(int argc, char *argv[]) {
     }
 
     if (has_swap) {
-        printf("%7s  ", "------");
+        printf("%7s  %7s  %7s  ", "------", "------", "------");
+        if (has_zram) {
+            printf("%7s  ", "------");
+        }
     }
 
     printf("%s\n", "------");
@@ -316,7 +396,7 @@ int main(int argc, char *argv[]) {
     /* Print the total line */
     printf("%5s  ", "");
     if (ws) {
-        printf("%7s  %6" PRIu64 "K  %" PRIu64 "K  ",
+        printf("%7s  %6" PRIu64 "K  %6" PRIu64 "K  ",
             "", total_pss / 1024, total_uss / 1024);
     } else {
         printf("%8s  %7s  %6" PRIu64 "K  %6" PRIu64 "K  ",
@@ -324,13 +404,28 @@ int main(int argc, char *argv[]) {
     }
 
     if (has_swap) {
-        printf("%6" PRIu64 "K  ", total_swap);
+        printf("%6" PRIu64 "K  ", total_swap / 1024);
+        printf("%6" PRIu64 "K  ", total_pswap / 1024);
+        printf("%6" PRIu64 "K  ", total_uswap / 1024);
+        if (has_zram) {
+            printf("%6" PRIu64 "K  ", total_zswap / 1024);
+        }
     }
 
     printf("TOTAL\n");
 
     printf("\n");
-    print_mem_info();
+
+    if (has_swap) {
+        printf("ZRAM: %" PRIu64 "K physical used for %" PRIu64 "K in swap "
+                "(%" PRIu64 "K total swap)\n",
+                mem[MEMINFO_ZRAM_TOTAL], (mem[MEMINFO_SWAP_TOTAL] - mem[MEMINFO_SWAP_FREE]),
+                mem[MEMINFO_SWAP_TOTAL]);
+    }
+    printf(" RAM: %" PRIu64 "K total, %" PRIu64 "K free, %" PRIu64 "K buffers, "
+            "%" PRIu64 "K cached, %" PRIu64 "K shmem, %" PRIu64 "K slab\n",
+            mem[MEMINFO_TOTAL], mem[MEMINFO_FREE], mem[MEMINFO_BUFFERS],
+            mem[MEMINFO_CACHED], mem[MEMINFO_SHMEM], mem[MEMINFO_SLAB]);
 
     return 0;
 }

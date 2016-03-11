@@ -42,11 +42,13 @@ int pm_map_usage_flags(pm_map_t *map, pm_memusage_t *usage_out,
     if (error) return error;
 
     pm_memusage_zero(&usage);
+    pm_memusage_pswap_init_handle(&usage, usage_out->p_swap);
 
     for (i = 0; i < len; i++) {
         usage.vss += map->proc->ker->pagesize;
 
-        if (!PM_PAGEMAP_PRESENT(pagemap[i]))
+        if (!PM_PAGEMAP_PRESENT(pagemap[i]) &&
+                !PM_PAGEMAP_SWAPPED(pagemap[i]))
             continue;
 
         if (!PM_PAGEMAP_SWAPPED(pagemap[i])) {
@@ -69,6 +71,7 @@ int pm_map_usage_flags(pm_map_t *map, pm_memusage_t *usage_out,
             usage.uss += (count == 1) ? (map->proc->ker->pagesize) : (0);
         } else {
             usage.swap += map->proc->ker->pagesize;
+            pm_memusage_pswap_add_offset(&usage, PM_PAGEMAP_SWAP_OFFSET(pagemap[i]));
         }
     }
 
@@ -76,7 +79,7 @@ int pm_map_usage_flags(pm_map_t *map, pm_memusage_t *usage_out,
 
     error = 0;
 
-out:    
+out:
     free(pagemap);
 
     return error;
@@ -100,13 +103,13 @@ int pm_map_workingset(pm_map_t *map, pm_memusage_t *ws_out) {
     if (error) return error;
 
     pm_memusage_zero(&ws);
-    
+
     for (i = 0; i < len; i++) {
         error = pm_kernel_flags(map->proc->ker, PM_PAGEMAP_PFN(pagemap[i]),
                                 &flags);
         if (error) goto out;
 
-        if (!(flags & PM_PAGE_REFERENCED)) 
+        if (!(flags & PM_PAGE_REFERENCED))
             continue;
 
         error = pm_kernel_count(map->proc->ker, PM_PAGEMAP_PFN(pagemap[i]),
