@@ -16,6 +16,7 @@ test_c_flags := \
 
 # Required Tests
 cts_src_files := \
+    aslr_test.cpp \
     multicast_test.cpp \
     pstore_test.cpp \
     sysvipc_test.cpp \
@@ -24,6 +25,7 @@ cts_src_files := \
 # Required plus Recommended Tests
 test_src_files := \
     $(cts_src_files) \
+    aslr_rec_test.cpp \
     mmc_max_speed_test.cpp \
 
 cts_executable := CtsKernelConfigTestCases
@@ -68,3 +70,10 @@ LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
 include $(BUILD_HOST_NATIVE_TEST)
 
 endif  # ifeq ($(HOST_OS)-$(HOST_ARCH),$(filter $(HOST_OS)-$(HOST_ARCH),linux-x86 linux-x86_64))
+
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := \
+    scrape_mmap_addr.cpp
+
+LOCAL_MODULE := scrape_mmap_addr
+include $(BUILD_NATIVE_TEST)
