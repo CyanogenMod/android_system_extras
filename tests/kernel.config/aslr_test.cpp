@@ -187,7 +187,7 @@ void AslrMmapTest::SetUpTestCase() {
 
 #elif defined(__arm__)
     unsigned int pgbits = std::log2(getpagesize());
-    def = 8;
+    def = 16;
     min = 8;
     max = 16;
     path = SCRAPE_PATH_32;
