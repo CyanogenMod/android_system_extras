@@ -25,6 +25,11 @@ struct mapinfo {
     char name[1];
 };
 
+static bool verbose = false;
+static bool terse = false;
+static bool addresses = false;
+static bool quiet = false;
+
 static int is_library(const char *name) {
     int len = strlen(name);
     return len >= 4 && name[0] == '/'
@@ -173,7 +178,7 @@ static mapinfo *load_maps(int pid, int sort_by_address, int coalesce_by_name)
     snprintf(fn, sizeof(fn), "/proc/%d/smaps", pid);
     fp = fopen(fn, "r");
     if (fp == 0) {
-        fprintf(stderr, "cannot open /proc/%d/smaps: %s\n", pid, strerror(errno));
+        if (!quiet) fprintf(stderr, "cannot open /proc/%d/smaps: %s\n", pid, strerror(errno));
         return NULL;
     }
 
@@ -202,16 +207,12 @@ static mapinfo *load_maps(int pid, int sort_by_address, int coalesce_by_name)
     fclose(fp);
 
     if (!head) {
-        fprintf(stderr, "could not read /proc/%d/smaps\n", pid);
+        if (!quiet) fprintf(stderr, "could not read /proc/%d/smaps\n", pid);
         return NULL;
     }
 
     return head;
 }
-
-static bool verbose = false;
-static bool terse = false;
-static bool addresses = false;
 
 static void print_header()
 {
@@ -264,7 +265,7 @@ static int show_map(int pid)
 
     mapinfo *milist = load_maps(pid, addresses, !verbose && !addresses);
     if (milist == NULL) {
-        return 1;
+        return quiet ? 0 : 1;
     }
 
     print_header();
@@ -282,7 +283,7 @@ static int show_map(int pid)
         total.pss += mi->pss;
         total.size += mi->size;
         total.count += mi->count;
-        
+
         if (terse && !mi->private_dirty) {
             goto out;
         }
@@ -328,6 +329,10 @@ int main(int argc, char *argv[])
             addresses = true;
             continue;
         }
+        if (!strcmp(arg,"-q")) {
+            quiet = true;
+            continue;
+        }
         if (argc != 1) {
             fprintf(stderr, "too many arguments\n");
             break;
@@ -346,10 +351,11 @@ int main(int argc, char *argv[])
 
     if (usage) {
         fprintf(stderr,
-                "showmap [-t] [-v] [-c] <pid>\n"
+                "showmap [-t] [-v] [-c] [-q] <pid>\n"
                 "        -t = terse (show only items with private pages)\n"
                 "        -v = verbose (don't coalesce maps with the same name)\n"
                 "        -a = addresses (show virtual memory map)\n"
+                "        -q = quiet (don't show error if map could not be read)\n"
                 );
         result = 1;
     }
