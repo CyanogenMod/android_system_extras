@@ -270,6 +270,7 @@ class ReportCommand : public Command {
             "    --vmlinux <file>\n"
             "                  Parse kernel symbols from <file>.\n"),
         record_filename_("perf.data"),
+        record_file_arch_(GetBuildArch()),
         use_branch_address_(false),
         accumulate_callchain_(false),
         print_callgraph_(false),
@@ -302,6 +303,7 @@ class ReportCommand : public Command {
                            uint64_t parent_period, bool last);
 
   std::string record_filename_;
+  ArchType record_file_arch_;
   std::unique_ptr<RecordFileReader> record_file_reader_;
   perf_event_attr event_attr_;
   std::vector<std::unique_ptr<Displayable>> displayable_items_;
@@ -336,6 +338,7 @@ bool ReportCommand::Run(const std::vector<std::string>& args) {
   if (!ReadFeaturesFromRecordFile()) {
     return false;
   }
+  ScopedCurrentArch scoped_arch(record_file_arch_);
   ReadSampleTreeFromRecordFile();
 
   // 3. Show collected information.
@@ -565,7 +568,8 @@ void ReportCommand::ProcessSampleRecord(const SampleRecord& r) {
         RegSet regs = CreateRegSet(r.regs_user_data.reg_mask, r.regs_user_data.regs);
         std::vector<char> stack(r.stack_user_data.data.begin(),
                                 r.stack_user_data.data.begin() + r.stack_user_data.data.size());
-        std::vector<uint64_t> unwind_ips = UnwindCallChain(*sample->thread, regs, stack);
+        std::vector<uint64_t> unwind_ips =
+            UnwindCallChain(ScopedCurrentArch::GetCurrentArch(), *sample->thread, regs, stack);
         if (!unwind_ips.empty()) {
           ips.push_back(PERF_CONTEXT_USER);
           ips.insert(ips.end(), unwind_ips.begin(), unwind_ips.end());
@@ -633,7 +637,8 @@ bool ReportCommand::ReadFeaturesFromRecordFile() {
 
   std::string arch = record_file_reader_->ReadFeatureString(PerfFileFormat::FEAT_ARCH);
   if (!arch.empty()) {
-    if (!SetCurrentArch(arch)) {
+    record_file_arch_ = GetArchType(arch);
+    if (record_file_arch_ == ARCH_UNSUPPORTED) {
       return false;
     }
   }

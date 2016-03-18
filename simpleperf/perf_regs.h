@@ -55,12 +55,26 @@ constexpr ArchType GetBuildArch() {
 #endif
 }
 
-ArchType GetCurrentArch();
-bool SetCurrentArch(const std::string& arch);
+ArchType GetArchType(const std::string& arch);
+uint64_t GetSupportedRegMask(ArchType arch);
+std::string GetRegName(size_t regno, ArchType arch);
 
-uint64_t GetSupportedRegMask();
+class ScopedCurrentArch {
+ public:
+  ScopedCurrentArch(ArchType arch) : saved_arch(current_arch) {
+    current_arch = arch;
+  }
+  ~ScopedCurrentArch() {
+    current_arch = saved_arch;
+  }
+  static ArchType GetCurrentArch() {
+    return current_arch;
+  }
 
-std::string GetRegName(size_t regno);
+ private:
+  ArchType saved_arch;
+  static ArchType current_arch;
+};
 
 struct RegSet {
   uint64_t valid_mask;
@@ -70,6 +84,6 @@ struct RegSet {
 RegSet CreateRegSet(uint64_t valid_mask, const std::vector<uint64_t>& valid_regs);
 
 bool GetRegValue(const RegSet& regs, size_t regno, uint64_t* value);
-bool GetSpRegValue(const RegSet& regs, uint64_t* value);
+bool GetSpRegValue(const RegSet& regs, ArchType arch, uint64_t* value);
 
 #endif  // SIMPLE_PERF_PERF_REGS_H_

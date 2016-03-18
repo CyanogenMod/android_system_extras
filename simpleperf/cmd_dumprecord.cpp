@@ -39,7 +39,7 @@ class DumpRecordCommand : public Command {
       : Command("dump", "dump perf record file",
                 "Usage: simpleperf dumprecord [options] [perf_record_file]\n"
                 "    Dump different parts of a perf record file. Default file is perf.data.\n"),
-        record_filename_("perf.data") {
+        record_filename_("perf.data"), record_file_arch_(GetBuildArch()) {
   }
 
   bool Run(const std::vector<std::string>& args);
@@ -53,6 +53,7 @@ class DumpRecordCommand : public Command {
 
   std::string record_filename_;
   std::unique_ptr<RecordFileReader> record_file_reader_;
+  ArchType record_file_arch_;
 };
 
 bool DumpRecordCommand::Run(const std::vector<std::string>& args) {
@@ -65,10 +66,12 @@ bool DumpRecordCommand::Run(const std::vector<std::string>& args) {
   }
   std::string arch = record_file_reader_->ReadFeatureString(FEAT_ARCH);
   if (!arch.empty()) {
-    if (!SetCurrentArch(arch)) {
+    record_file_arch_ = GetArchType(arch);
+    if (record_file_arch_ == ARCH_UNSUPPORTED) {
       return false;
     }
   }
+  ScopedCurrentArch scoped_arch(record_file_arch_);
   DumpFileHeader();
   DumpAttrSection();
   DumpDataSection();
