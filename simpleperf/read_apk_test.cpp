@@ -31,9 +31,12 @@ TEST(read_apk, FindElfInApkByOffset) {
   ApkInspector inspector;
   ASSERT_TRUE(inspector.FindElfInApkByOffset("/dev/null", 0) == nullptr);
   ASSERT_TRUE(inspector.FindElfInApkByOffset(GetTestData(APK_FILE), 0) == nullptr);
-  EmbeddedElf* ee = inspector.FindElfInApkByOffset(GetTestData(APK_FILE), 0x9000);
+  // Test if we can read the EmbeddedElf using an offset inside its [offset, offset+size] range
+  // in the apk file.
+  EmbeddedElf* ee = inspector.FindElfInApkByOffset(GetTestData(APK_FILE),
+                                                   NATIVELIB_OFFSET_IN_APK + NATIVELIB_SIZE_IN_APK / 2);
   ASSERT_TRUE(ee != nullptr);
-  ASSERT_EQ(ee->entry_name(), NATIVELIB_IN_APK);
+  ASSERT_EQ(NATIVELIB_IN_APK, ee->entry_name());
   ASSERT_EQ(NATIVELIB_OFFSET_IN_APK, ee->entry_offset());
   ASSERT_EQ(NATIVELIB_SIZE_IN_APK, ee->entry_size());
 }

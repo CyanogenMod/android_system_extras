@@ -15,21 +15,14 @@
  */
 
 #include <string.h>
-#include <map>
+
 #include <string>
 #include <vector>
 
 #include <android-base/logging.h>
 
 #include "command.h"
-
-static std::map<std::string, android::base::LogSeverity> log_severity_map = {
-    {"verbose", android::base::VERBOSE},
-    {"debug", android::base::DEBUG},
-    {"warning", android::base::WARNING},
-    {"error", android::base::ERROR},
-    {"fatal", android::base::FATAL},
-};
+#include "utils.h"
 
 int main(int argc, char** argv) {
   InitLogging(argv, android::base::StderrLogger);
@@ -42,10 +35,7 @@ int main(int argc, char** argv) {
     } else if (strcmp(argv[i], "--log") == 0) {
       if (i + 1 < argc) {
         ++i;
-        auto it = log_severity_map.find(argv[i]);
-        if (it != log_severity_map.end()) {
-          log_severity = it->second;
-        } else {
+        if (!GetLogSeverity(argv[i], &log_severity)) {
           LOG(ERROR) << "Unknown log severity: " << argv[i];
           return 1;
         }

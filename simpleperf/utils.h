@@ -22,6 +22,7 @@
 #include <string>
 #include <vector>
 
+#include <android-base/logging.h>
 #include <android-base/macros.h>
 #include <ziparchive/zip_archive.h>
 
@@ -82,7 +83,6 @@ class FileHelper {
   DISALLOW_COPY_AND_ASSIGN(FileHelper);
 };
 
-
 class ArchiveHelper {
  public:
   ArchiveHelper(int fd, const std::string& debug_filename);
@@ -118,5 +118,7 @@ bool IsDir(const std::string& dirpath);
 bool IsRegularFile(const std::string& filename);
 uint64_t GetFileSize(const std::string& filename);
 bool MkdirWithParents(const std::string& path);
+
+bool GetLogSeverity(const std::string& name, android::base::LogSeverity* severity);
 
 #endif  // SIMPLE_PERF_UTILS_H_

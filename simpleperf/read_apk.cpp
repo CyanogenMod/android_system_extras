@@ -24,10 +24,11 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <memory>
+
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <ziparchive/zip_archive.h>
-
 #include "read_elf.h"
 #include "utils.h"
 
@@ -52,6 +53,7 @@ std::unique_ptr<EmbeddedElf> ApkInspector::FindElfInApkByOffsetWithoutCache(cons
   if (!IsValidApkPath(apk_path)) {
     return nullptr;
   }
+
   FileHelper fhelper = FileHelper::OpenReadOnly(apk_path);
   if (!fhelper) {
     return nullptr;

@@ -59,6 +59,7 @@ static bool ExtractTestDataFromElfSection() {
     LOG(ERROR) << "failed to start iterating zip entries";
     return false;
   }
+  std::unique_ptr<void, decltype(&EndIteration)> guard(cookie, EndIteration);
   ZipEntry entry;
   ZipString name;
   while (Next(cookie, &entry, &name) == 0) {
@@ -87,7 +88,6 @@ static bool ExtractTestDataFromElfSection() {
       return false;
     }
   }
-  EndIteration(cookie);
   return true;
 }
 #endif  // defined(IN_CTS_TEST)
@@ -95,13 +95,26 @@ static bool ExtractTestDataFromElfSection() {
 int main(int argc, char** argv) {
   InitLogging(argv, android::base::StderrLogger);
   testing::InitGoogleTest(&argc, argv);
+  android::base::LogSeverity log_severity = android::base::WARNING;
 
   for (int i = 1; i < argc; ++i) {
     if (strcmp(argv[i], "-t") == 0 && i + 1 < argc) {
       testdata_dir = argv[i + 1];
       i++;
+    } else if (strcmp(argv[i], "--log") == 0) {
+      if (i + 1 < argc) {
+        ++i;
+        if (!GetLogSeverity(argv[i], &log_severity)) {
+          LOG(ERROR) << "Unknown log severity: " << argv[i];
+          return 1;
+        }
+      } else {
+        LOG(ERROR) << "Missing argument for --log option.\n";
+        return 1;
+      }
     }
   }
+  android::base::ScopedLogSeverity severity(log_severity);
 
 #if defined(IN_CTS_TEST)
   std::unique_ptr<TemporaryDir> tmp_dir;

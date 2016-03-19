@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <map>
 #include <string>
 
 #include <android-base/file.h>
@@ -179,4 +180,20 @@ bool MkdirWithParents(const std::string& path) {
     prev_end = next_end;
   }
   return true;
+}
+
+bool GetLogSeverity(const std::string& name, android::base::LogSeverity* severity) {
+  static std::map<std::string, android::base::LogSeverity> log_severity_map = {
+      {"verbose", android::base::VERBOSE},
+      {"debug", android::base::DEBUG},
+      {"warning", android::base::WARNING},
+      {"error", android::base::ERROR},
+      {"fatal", android::base::FATAL},
+  };
+  auto it = log_severity_map.find(name);
+  if (it != log_severity_map.end()) {
+    *severity = it->second;
+    return true;
+  }
+  return false;
 }
