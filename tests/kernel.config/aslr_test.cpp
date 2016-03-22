@@ -145,7 +145,7 @@ unsigned int AslrMmapTest::def_cmpt, AslrMmapTest::min_cmpt, AslrMmapTest::max_c
 
 void AslrMmapTest::SetUpTestCase() {
     /* set up per-arch values */
-#if defined(__x86__64__)
+#if defined(__x86_64__)
     def = 32;
     min = 28;
     max = 32;
@@ -211,7 +211,7 @@ void AslrMmapTest::TearDown() {
 }
 
 /* run tests only if on supported arch */
-#if defined(__x86__64__) || defined(__i386__) || defined(__aarch64__) || defined(__arm__)
+#if defined(__x86_64__) || defined(__i386__) || defined(__aarch64__) || defined(__arm__)
 
 TEST_F(AslrMmapTest, entropy_min_def) {
     if (user32) {

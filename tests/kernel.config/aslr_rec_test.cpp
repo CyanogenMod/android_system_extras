@@ -17,7 +17,7 @@
 #include "aslr_test.h"
 
 /* run tests if on supported arch */
-#if defined(__x86__64__) || defined(__i386__) || defined(__aarch64__) || defined(__arm__)
+#if defined(__x86_64__) || defined(__i386__) || defined(__aarch64__) || defined(__arm__)
 
 /* make sure the default entropy values matches what we expect */
 TEST_F(AslrMmapTest, match_default) {
