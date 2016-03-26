@@ -141,37 +141,8 @@ bool ProcessKernelSymbols(const std::string& symbol_file,
   return false;
 }
 
-static bool FindStartOfKernelSymbolCallback(const KernelSymbol& symbol, uint64_t* start_addr) {
-  if (symbol.module == nullptr) {
-    *start_addr = symbol.addr;
-    return true;
-  }
-  return false;
-}
-
-static bool FindStartOfKernelSymbol(const std::string& symbol_file, uint64_t* start_addr) {
-  return ProcessKernelSymbols(
-      symbol_file, std::bind(&FindStartOfKernelSymbolCallback, std::placeholders::_1, start_addr));
-}
-
-static bool FindKernelFunctionSymbolCallback(const KernelSymbol& symbol, const std::string& name,
-                                             uint64_t* addr) {
-  if ((symbol.type == 'T' || symbol.type == 'W' || symbol.type == 'A') &&
-      symbol.module == nullptr && name == symbol.name) {
-    *addr = symbol.addr;
-    return true;
-  }
-  return false;
-}
-
-static bool FindKernelFunctionSymbol(const std::string& symbol_file, const std::string& name,
-                                     uint64_t* addr) {
-  return ProcessKernelSymbols(
-      symbol_file, std::bind(&FindKernelFunctionSymbolCallback, std::placeholders::_1, name, addr));
-}
-
-std::vector<ModuleMmap> GetLoadedModules() {
-  std::vector<ModuleMmap> result;
+static std::vector<KernelMmap> GetLoadedModules() {
+  std::vector<KernelMmap> result;
   FILE* fp = fopen("/proc/modules", "re");
   if (fp == nullptr) {
     // There is no /proc/modules on Android devices, so we don't print error if failed to open it.
@@ -185,7 +156,7 @@ std::vector<ModuleMmap> GetLoadedModules() {
     char name[reader.MaxLineSize()];
     uint64_t addr;
     if (sscanf(line, "%s%*lu%*u%*s%*s 0x%" PRIx64, name, &addr) == 2) {
-      ModuleMmap map;
+      KernelMmap map;
       map.name = name;
       map.start_addr = addr;
       result.push_back(map);
@@ -223,9 +194,9 @@ static void GetAllModuleFiles(const std::string& path,
   }
 }
 
-static std::vector<ModuleMmap> GetModulesInUse() {
+static std::vector<KernelMmap> GetModulesInUse() {
   // TODO: There is no /proc/modules or /lib/modules on Android, find methods work on it.
-  std::vector<ModuleMmap> module_mmaps = GetLoadedModules();
+  std::vector<KernelMmap> module_mmaps = GetLoadedModules();
   std::string linux_version = GetLinuxVersion();
   std::string module_dirpath = "/lib/modules/" + linux_version + "/kernel";
   std::unordered_map<std::string, std::string> module_file_map;
@@ -239,24 +210,23 @@ static std::vector<ModuleMmap> GetModulesInUse() {
   return module_mmaps;
 }
 
-bool GetKernelAndModuleMmaps(KernelMmap* kernel_mmap, std::vector<ModuleMmap>* module_mmaps) {
-  if (!FindStartOfKernelSymbol("/proc/kallsyms", &kernel_mmap->start_addr)) {
-    LOG(DEBUG) << "call FindStartOfKernelSymbol() failed";
-    return false;
-  }
-  if (!FindKernelFunctionSymbol("/proc/kallsyms", "_text", &kernel_mmap->pgoff)) {
-    LOG(DEBUG) << "call FindKernelFunctionSymbol() failed";
-    return false;
-  }
+void GetKernelAndModuleMmaps(KernelMmap* kernel_mmap, std::vector<KernelMmap>* module_mmaps) {
   kernel_mmap->name = DEFAULT_KERNEL_MMAP_NAME;
+  kernel_mmap->start_addr = 0;
+  kernel_mmap->filepath = kernel_mmap->name;
   *module_mmaps = GetModulesInUse();
+  for (auto& map : *module_mmaps) {
+    if (map.filepath.empty()) {
+      map.filepath = "[" + map.name + "]";
+    }
+  }
+
   if (module_mmaps->size() == 0) {
     kernel_mmap->len = std::numeric_limits<unsigned long long>::max() - kernel_mmap->start_addr;
   } else {
     std::sort(
         module_mmaps->begin(), module_mmaps->end(),
-        [](const ModuleMmap& m1, const ModuleMmap& m2) { return m1.start_addr < m2.start_addr; });
-    CHECK_LE(kernel_mmap->start_addr, (*module_mmaps)[0].start_addr);
+        [](const KernelMmap& m1, const KernelMmap& m2) { return m1.start_addr < m2.start_addr; });
     // When not having enough privilege, all addresses are read as 0.
     if (kernel_mmap->start_addr == (*module_mmaps)[0].start_addr) {
       kernel_mmap->len = 0;
@@ -274,7 +244,6 @@ bool GetKernelAndModuleMmaps(KernelMmap* kernel_mmap, std::vector<ModuleMmap>* m
     module_mmaps->back().len =
         std::numeric_limits<unsigned long long>::max() - module_mmaps->back().start_addr;
   }
-  return true;
 }
 
 static bool ReadThreadNameAndTgid(const std::string& status_file, std::string* comm, pid_t* tgid) {

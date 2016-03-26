@@ -527,24 +527,19 @@ std::unique_ptr<RecordFileWriter> RecordCommand::CreateRecordFile(const std::str
 
 bool RecordCommand::DumpKernelAndModuleMmaps() {
   KernelMmap kernel_mmap;
-  std::vector<ModuleMmap> module_mmaps;
-  if (!GetKernelAndModuleMmaps(&kernel_mmap, &module_mmaps)) {
-    return false;
-  }
+  std::vector<KernelMmap> module_mmaps;
+  GetKernelAndModuleMmaps(&kernel_mmap, &module_mmaps);
+
   const perf_event_attr* attr = event_selection_set_.FindEventAttrByType(measured_event_types_[0]);
   CHECK(attr != nullptr);
   MmapRecord mmap_record = CreateMmapRecord(*attr, true, UINT_MAX, 0, kernel_mmap.start_addr,
-                                            kernel_mmap.len, kernel_mmap.pgoff, kernel_mmap.name);
+                                            kernel_mmap.len, 0, kernel_mmap.filepath);
   if (!ProcessRecord(&mmap_record)) {
     return false;
   }
   for (auto& module_mmap : module_mmaps) {
-    std::string filename = module_mmap.filepath;
-    if (filename.empty()) {
-      filename = "[" + module_mmap.name + "]";
-    }
     MmapRecord mmap_record = CreateMmapRecord(*attr, true, UINT_MAX, 0, module_mmap.start_addr,
-                                              module_mmap.len, 0, filename);
+                                              module_mmap.len, 0, module_mmap.filepath);
     if (!ProcessRecord(&mmap_record)) {
       return false;
     }

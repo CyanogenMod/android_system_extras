@@ -35,17 +35,10 @@ struct KernelMmap {
   std::string name;
   uint64_t start_addr;
   uint64_t len;
-  uint64_t pgoff;
-};
-
-struct ModuleMmap {
-  std::string name;
-  uint64_t start_addr;
-  uint64_t len;
   std::string filepath;
 };
 
-bool GetKernelAndModuleMmaps(KernelMmap* kernel_mmap, std::vector<ModuleMmap>* module_mmaps);
+void GetKernelAndModuleMmaps(KernelMmap* kernel_mmap, std::vector<KernelMmap>* module_mmaps);
 
 struct ThreadComm {
   pid_t pid, tid;
