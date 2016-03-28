@@ -20,7 +20,8 @@
 #include "dwarf_unwind.h"
 #include "environment.h"
 
-std::vector<uint64_t> UnwindCallChain(const ThreadEntry&, const RegSet&, const std::vector<char>&) {
+std::vector<uint64_t> UnwindCallChain(ArchType, const ThreadEntry&, const RegSet&,
+                                      const std::vector<char>&) {
   return std::vector<uint64_t>();
 }
 

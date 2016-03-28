@@ -505,7 +505,8 @@ void SampleRecord::DumpData(size_t indent) const {
     PrintIndented(indent, "user regs: abi=%" PRId64 "\n", regs_user_data.abi);
     for (size_t i = 0, pos = 0; i < 64; ++i) {
       if ((regs_user_data.reg_mask >> i) & 1) {
-        PrintIndented(indent + 1, "reg (%s) 0x%016" PRIx64 "\n", GetRegName(i).c_str(),
+        PrintIndented(indent + 1, "reg (%s) 0x%016" PRIx64 "\n",
+                      GetRegName(i, ScopedCurrentArch::GetCurrentArch()).c_str(),
                       regs_user_data.regs[pos++]);
       }
     }

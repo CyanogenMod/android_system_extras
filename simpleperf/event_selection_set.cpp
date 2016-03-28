@@ -45,7 +45,7 @@ bool IsDwarfCallChainSamplingSupported() {
   perf_event_attr attr = CreateDefaultPerfEventAttr(*type);
   attr.sample_type |= PERF_SAMPLE_CALLCHAIN | PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER;
   attr.exclude_callchain_user = 1;
-  attr.sample_regs_user = GetSupportedRegMask();
+  attr.sample_regs_user = GetSupportedRegMask(GetBuildArch());
   attr.sample_stack_user = 8192;
   return IsEventAttrSupportedByKernel(attr);
 }
@@ -166,7 +166,7 @@ bool EventSelectionSet::EnableDwarfCallChainSampling(uint32_t dump_stack_size) {
     selection.event_attr.sample_type |=
         PERF_SAMPLE_CALLCHAIN | PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER;
     selection.event_attr.exclude_callchain_user = 1;
-    selection.event_attr.sample_regs_user = GetSupportedRegMask();
+    selection.event_attr.sample_regs_user = GetSupportedRegMask(GetBuildArch());
     selection.event_attr.sample_stack_user = dump_stack_size;
   }
   return true;

@@ -94,15 +94,15 @@ static ucontext_t BuildUContextFromRegs(const RegSet& regs __attribute__((unused
   return ucontext;
 }
 
-std::vector<uint64_t> UnwindCallChain(const ThreadEntry& thread, const RegSet& regs,
-                                      const std::vector<char>& stack) {
+std::vector<uint64_t> UnwindCallChain(ArchType arch, const ThreadEntry& thread,
+                                      const RegSet& regs, const std::vector<char>& stack) {
   std::vector<uint64_t> result;
-  if (GetCurrentArch() != GetBuildArch()) {
+  if (arch != GetBuildArch()) {
     LOG(ERROR) << "can't unwind data recorded on a different architecture";
     return result;
   }
   uint64_t sp_reg_value;
-  if (!GetSpRegValue(regs, &sp_reg_value)) {
+  if (!GetSpRegValue(regs, arch, &sp_reg_value)) {
     LOG(ERROR) << "can't get sp reg value";
     return result;
   }

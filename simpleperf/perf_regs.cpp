@@ -21,30 +21,24 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 
-static ArchType current_arch = GetBuildArch();
+ArchType ScopedCurrentArch::current_arch = GetBuildArch();
 
-ArchType GetCurrentArch() {
-  return current_arch;
-}
-
-bool SetCurrentArch(const std::string& arch) {
+ArchType GetArchType(const std::string& arch) {
   if (arch == "x86" || arch == "i686") {
-    current_arch = ARCH_X86_32;
+    return ARCH_X86_32;
   } else if (arch == "x86_64") {
-    current_arch = ARCH_X86_64;
+    return ARCH_X86_64;
   } else if (arch == "aarch64") {
-    current_arch = ARCH_ARM64;
+    return ARCH_ARM64;
   } else if (android::base::StartsWith(arch, "arm")) {
-    current_arch = ARCH_ARM;
-  } else {
-    LOG(ERROR) << "unsupported arch: " << arch;
-    return false;
+    return ARCH_ARM;
   }
-  return true;
+  LOG(ERROR) << "unsupported arch: " << arch;
+  return ARCH_UNSUPPORTED;
 }
 
-uint64_t GetSupportedRegMask() {
-  switch (GetCurrentArch()) {
+uint64_t GetSupportedRegMask(ArchType arch) {
+  switch (arch) {
     case ARCH_X86_32:
       return ((1ULL << PERF_REG_X86_32_MAX) - 1);
     case ARCH_X86_64:
@@ -78,10 +72,10 @@ static std::unordered_map<size_t, std::string> arm64_reg_map = {
     {PERF_REG_ARM64_LR, "lr"}, {PERF_REG_ARM64_SP, "sp"}, {PERF_REG_ARM64_PC, "pc"},
 };
 
-std::string GetRegName(size_t regno) {
+std::string GetRegName(size_t regno, ArchType arch) {
   // Cast regno to int type to avoid -Werror=type-limits.
   int reg = static_cast<int>(regno);
-  switch (GetCurrentArch()) {
+  switch (arch) {
     case ARCH_X86_64: {
       if (reg >= PERF_REG_X86_R8 && reg <= PERF_REG_X86_R15) {
         return android::base::StringPrintf("r%d", reg - PERF_REG_X86_R8 + 8);
@@ -133,18 +127,23 @@ bool GetRegValue(const RegSet& regs, size_t regno, uint64_t* value) {
   return false;
 }
 
-bool GetSpRegValue(const RegSet& regs, uint64_t* value) {
+bool GetSpRegValue(const RegSet& regs, ArchType arch, uint64_t* value) {
   size_t regno;
-#if defined(__i386__)
-  regno = PERF_REG_X86_SP;
-#elif defined(__x86_64__)
-  regno = PERF_REG_X86_SP;
-#elif defined(__aarch64__)
-  regno = PERF_REG_ARM64_SP;
-#elif defined(__arm__)
-  regno = PERF_REG_ARM_SP;
-#else
-  return false;
-#endif
+  switch (arch) {
+    case ARCH_X86_32:
+      regno = PERF_REG_X86_SP;
+      break;
+    case ARCH_X86_64:
+      regno = PERF_REG_X86_SP;
+      break;
+    case ARCH_ARM:
+      regno = PERF_REG_ARM_SP;
+      break;
+    case ARCH_ARM64:
+      regno = PERF_REG_ARM64_SP;
+      break;
+    default:
+      return false;
+  }
   return GetRegValue(regs, regno, value);
 }
