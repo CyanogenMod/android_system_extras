@@ -320,7 +320,7 @@ def read_and_parse_trace_data_live(stdout, stderr, pagecache_stats, app_name):
       while True:
         try:
           line = stdout_queue.get(True, STATS_UPDATE_INTERVAL)
-          parse_atrace_line(line, pagecache_stats)
+          parse_atrace_line(line, pagecache_stats, app_name)
         except Queue.Empty:
           break
 
@@ -398,7 +398,7 @@ def main():
       print >> sys.stderr, ('The command failed')
       sys.exit(1)
 
-    read_and_parse_trace_data_live(atrace.stdout, atrace.stderr, pagecache_stats, app_name)
+    read_and_parse_trace_data_live(atrace.stdout, atrace.stderr, pagecache_stats, options.app_name)
 
 if __name__ == "__main__":
   main()
