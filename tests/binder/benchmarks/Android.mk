@@ -37,4 +37,4 @@ LOCAL_C_INCLUDES += \
 LOCAL_MODULE := binderAddInts
 LOCAL_SRC_FILES := binderAddInts.cpp
 
-include $(BUILD_EXECUTABLE)
+include $(BUILD_NATIVE_BENCHMARK)
