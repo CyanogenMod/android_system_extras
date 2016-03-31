@@ -20,7 +20,6 @@ include $(CLEAR_VARS)
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
 
 LOCAL_MODULE_TAGS := eng tests
-LOCAL_MODULE_PATH := $(TARGET_OUT_DATA)/nativebenchmark
 
 LOCAL_STATIC_LIBRARIES += \
     libtestUtil
