@@ -23,11 +23,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-/* HACK: we need the RSAPublicKey struct
- * but RSA_verify conflits with openssl */
-#define RSA_verify RSA_verify_mincrypt
-#include "mincrypt/rsa.h"
-#undef RSA_verify
+#include <crypto_utils/android_pubkey.h>
 
 #include <openssl/evp.h>
 #include <openssl/objects.h>
@@ -35,58 +31,9 @@
 #include <openssl/rsa.h>
 #include <openssl/sha.h>
 
-// Convert OpenSSL RSA private key to android pre-computed RSAPublicKey format.
-// Lifted from secure adb's mincrypt key generation.
-static int convert_to_mincrypt_format(RSA *rsa, RSAPublicKey *pkey)
-{
-    int ret = -1;
-    unsigned int i;
-
-    if (RSA_size(rsa) != RSANUMBYTES)
-        goto out;
-
-    BN_CTX* ctx = BN_CTX_new();
-    BIGNUM* r32 = BN_new();
-    BIGNUM* rr = BN_new();
-    BIGNUM* r = BN_new();
-    BIGNUM* rem = BN_new();
-    BIGNUM* n = BN_new();
-    BIGNUM* n0inv = BN_new();
-
-    BN_set_bit(r32, 32);
-    BN_copy(n, rsa->n);
-    BN_set_bit(r, RSANUMWORDS * 32);
-    BN_mod_sqr(rr, r, n, ctx);
-    BN_div(NULL, rem, n, r32, ctx);
-    BN_mod_inverse(n0inv, rem, r32, ctx);
-
-    pkey->len = RSANUMWORDS;
-    pkey->n0inv = 0 - BN_get_word(n0inv);
-    for (i = 0; i < RSANUMWORDS; i++) {
-        BN_div(rr, rem, rr, r32, ctx);
-        pkey->rr[i] = BN_get_word(rem);
-        BN_div(n, rem, n, r32, ctx);
-        pkey->n[i] = BN_get_word(rem);
-    }
-    pkey->exponent = BN_get_word(rsa->e);
-
-    ret = 0;
-
-    BN_free(n0inv);
-    BN_free(n);
-    BN_free(rem);
-    BN_free(r);
-    BN_free(rr);
-    BN_free(r32);
-    BN_CTX_free(ctx);
-
-out:
-    return ret;
-}
-
 static int write_public_keyfile(RSA *private_key, const char *private_key_path)
 {
-    RSAPublicKey pkey;
+    uint8_t key_data[ANDROID_PUBKEY_ENCODED_SIZE];
     BIO *bfile = NULL;
     char *path = NULL;
     int ret = -1;
@@ -94,14 +41,14 @@ static int write_public_keyfile(RSA *private_key, const char *private_key_path)
     if (asprintf(&path, "%s.pub", private_key_path) < 0)
         goto out;
 
-    if (convert_to_mincrypt_format(private_key, &pkey) < 0)
+    if (!android_pubkey_encode(private_key, key_data, sizeof(key_data)))
         goto out;
 
     bfile = BIO_new_file(path, "w");
     if (!bfile)
         goto out;
 
-    BIO_write(bfile, &pkey, sizeof(pkey));
+    BIO_write(bfile, key_data, sizeof(key_data));
     BIO_flush(bfile);
 
     ret = 0;

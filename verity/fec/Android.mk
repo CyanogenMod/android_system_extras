@@ -11,6 +11,7 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_STATIC_LIBRARIES := \
     libsparse_host \
     libz \
+    libcrypto_utils_static \
     libcrypto_static \
     libfec_host \
     libfec_rs_host \
@@ -29,6 +30,7 @@ LOCAL_FORCE_STATIC_EXECUTABLE := true
 LOCAL_SRC_FILES := main.cpp image.cpp
 LOCAL_MODULE_TAGS := optional
 LOCAL_STATIC_LIBRARIES := \
+    libcrypto_utils_static \
     libcrypto_static \
     libfec \
     libfec_rs \

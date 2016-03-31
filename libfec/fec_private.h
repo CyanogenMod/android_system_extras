@@ -23,17 +23,17 @@
 #include <new>
 #include <pthread.h>
 #include <stdio.h>
-#include <string>
 #include <string.h>
+#include <string>
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <vector>
 
-#include <utils/Compat.h>
-#include <mincrypt/rsa.h>
-#include <openssl/sha.h>
-#include <fec/io.h>
+#include <crypto_utils/android_pubkey.h>
 #include <fec/ecc.h>
+#include <fec/io.h>
+#include <openssl/sha.h>
+#include <utils/Compat.h>
 
 /* processing parameters */
 #define WORK_MIN_THREADS 1
@@ -59,7 +59,7 @@
 struct verity_header {
     uint32_t magic;
     uint32_t version;
-    uint8_t signature[RSANUMBYTES];
+    uint8_t signature[ANDROID_PUBKEY_MODULUS_SIZE];
     uint32_t length;
 };
 

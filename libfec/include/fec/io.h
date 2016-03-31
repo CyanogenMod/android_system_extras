@@ -24,7 +24,8 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <mincrypt/rsa.h>
+
+#include <crypto_utils/android_pubkey.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -70,8 +71,8 @@ struct fec_ecc_metadata {
 struct fec_verity_metadata {
     bool disabled;
     uint64_t data_size;
-    uint8_t signature[RSANUMBYTES];
-    uint8_t ecc_signature[RSANUMBYTES];
+    uint8_t signature[ANDROID_PUBKEY_MODULUS_SIZE];
+    uint8_t ecc_signature[ANDROID_PUBKEY_MODULUS_SIZE];
     const char *table;
     uint32_t table_length;
 };
