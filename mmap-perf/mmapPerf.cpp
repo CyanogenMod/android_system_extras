@@ -1,3 +1,4 @@
+#include "benchmark/benchmark_api.h"
 #include <string>
 #include <cstring>
 #include <cstdlib>
@@ -12,7 +13,9 @@
 #include <sys/mman.h>
 
 using namespace std;
-static const size_t pageSize = 4096;
+static const size_t pageSize = PAGE_SIZE;
+static size_t fsize = 1024 * (1ull << 20);
+static size_t pagesTotal = fsize / pageSize;
 
 class Fd {
     int m_fd = -1;
@@ -79,48 +82,21 @@ public:
             fillPageJunk(targetPtr);
         }
     }
-    double benchRandom(bool write) {
-        size_t pagesTotal = m_size / pageSize;
-        size_t pagesToHit = pagesTotal / 128;
-        uint64_t nsTotal = 0;
-
-        chrono::time_point<chrono::high_resolution_clock> start, end;
-        start = chrono::high_resolution_clock::now();
-        for (int j = 0; j < pagesToHit; j++) {
-            int targetPage = rand() % pagesTotal;
-            uint8_t *targetPtr = (uint8_t*)m_ptr + 4096ull * targetPage;
-            if (write) {
-                *targetPtr = dummy;
-            }
-            else {
-                dummy += *targetPtr;
-            }
-        }
-        end = chrono::high_resolution_clock::now();
-        nsTotal += chrono::duration_cast<chrono::nanoseconds>(end - start).count();
-        return ((4096.0 * pagesToHit) / (1 << 20)) / (nsTotal / 1.0E9);
+    void benchRandomRead(unsigned int targetPage) {
+        uint8_t *targetPtr = (uint8_t*)m_ptr + pageSize * targetPage;
+        dummy += *targetPtr;
     }
-    double benchLinear(bool write) {
-        int pagesTotal = m_size / pageSize;
-        int iterations = 4;
-        uint64_t nsTotal = 0;
-
-        chrono::time_point<chrono::high_resolution_clock> start, end;
-        start = chrono::high_resolution_clock::now();
-        for (int i = 0; i < iterations; i++) {
-            for (int j = 0; j < pagesTotal; j++) {
-                uint8_t *targetPtr = (uint8_t*)m_ptr + 4096ull * j;
-                if (write) {
-                    *targetPtr = dummy;
-                }
-                else {
-                    dummy += *targetPtr;
-                }
-            }
-        }
-        end = chrono::high_resolution_clock::now();
-        nsTotal += chrono::duration_cast<chrono::nanoseconds>(end - start).count();
-        return ((4096.0 * pagesTotal * iterations) / (1 << 20)) / (nsTotal / 1.0E9 );
+    void benchRandomWrite(unsigned int targetPage) {
+        uint8_t *targetPtr = (uint8_t*)m_ptr + pageSize * targetPage;
+        *targetPtr = dummy;
+    }
+    void benchLinearRead(unsigned int j) {
+        uint8_t *targetPtr = (uint8_t*)m_ptr + pageSize * j;
+        dummy += *targetPtr;
+    }
+    void benchLinearWrite(unsigned int j) {
+        uint8_t *targetPtr = (uint8_t*)m_ptr + pageSize * j;
+        *targetPtr = dummy;
     }
     void dropCache() {
         int ret1 = msync(m_ptr, m_size, MS_SYNC | MS_INVALIDATE);
@@ -134,51 +110,46 @@ public:
 
 };
 
-int main(int argc, char *argv[])
-{
-    double randomRead, randomWrite, linearRead, linearWrite;
-    size_t fsize = 0;
-    srand(0);
-
-    if (argc == 1)
-        fsize = 1024 * (1ull << 20);
-    else if (argc == 2) {
-        long long sz = atoll(argv[1]);
-        if (sz > 0 && (sz << 20) < SIZE_MAX)
-            fsize = atoll(argv[1]) * (1ull << 20);
+static void benchRandomRead(benchmark::State& state) {
+    FileMap file{"/data/local/tmp/mmap_test", fsize};
+    while (state.KeepRunning()) {
+        unsigned int targetPage = rand() % pagesTotal;
+        file.benchRandomRead(targetPage);
     }
-
-    if (fsize <= 0) {
-        cout << "Error: invalid argument" << endl;
-        cerr << "Usage: " << argv[0] << " [fsize_in_MB]" << endl;
-        exit(1);
-    }
-    cerr << "Using filesize=" << fsize << endl;
-
-    {
-        cerr << "Running random_read..." << endl;
-        FileMap file{"/data/local/tmp/mmap_test", fsize};
-        randomRead = file.benchRandom(false);
-    }
-    {
-        cerr << "Running linear_read..." << endl;
-        FileMap file{"/data/local/tmp/mmap_test", fsize};
-        linearRead = file.benchLinear(false);
-    }
-    {
-        cerr << "Running random_write..." << endl;
-        FileMap file{"/data/local/tmp/mmap_test", fsize};
-        randomWrite = file.benchRandom(true);
-    }
-    {
-        cerr << "Running linear_write..." << endl;
-        FileMap file{"/data/local/tmp/mmap_test", fsize};
-        linearWrite = file.benchLinear(true);
-    }
-    cout << "Success" << endl;
-    cout << "random_read : " << randomRead << " : MB/s" << endl;
-    cout << "linear_read : " << linearRead << " : MB/s" << endl;
-    cout << "random_write : " << randomWrite << " : MB/s" << endl;
-    cout << "linear_write : " << linearWrite << " : MB/s" << endl;
-    return 0;
+    state.SetBytesProcessed(state.iterations() * pageSize);
 }
+BENCHMARK(benchRandomRead);
+
+static void benchRandomWrite(benchmark::State& state) {
+    FileMap file{"/data/local/tmp/mmap_test", fsize};
+    while (state.KeepRunning()) {
+        unsigned int targetPage = rand() % pagesTotal;
+        file.benchRandomWrite(targetPage);
+    }
+    state.SetBytesProcessed(state.iterations() * pageSize);
+}
+BENCHMARK(benchRandomWrite);
+
+static void benchLinearRead(benchmark::State& state) {
+   FileMap file{"/data/local/tmp/mmap_test", fsize};
+   unsigned int j = 0;
+   while (state.KeepRunning()) {
+       file.benchLinearRead(j);
+       j = (j + 1) % pagesTotal;
+   }
+   state.SetBytesProcessed(state.iterations() * pageSize);
+}
+BENCHMARK(benchLinearRead);
+
+static void benchLinearWrite(benchmark::State& state) {
+   FileMap file{"/data/local/tmp/mmap_test", fsize};
+   unsigned int j = 0;
+   while (state.KeepRunning()) {
+       file.benchLinearWrite(j);
+       j = (j + 1) % pagesTotal;
+   }
+   state.SetBytesProcessed(state.iterations() * pageSize);
+}
+BENCHMARK(benchLinearWrite);
+
+BENCHMARK_MAIN()

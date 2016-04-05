@@ -28,4 +28,4 @@ LOCAL_CFLAGS += -g -Wall -Werror -std=c++11 -Wno-missing-field-initializers -Wno
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 LOCAL_CXX_STL := libc++_static
 LOCAL_STATIC_LIBRARIES := libc
-include $(BUILD_EXECUTABLE)
+include $(BUILD_NATIVE_BENCHMARK)
