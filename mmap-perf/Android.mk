@@ -18,7 +18,6 @@ LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES :=  mmapPerf.cpp
-LOCAL_MODULE_PATH := $(TARGET_OUT_DATA)/local/tmp
 LOCAL_MODULE := mmapPerf
 LOCAL_MULTILIB := both
 LOCAL_MODULE_STEM_32 := $(LOCAL_MODULE)
