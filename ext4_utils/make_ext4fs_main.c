@@ -27,6 +27,7 @@
 
 #ifdef ANDROID
 #include <private/android_filesystem_config.h>
+#include <private/canned_fs_config.h>
 #endif
 
 #ifndef USE_MINGW
@@ -41,7 +42,6 @@ struct selabel_handle;
 
 #include "make_ext4fs.h"
 #include "ext4_utils.h"
-#include "canned_fs_config.h"
 
 #ifndef USE_MINGW /* O_BINARY is windows-specific flag */
 #define O_BINARY 0
