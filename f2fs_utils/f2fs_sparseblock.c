@@ -388,6 +388,13 @@ struct f2fs_info *generate_f2fs_info(int fd)
         return NULL;
     }
 
+    info->journal = calloc(1, sizeof(struct f2fs_journal));
+    if (!info->journal) {
+        SLOGE("Out of memory!");
+        free(info);
+        return NULL;
+    }
+
     sb = malloc(sizeof(*sb));
     if(!sb) {
         SLOGE("Out of memory!");
@@ -463,6 +470,9 @@ void free_f2fs_info(struct f2fs_info *info)
 
         free(info->sit_sums);
         info->sit_sums = NULL;
+
+        free(info->journal);
+        info->journal = NULL;
     }
     free(info);
 }
