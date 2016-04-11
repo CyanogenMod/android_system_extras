@@ -137,9 +137,9 @@ static void dbg_print_info_struct(struct f2fs_info *info)
     SLOGD("blocks_per_sit: %"PRIu64, info->blocks_per_sit);
     SLOGD("sit_blocks loc: %p", info->sit_blocks);
     SLOGD("sit_sums loc: %p", info->sit_sums);
-    SLOGD("sit_sums num: %d", le16_to_cpu(info->sit_sums->journal.n_sits));
+    SLOGD("sit_sums num: %d", le16_to_cpu(info->journal->n_sits));
     unsigned int i;
-    for(i = 0; i < (le16_to_cpu(info->sit_sums->journal.n_sits)); i++) {
+    for(i = 0; i < (le16_to_cpu(info->journal->n_sits)); i++) {
         SLOGD("entry %d in journal entries is for segment %d",i, le32_to_cpu(segno_in_journal(info->journal, i)));
     }
 
@@ -388,6 +388,13 @@ struct f2fs_info *generate_f2fs_info(int fd)
         return NULL;
     }
 
+    info->journal = calloc(1, sizeof(struct f2fs_journal));
+    if (!info->journal) {
+        SLOGE("Out of memory!");
+        free(info);
+        return NULL;
+    }
+
     sb = malloc(sizeof(*sb));
     if(!sb) {
         SLOGE("Out of memory!");
@@ -463,6 +470,9 @@ void free_f2fs_info(struct f2fs_info *info)
 
         free(info->sit_sums);
         info->sit_sums = NULL;
+
+        free(info->journal);
+        info->journal = NULL;
     }
     free(info);
 }
@@ -503,7 +513,7 @@ int run_on_used_blocks(u64 startblock, struct f2fs_info *info, int (*func)(u64 p
 
             /* check the SIT entries in the journal */
             found = 0;
-            for(i = 0; i < le16_to_cpu(info->sit_sums->journal.n_sits); i++) {
+            for(i = 0; i < le16_to_cpu(info->journal->n_sits); i++) {
                 if (le32_to_cpu(segno_in_journal(info->journal, i)) == segnum) {
                     sit_entry = &sit_in_journal(info->journal, i);
                     found = 1;
