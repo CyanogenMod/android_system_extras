@@ -35,6 +35,7 @@ extern "C" {
 
 struct f2fs_sit_block;
 struct f2fs_summary_block;
+struct f2fs_journal;
 
 struct f2fs_info {
     u_int64_t blocks_per_segment;
@@ -45,6 +46,7 @@ struct f2fs_info {
     u_int64_t blocks_per_sit;
     struct f2fs_sit_block *sit_blocks;
     struct f2fs_summary_block *sit_sums;
+    struct f2fs_journal *journal;
 
     u_int64_t cp_blkaddr;
     u_int64_t cp_valid_cp_blkaddr;
