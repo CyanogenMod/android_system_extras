@@ -24,6 +24,8 @@
 #include "perf_event.h"
 #include "record.h"
 
+namespace simpleperf {
+
 bool MapComparator::operator()(const MapEntry* map1, const MapEntry* map2) const {
   if (map1->start_addr != map2->start_addr) {
     return map1->start_addr < map2->start_addr;
@@ -206,6 +208,8 @@ void ThreadTree::Clear() {
   module_dso_tree_.clear();
   user_dso_tree_.clear();
 }
+
+}  // namespace simpleperf
 
 void BuildThreadTree(const Record& record, ThreadTree* thread_tree) {
   if (record.header.type == PERF_RECORD_MMAP) {

@@ -25,6 +25,8 @@
 
 #include "dso.h"
 
+namespace simpleperf {
+
 struct MapEntry {
   uint64_t start_addr;
   uint64_t len;
@@ -96,6 +98,12 @@ class ThreadTree {
   std::unique_ptr<Dso> unknown_dso_;
   Symbol unknown_symbol_;
 };
+
+}  // namespace simpleperf
+
+using MapEntry = simpleperf::MapEntry;
+using ThreadEntry = simpleperf::ThreadEntry;
+using ThreadTree = simpleperf::ThreadTree;
 
 struct Record;
 

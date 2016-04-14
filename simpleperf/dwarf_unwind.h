@@ -21,7 +21,11 @@
 
 #include "perf_regs.h"
 
+namespace simpleperf {
 struct ThreadEntry;
+}
+
+using ThreadEntry = simpleperf::ThreadEntry;
 
 std::vector<uint64_t> UnwindCallChain(ArchType arch, const ThreadEntry& thread, const RegSet& regs,
                                       const std::vector<char>& stack);
