@@ -749,7 +749,8 @@ int make_ext4fs_internal(int fd, const char *_directory, const char *_target_out
 
 	info.feat_ro_compat |=
 			EXT4_FEATURE_RO_COMPAT_SPARSE_SUPER |
-			EXT4_FEATURE_RO_COMPAT_LARGE_FILE;
+			EXT4_FEATURE_RO_COMPAT_LARGE_FILE |
+			EXT4_FEATURE_RO_COMPAT_GDT_CSUM;
 
 	info.feat_incompat |=
 			EXT4_FEATURE_INCOMPAT_EXTENTS |
