@@ -277,7 +277,7 @@ static void init_bg(struct block_group_info *bg, unsigned int i)
 	bg->free_blocks = info.blocks_per_group;
 	bg->free_inodes = info.inodes_per_group;
 	bg->first_free_inode = 1;
-	bg->flags = 0;
+	bg->flags = EXT4_BG_INODE_UNINIT;
 
 	bg->chunk_count = 0;
 	bg->max_chunk_count = 1;
