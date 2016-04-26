@@ -74,8 +74,11 @@ typedef struct cpu_stat {
     unsigned long total;
 } cpu_stat_t;
 
-/* Make the logging on/off threshold equal to 95% cpu usage. */
-static int idle_threshold = 5;
+/*
+ * Logging on/off threshold.
+ * Uint: 0.01%; default to 99.90% cpu.
+ */
+static int idle_threshold = 10;
 
 static bool quit = false;
 static bool suspend= false;
@@ -151,18 +154,18 @@ static void get_cpu_stat(cpu_stat_t *cpu) {
 
 /*
  * Calculate cpu usage in the past interval.
- * If tracing is on, increase the idle threshold by 1% so that we do not
+ * If tracing is on, increase the idle threshold by 1.00% so that we do not
  * turn on and off tracing frequently whe the cpu load is right close to
  * threshold.
  */
 static bool is_heavy_load(void) {
     unsigned long diff_idle, diff_total;
-    int threshold = idle_threshold + (tracing?1:0);
+    int threshold = idle_threshold + (tracing?100:0);
     get_cpu_stat(&new_cpu);
     diff_idle = new_cpu.itime - old_cpu.itime;
     diff_total = new_cpu.total - old_cpu.total;
     old_cpu = new_cpu;
-    return (diff_idle * 100 < diff_total * threshold);
+    return (diff_idle * 10000 < diff_total * threshold);
 }
 
 /*
@@ -494,7 +497,7 @@ static void show_help(void) {
                     "   -a appname  enable app-level tracing for a comma "
                        "separated list of cmdlines\n"
                     "   -t N        cpu threshold for logging to start "
-                        "(min = 50, max = 100, default = 95)\n"
+                        "(uint = 0.01%%, min = 5000, max = 9999, default = 9990)\n"
                     "   -s N        use a trace buffer size of N KB "
                         "default to 16KB\n"
                     "   -h          show helps\n");
@@ -535,11 +538,11 @@ static int get_options(int argc, char *argv[]) {
                 break;
             case 't':
                 threshold = atoi(optarg);
-                if (threshold > 100 || threshold < 50) {
-                    fprintf(stderr, "logging threshold should be 50-100\n");
+                if (threshold > 9999 || threshold < 5000) {
+                    fprintf(stderr, "logging threshold should be 5000-9999\n");
                     return 1;
                 }
-                idle_threshold = 100 - threshold;
+                idle_threshold = 10000 - threshold;
                 break;
             case 'h':
                 show_help();
