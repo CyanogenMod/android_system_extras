@@ -617,10 +617,6 @@ static void extract_base_fs_allocations(const char *directory, const char *mount
 				} else {
 					end_block = parse_num(range);
 				}
-				block_file_size = end_block - start_block + 1;
-				if (block_file_size > real_file_block_size) {
-					block_file_size = real_file_block_size;
-				}
 				// Assummption is that allocations are within the same block group
 				block_group = get_block_group(start_block);
 				if (block_group != get_block_group(end_block)) {
@@ -628,6 +624,18 @@ static void extract_base_fs_allocations(const char *directory, const char *mount
 								   "block group than start block. did you change fs params?");
 				}
 				block_range = strtok_r(NULL, ",", &end_string);
+				int bg_first_block = bgs[block_group].first_block;
+				int min_bg_bound = bgs[block_group].chunks[0].block + bgs[block_group].chunks[0].len;
+				int max_bg_bound = bgs[block_group].chunks[bgs[block_group].chunk_count - 1].block;
+
+				if (min_bg_bound >= start_block - bg_first_block ||
+					max_bg_bound <= end_block - bg_first_block) {
+					continue;
+				}
+				block_file_size = end_block - start_block + 1;
+				if (block_file_size > real_file_block_size) {
+					block_file_size = real_file_block_size;
+				}
 				append_region(fs_alloc, start_block, block_file_size, block_group);
 				reserve_bg_chunk(block_group, start_block - bgs[block_group].first_block, block_file_size);
 				real_file_block_size -= block_file_size;
