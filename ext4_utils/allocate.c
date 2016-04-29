@@ -97,6 +97,20 @@ void region_list_append(struct region_list *list, struct region *reg)
 	reg->next = NULL;
 }
 
+void region_list_merge(struct region_list *list1, struct region_list *list2)
+{
+	if (list1->first == NULL) {
+		list1->first = list2->first;
+		list1->last = list2->last;
+		list1->iter = list2->first;
+		list1->partial_iter = 0;
+		list1->first->prev = NULL;
+	} else {
+		list1->last->next = list2->first;
+		list2->first->prev = list1->last;
+		list1->last = list2->last;
+	}
+}
 #if 0
 static void dump_starting_from(struct region *reg)
 {

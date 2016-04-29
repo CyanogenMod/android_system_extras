@@ -94,6 +94,7 @@ void append_region(struct block_allocation *alloc,
 struct block_allocation *create_allocation();
 int append_oob_allocation(struct block_allocation *alloc, u32 len);
 void region_list_append(struct region_list *list, struct region *reg);
+void region_list_merge(struct region_list *list1, struct region_list *list2);
 void print_blocks(FILE* f, struct block_allocation *alloc, char separator);
 void reserve_bg_chunk(int bg, u32 start_block, u32 size);
 int reserve_blocks_for_allocation(struct block_allocation *alloc);
