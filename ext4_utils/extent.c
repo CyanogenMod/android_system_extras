@@ -96,7 +96,7 @@ static struct block_allocation *do_inode_allocate_extents(
 						block_len + 1 - prealloc_block_len);
 				return NULL;
 			}
-			region_list_append(&prealloc->list, alloc->list.first);
+			region_list_merge(&prealloc->list, &alloc->list);
 			free(alloc);
 		}
 		alloc = prealloc;
