@@ -24,18 +24,11 @@
 #include <string>
 #include <vector>
 
-#include <dirent.h>
-#include <errno.h>
-#include <sys/mount.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
 #include <android-base/file.h>
 
 #include <cutils/klog.h>
-#include <cutils/properties.h>
-#include <cutils/sockets.h>
 #include <logwrap/logwrap.h>
+#include <util.h>
 
 #include "key_control.h"
 
@@ -117,9 +110,6 @@ int e4crypt_set_directory_policy(const char* dir)
         return 0;
     }
 
-    // Special case various directories that must not be encrypted,
-    // often because their subdirectories must be encrypted.
-    // This isn't a nice way to do this, see b/26641735
     std::vector<std::string> directories_to_exclude = {
         "lost+found",
         "system_ce", "system_de",
@@ -141,12 +131,19 @@ int e4crypt_set_directory_policy(const char* dir)
         KLOG_ERROR(TAG, "Unable to read system policy to set on %s\n", dir);
         return -1;
     }
+
+    std::string hex_policy = bytes_to_hex((const uint8_t*)policy.c_str(),
+                                          policy.length());
+
+    const char* argv[] = { "/system/bin/vdc", "--wait", "cryptfs",
+                           "ensure_policy", dir, hex_policy.c_str()};
+
     KLOG_INFO(TAG, "Setting policy on %s\n", dir);
-    int result = e4crypt_policy_ensure(dir, policy.c_str(), policy.size());
-    if (result) {
-        KLOG_ERROR(TAG, "Setting %02x%02x%02x%02x policy on %s failed!\n",
-                   policy[0], policy[1], policy[2], policy[3], dir);
-        return -1;
+    int rc = android_fork_execvp(6, (char**) argv, NULL, false, true);
+    if (rc) {
+        KLOG_ERROR(TAG, "Setting %s policy on %s failed!\n",
+                   hex_policy.c_str(), dir);
+        return rc;
     }
 
     return 0;
