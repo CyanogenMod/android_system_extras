@@ -8,7 +8,7 @@ perfprofd_test_cppflags := -Wall -Wno-sign-compare -Wno-unused-parameter -Werror
 #
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
-LOCAL_CPP_EXTENSION := cc
+LOCAL_CPP_EXTENSION := .cc
 LOCAL_CXX_STL := libc++
 LOCAL_C_INCLUDES += system/extras/perfprofd
 LOCAL_MODULE := libperfprofdmockutils
@@ -32,7 +32,7 @@ include $(BUILD_PREBUILT)
 #
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
-LOCAL_CPP_EXTENSION := cc
+LOCAL_CPP_EXTENSION := .cc
 LOCAL_CXX_STL := libc++
 LOCAL_STATIC_LIBRARIES := libperfprofdcore libperfprofdmockutils libgtest libbase
 LOCAL_SHARED_LIBRARIES := libprotobuf-cpp-lite
