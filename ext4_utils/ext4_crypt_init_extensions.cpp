@@ -63,7 +63,7 @@ int e4crypt_create_device_key(const char* dir,
     init_logging();
 
     // Make sure folder exists. Use make_dir to set selinux permissions.
-    std::string unencrypted_dir = std::string(dir) + "/unencrypted";
+    std::string unencrypted_dir = std::string(dir) + e4crypt_unencrypted_folder;
     if (ensure_dir_exists(unencrypted_dir.c_str())) {
         KLOG_ERROR(TAG, "Failed to create %s (%s)\n",
                    unencrypted_dir.c_str(),
@@ -138,10 +138,9 @@ int e4crypt_set_directory_policy(const char* dir)
     std::string ref_filename = std::string("/data") + e4crypt_key_ref;
     std::string policy;
     if (!android::base::ReadFileToString(ref_filename, &policy)) {
-        KLOG_INFO(TAG, "Not file encrypted so no policy for %s\n", dir);
-        return 0;
+        KLOG_ERROR(TAG, "Unable to read system policy to set on %s\n", dir);
+        return -1;
     }
-
     KLOG_INFO(TAG, "Setting policy on %s\n", dir);
     int result = e4crypt_policy_ensure(dir, policy.c_str(), policy.size());
     if (result) {

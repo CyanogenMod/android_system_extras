@@ -20,6 +20,8 @@
 
 __BEGIN_DECLS
 
+bool e4crypt_is_native();
+
 int e4crypt_policy_ensure(const char *directory, const char* policy, size_t policy_length);
 
 static const char* e4crypt_unencrypted_folder = "/unencrypted";

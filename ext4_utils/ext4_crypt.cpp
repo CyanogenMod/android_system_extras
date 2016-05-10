@@ -1,5 +1,17 @@
 /*
- * Copyright (c) 2015 Google, Inc.
+ * Copyright (C) 2015 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 #include "ext4_crypt.h"
@@ -16,6 +28,7 @@
 #include <sys/types.h>
 
 #include <android-base/logging.h>
+#include <cutils/properties.h>
 
 #define XATTR_NAME_ENCRYPTION_POLICY "encryption.policy"
 #define EXT4_KEYREF_DELIMITER ((char)'.')
@@ -41,6 +54,12 @@ struct ext4_encryption_policy {
 #define EXT4_IOC_GET_ENCRYPTION_POLICY _IOW('f', 21, struct ext4_encryption_policy)
 
 #define HEX_LOOKUP "0123456789abcdef"
+
+bool e4crypt_is_native() {
+    char value[PROPERTY_VALUE_MAX];
+    property_get("ro.crypto.type", value, "none");
+    return !strcmp(value, "file");
+}
 
 static void policy_to_hex(const char* policy, char* hex) {
     for (size_t i = 0, j = 0; i < EXT4_KEY_DESCRIPTOR_SIZE; i++) {
