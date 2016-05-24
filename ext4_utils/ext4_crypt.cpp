@@ -27,6 +27,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include <android-base/file.h>
 #include <android-base/logging.h>
 #include <cutils/properties.h>
 
@@ -48,6 +49,7 @@ struct ext4_encryption_policy {
 
 #define EXT4_ENCRYPTION_MODE_AES_256_XTS    1
 #define EXT4_ENCRYPTION_MODE_AES_256_CTS    4
+#define EXT4_ENCRYPTION_MODE_PRIVATE        127
 
 // ext4enc:TODO Get value from somewhere sensible
 #define EXT4_IOC_SET_ENCRYPTION_POLICY _IOR('f', 19, struct ext4_encryption_policy)
@@ -99,7 +101,8 @@ static bool is_dir_empty(const char *dirname, bool *is_empty)
     return true;
 }
 
-static bool e4crypt_policy_set(const char *directory, const char *policy, size_t policy_length) {
+static bool e4crypt_policy_set(const char *directory, const char *policy,
+                               size_t policy_length, int contents_encryption_mode) {
     if (policy_length != EXT4_KEY_DESCRIPTOR_SIZE) {
         LOG(ERROR) << "Policy wrong length: " << policy_length;
         return false;
@@ -112,7 +115,7 @@ static bool e4crypt_policy_set(const char *directory, const char *policy, size_t
 
     ext4_encryption_policy eep;
     eep.version = 0;
-    eep.contents_encryption_mode = EXT4_ENCRYPTION_MODE_AES_256_XTS;
+    eep.contents_encryption_mode = contents_encryption_mode;
     eep.filenames_encryption_mode = EXT4_ENCRYPTION_MODE_AES_256_CTS;
     eep.flags = 0;
     memcpy(eep.master_key_descriptor, policy, EXT4_KEY_DESCRIPTOR_SIZE);
@@ -129,7 +132,8 @@ static bool e4crypt_policy_set(const char *directory, const char *policy, size_t
     return true;
 }
 
-static bool e4crypt_policy_get(const char *directory, char *policy, size_t policy_length) {
+static bool e4crypt_policy_get(const char *directory, char *policy,
+                               size_t policy_length, int contents_encryption_mode) {
     if (policy_length != EXT4_KEY_DESCRIPTOR_SIZE) {
         LOG(ERROR) << "Policy wrong length: " << policy_length;
         return false;
@@ -151,7 +155,7 @@ static bool e4crypt_policy_get(const char *directory, char *policy, size_t polic
     close(fd);
 
     if ((eep.version != 0)
-            || (eep.contents_encryption_mode != EXT4_ENCRYPTION_MODE_AES_256_XTS)
+            || (eep.contents_encryption_mode != contents_encryption_mode)
             || (eep.filenames_encryption_mode != EXT4_ENCRYPTION_MODE_AES_256_CTS)
             || (eep.flags != 0)) {
         LOG(ERROR) << "Failed to find matching encryption policy for " << directory;
@@ -162,13 +166,15 @@ static bool e4crypt_policy_get(const char *directory, char *policy, size_t polic
     return true;
 }
 
-static bool e4crypt_policy_check(const char *directory, const char *policy, size_t policy_length) {
+static bool e4crypt_policy_check(const char *directory, const char *policy,
+                                 size_t policy_length, int contents_encryption_mode) {
     if (policy_length != EXT4_KEY_DESCRIPTOR_SIZE) {
         LOG(ERROR) << "Policy wrong length: " << policy_length;
         return false;
     }
     char existing_policy[EXT4_KEY_DESCRIPTOR_SIZE];
-    if (!e4crypt_policy_get(directory, existing_policy, EXT4_KEY_DESCRIPTOR_SIZE)) return false;
+    if (!e4crypt_policy_get(directory, existing_policy, EXT4_KEY_DESCRIPTOR_SIZE,
+                            contents_encryption_mode)) return false;
     char existing_policy_hex[EXT4_KEY_DESCRIPTOR_SIZE_HEX];
 
     policy_to_hex(existing_policy, existing_policy_hex);
@@ -185,13 +191,26 @@ static bool e4crypt_policy_check(const char *directory, const char *policy, size
     return true;
 }
 
-int e4crypt_policy_ensure(const char *directory, const char *policy, size_t policy_length) {
+int e4crypt_policy_ensure(const char *directory, const char *policy,
+                          size_t policy_length, const char* contents_encryption_mode) {
+    int mode = 0;
+    if (!strcmp(contents_encryption_mode, "software")) {
+        mode = EXT4_ENCRYPTION_MODE_AES_256_XTS;
+    } else if (!strcmp(contents_encryption_mode, "ice")) {
+        mode = EXT4_ENCRYPTION_MODE_PRIVATE;
+    } else {
+        LOG(ERROR) << "Invalid encryption mode";
+        return -1;
+    }
+
     bool is_empty;
     if (!is_dir_empty(directory, &is_empty)) return -1;
     if (is_empty) {
-        if (!e4crypt_policy_set(directory, policy, policy_length)) return -1;
+        if (!e4crypt_policy_set(directory, policy, policy_length,
+                                mode)) return -1;
     } else {
-        if (!e4crypt_policy_check(directory, policy, policy_length)) return -1;
+        if (!e4crypt_policy_check(directory, policy, policy_length,
+                                  mode)) return -1;
     }
     return 0;
 }

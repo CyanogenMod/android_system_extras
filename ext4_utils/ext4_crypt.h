@@ -22,9 +22,12 @@ __BEGIN_DECLS
 
 bool e4crypt_is_native();
 
-int e4crypt_policy_ensure(const char *directory, const char* policy, size_t policy_length);
+int e4crypt_policy_ensure(const char *directory,
+                          const char* policy, size_t policy_length,
+                          const char* contents_encryption_mode);
 
 static const char* e4crypt_unencrypted_folder = "/unencrypted";
 static const char* e4crypt_key_ref = "/unencrypted/ref";
+static const char* e4crypt_key_mode = "/unencrypted/mode";
 
 __END_DECLS
