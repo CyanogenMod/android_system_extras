@@ -54,19 +54,19 @@
 
 using namespace android;
 
-#define CHECK_PERIOD 1  // in sec
-#define TRACING_CHECK_PERIOD 500000 // in micro sec
-#define MIN_BUFFER_SIZE 4
-#define MIN_BUFFER_SIZE_STR "4"
-#define MAX_BUFFER_SIZE 128
-#define MAX_BUFFER_SIZE_STR "128"
-#define CPU_STAT_ENTRIES 7 // number of cpu stat entries
-
 #ifdef LOG_TAG
 #undef LOG_TAG
 #endif
 
 #define LOG_TAG "anrdaemon"
+
+static const int check_period = 1;              // in sec
+static const int tracing_check_period = 500000; // in micro sec
+static const int cpu_stat_entries = 7;          // number of cpu stat entries
+static const int min_buffer_size = 16;
+static const int max_buffer_size = 2048;
+static const char *min_buffer_size_str = "16";
+static const char *max_buffer_size_str = "2048";
 
 typedef struct cpu_stat {
     unsigned long utime, ntime, stime, itime;
@@ -86,13 +86,12 @@ static bool err = false;
 static char err_msg[100];
 static bool tracing = false;
 
-static const char *buf_size_kb = "16";
+static const char *buf_size_kb = "2048";
+static const char *apps = "";
 static uint64_t tag = 0;
-static const char* apps = "";
 
 static cpu_stat_t new_cpu;
 static cpu_stat_t old_cpu;
-static Vector<String16> targets;
 
 /* Log certain kernel activity when enabled */
 static bool log_sched = false;
@@ -136,7 +135,7 @@ static void get_cpu_stat(cpu_stat_t *cpu) {
     } else {
         if (fscanf(fp, params, &cpu->utime, &cpu->ntime,
                 &cpu->stime, &cpu->itime, &cpu->iowtime, &cpu->irqtime,
-                &cpu->sirqtime) != CPU_STAT_ENTRIES) {
+                &cpu->sirqtime) != cpu_stat_entries) {
             /*
              * If failed in getting status, new_cpu won't be updated and
              * is_heavy_loaded() will return false.
@@ -171,9 +170,9 @@ static bool is_heavy_load(void) {
 /*
  * Force the userland processes to refresh their property for logging.
  */
-static void dfs_poke_binder(Vector<String16> services) {
+static void dfs_poke_binder(void) {
     sp<IServiceManager> sm = defaultServiceManager();
-    services = sm->listServices();
+    Vector<String16> services = sm->listServices();
     for (size_t i = 0; i < services.size(); i++) {
         sp<IBinder> obj = sm->checkService(services[i]);
         if (obj != NULL) {
@@ -197,8 +196,10 @@ static int dfs_enable(bool enable, const char* path) {
     ssize_t len = strlen(control);
     int max_try = 10; // Fail if write was interrupted for 10 times
     while (write(fd, control, len) != len) {
-        if (errno == EINTR && max_try-- > 0)
+        if (errno == EINTR && max_try-- > 0) {
+            usleep(100);
             continue;
+        }
 
         err = true;
         sprintf(err_msg, "Error %d in writing to %s.", errno, path);
@@ -249,9 +250,6 @@ static void dfs_set_property(uint64_t mtag, const char* mapp, bool enable) {
 static void start_tracing(void) {
     ALOGD("High cpu usage, start logging.");
 
-    dfs_set_property(tag, apps, true);
-    dfs_poke_binder(targets);
-
     if (dfs_enable(true, dfs_control_path) != 0) {
         ALOGE("Failed to start tracing.");
         return;
@@ -260,15 +258,12 @@ static void start_tracing(void) {
 
     /* Stop logging when cpu usage drops or the daemon is suspended.*/
     do {
-        usleep(TRACING_CHECK_PERIOD);
+        usleep(tracing_check_period);
     } while (!suspend && is_heavy_load());
 
     if (dfs_enable(false, dfs_control_path) != 0) {
         ALOGE("Failed to stop tracing.");
     }
-
-    dfs_set_property(0, "", false);
-    dfs_poke_binder(targets);
 
     ALOGD("Usage back to low, stop logging.");
     tracing = false;
@@ -302,8 +297,12 @@ static int set_tracing_buffer_size(void) {
 static void start(void) {
     if ((set_tracing_buffer_size()) != 0)
         return;
+
+    dfs_set_property(tag, apps, true);
+    dfs_poke_binder();
+
     get_cpu_stat(&old_cpu);
-    sleep(CHECK_PERIOD);
+    sleep(check_period);
 
     while (!quit && !err) {
         if (!suspend && is_heavy_load()) {
@@ -315,7 +314,7 @@ static void start(void) {
             start_tracing();
             setpriority(PRIO_PROCESS, 0, 0);
         }
-        sleep(CHECK_PERIOD);
+        sleep(check_period);
     }
     return;
 }
@@ -329,7 +328,7 @@ static void dump_trace()
     suspend = true;
     while (tracing) {
         ALOGI("Waiting logging to stop.");
-        usleep(TRACING_CHECK_PERIOD);
+        usleep(tracing_check_period);
         remain_attempts--;
         if (remain_attempts == 0) {
             ALOGE("Can't stop logging after 5 attempts. Dump aborted.");
@@ -338,7 +337,18 @@ static void dump_trace()
     }
 
     /*
-     * Create a dump file "dump_of_anrdaemon.<current_time>" under /data/anr/
+     * Create /sdcard/ANRdaemon/ if it doesn't exist
+     */
+    struct stat st;
+    if (stat("/sdcard/ANRdaemon", &st) == -1) {
+        ALOGI("Creating /sdcard/ANRdaemon/");
+        int err = mkdir("/sdcard/ANRdaemon", 0700);
+        if (err != 0)
+            ALOGI("Creating /sdcard/ANRdaemon/ failed with %s", strerror(err));
+    }
+
+    /*
+     * Create a dump file "dump_of_anrdaemon.<current_time>" under /sdcard/ANRdaemon/
      */
     time_t now = time(0);
     struct tm  tstruct;
@@ -348,7 +358,7 @@ static void dump_trace()
     ssize_t header_len = strlen(header);
     tstruct = *localtime(&now);
     strftime(time_buf, sizeof(time_buf), "%Y-%m-%d.%X", &tstruct);
-    sprintf(path_buf, "/data/anr/dump_of_anrdaemon.%s", time_buf);
+    sprintf(path_buf, "/sdcard/ANRdaemon/dump_of_anrdaemon.%s", time_buf);
     int output_fd = creat(path_buf, S_IRWXU);
     if (output_fd == -1) {
         ALOGE("Failed to create %s. Dump aborted.", path_buf);
@@ -499,14 +509,17 @@ static void show_help(void) {
                     "   -t N        cpu threshold for logging to start "
                         "(uint = 0.01%%, min = 5000, max = 9999, default = 9990)\n"
                     "   -s N        use a trace buffer size of N KB "
-                        "default to 16KB\n"
+                        "default to 2048KB\n"
                     "   -h          show helps\n");
     fprintf(stdout, "Categoris includes:\n"
                     "   am         - activity manager\n"
                     "   sm         - sync manager\n"
                     "   input      - input\n"
-                    "   app        - application\n"
                     "   dalvik     - dalvik VM\n"
+                    "   audio      - Audio\n"
+                    "   gfx        - Graphics\n"
+                    "   rs         - RenderScript\n"
+                    "   hal        - Hardware Modules\n"
                     "   irq        - kernel irq events\n"
                     "   sched      - kernel scheduler activity\n"
                     "   stack      - kernel stack\n"
@@ -529,10 +542,10 @@ static int get_options(int argc, char *argv[]) {
                 apps = optarg;
                 break;
             case 's':
-                if (atoi(optarg) > MAX_BUFFER_SIZE)
-                    buf_size_kb = MAX_BUFFER_SIZE_STR;
-                else if (atoi(optarg) < MIN_BUFFER_SIZE)
-                    buf_size_kb = MIN_BUFFER_SIZE_STR;
+                if (atoi(optarg) > max_buffer_size)
+                    buf_size_kb = max_buffer_size_str;
+                else if (atoi(optarg) < min_buffer_size)
+                    buf_size_kb = min_buffer_size_str;
                 else
                     buf_size_kb = optarg;
                 break;
@@ -561,10 +574,16 @@ static int get_options(int argc, char *argv[]) {
             tag |= ATRACE_TAG_INPUT;
         } else if (strcmp(argv[i], "sm") == 0) {
             tag |= ATRACE_TAG_SYNC_MANAGER;
-        } else if (strcmp(argv[i], "app") == 0) {
-            tag |= ATRACE_TAG_APP;
         } else if (strcmp(argv[i], "dalvik") == 0) {
             tag |= ATRACE_TAG_DALVIK;
+        } else if (strcmp(argv[i], "gfx") == 0) {
+            tag |= ATRACE_TAG_GRAPHICS;
+        } else if (strcmp(argv[i], "audio") == 0) {
+            tag |= ATRACE_TAG_AUDIO;
+        } else if (strcmp(argv[i], "hal") == 0) {
+            tag |= ATRACE_TAG_HAL;
+        } else if (strcmp(argv[i], "rs") == 0) {
+            tag |= ATRACE_TAG_RS;
         } else if (strcmp(argv[i], "sched") == 0) {
             log_sched = true;
         } else if (strcmp(argv[i], "stack") == 0) {
@@ -582,29 +601,10 @@ static int get_options(int argc, char *argv[]) {
         }
     }
 
-    bool kernel_log = log_sched || log_stack || log_workq || log_irq || log_sync;
-    bool app_log = (tag == 0);
-
-    /*
-     * There are ~80 services. Too expensive to poke all of them. Just include
-     * service that may help high CPU ANR analysis.
-     */
-    if (app_log) {
-       targets.push_back(String16("activity"));
-       targets.push_back(String16("alarm"));
-       targets.push_back(String16("appops"));
-       targets.push_back(String16("cpuinfo"));
-       targets.push_back(String16("meminfo"));
-       targets.push_back(String16("procstats"));
-       targets.push_back(String16("input"));
-       targets.push_back(String16("lancherapps"));
-       targets.push_back(String16("bluetooth_manager"));
-       targets.push_back(String16("SurfaceFlinger"));
-       targets.push_back(String16("ClockworkProxyNativeService"));
-    }
-    if (!kernel_log && !app_log) {
-        tag |= ATRACE_TAG_ACTIVITY_MANAGER;
-        targets.push_back(String16("activity"));
+    /* If nothing is enabled, don't run */
+    if (!tag && !log_sched && !log_stack && !log_workq && !log_irq && !log_sync) {
+        ALOGE("Specify at least one category to trace.");
+        return 1;
     }
 
     return 0;
