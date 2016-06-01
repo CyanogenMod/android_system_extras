@@ -101,6 +101,10 @@ class StatCommand : public Command {
 };
 
 bool StatCommand::Run(const std::vector<std::string>& args) {
+  if (!CheckPerfEventLimit()) {
+    return false;
+  }
+
   // 1. Parse options, and use default measured event types if not given.
   std::vector<std::string> workload_args;
   if (!ParseOptions(args, &workload_args)) {

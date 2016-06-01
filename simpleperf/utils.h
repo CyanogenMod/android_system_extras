@@ -121,4 +121,5 @@ bool MkdirWithParents(const std::string& path);
 
 bool GetLogSeverity(const std::string& name, android::base::LogSeverity* severity);
 
+bool IsRoot();
 #endif  // SIMPLE_PERF_UTILS_H_

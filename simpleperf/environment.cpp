@@ -31,6 +31,10 @@
 #include <android-base/strings.h>
 #include <android-base/stringprintf.h>
 
+#if defined(__ANDROID__)
+#include <sys/system_properties.h>
+#endif
+
 #include "read_elf.h"
 #include "utils.h"
 
@@ -408,5 +412,68 @@ bool GetExecPath(std::string* exec_path) {
   }
   path[path_len] = '\0';
   *exec_path = path;
+  return true;
+}
+
+/*
+ * perf event paranoia level:
+ *  -1 - not paranoid at all
+ *   0 - disallow raw tracepoint access for unpriv
+ *   1 - disallow cpu events for unpriv
+ *   2 - disallow kernel profiling for unpriv
+ *   3 - disallow user profiling for unpriv
+ */
+static bool ReadPerfEventParanoid(int* value) {
+  std::string s;
+  if (!android::base::ReadFileToString("/proc/sys/kernel/perf_event_paranoid", &s)) {
+    PLOG(ERROR) << "failed to read /proc/sys/kernel/perf_event_paranoid";
+    return false;
+  }
+  s = android::base::Trim(s);
+  if (!android::base::ParseInt(s.c_str(), value)) {
+    PLOG(ERROR) << "failed to parse /proc/sys/kernel/perf_event_paranoid: " << s;
+    return false;
+  }
+  return true;
+}
+
+static const char* GetLimitLevelDescription(int limit_level) {
+  switch (limit_level) {
+    case -1: return "unlimited";
+    case 0: return "disallowing raw tracepoint access for unpriv";
+    case 1: return "disallowing cpu events for unpriv";
+    case 2: return "disallowing kernel profiling for unpriv";
+    case 3: return "disallowing user profiling for unpriv";
+    default: return "unknown level";
+  }
+}
+
+bool CheckPerfEventLimit() {
+  // root is not limited by /proc/sys/kernel/perf_event_paranoid.
+  if (IsRoot()) {
+    return true;
+  }
+  int limit_level;
+  if (!ReadPerfEventParanoid(&limit_level)) {
+    return false;
+  }
+  if (limit_level <= 1) {
+    return true;
+  }
+#if defined(__ANDROID__)
+  // Try to enable perf_event_paranoid by setprop security.perf_harden=0.
+  if (__system_property_set("security.perf_harden", "0") == 0) {
+    sleep(1);
+    if (ReadPerfEventParanoid(&limit_level) && limit_level <= 1) {
+      return true;
+    }
+  }
+  LOG(WARNING) << "/proc/sys/kernel/perf_event_paranoid is " << limit_level
+      << ", " << GetLimitLevelDescription(limit_level) << ".";
+  LOG(WARNING) << "Try using `adb shell setprop security.perf_harden 0` to allow profiling.";
+#else
+  LOG(WARNING) << "/proc/sys/kernel/perf_event_paranoid is " << limit_level
+      << ", " << GetLimitLevelDescription(limit_level) << ".";
+#endif
   return true;
 }

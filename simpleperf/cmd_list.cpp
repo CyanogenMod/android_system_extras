@@ -22,6 +22,7 @@
 #include <android-base/logging.h>
 
 #include "command.h"
+#include "environment.h"
 #include "event_attr.h"
 #include "event_fd.h"
 #include "event_type.h"
@@ -30,9 +31,14 @@ static void PrintEventTypesOfType(uint32_t type, const std::string& type_name,
                                   const std::vector<EventType>& event_types) {
   printf("List of %s:\n", type_name.c_str());
   for (auto& event_type : event_types) {
-    if (event_type.type == type &&
-        IsEventAttrSupportedByKernel(CreateDefaultPerfEventAttr(event_type))) {
-      printf("  %s\n", event_type.name.c_str());
+    if (event_type.type == type) {
+      perf_event_attr attr = CreateDefaultPerfEventAttr(event_type);
+      // Exclude kernel to list supported events even when
+      // /proc/sys/kernel/perf_event_paranoid is 2.
+      attr.exclude_kernel = 1;
+      if (IsEventAttrSupportedByKernel(attr)) {
+        printf("  %s\n", event_type.name.c_str());
+      }
     }
   }
   printf("\n");
@@ -50,6 +56,10 @@ class ListCommand : public Command {
 };
 
 bool ListCommand::Run(const std::vector<std::string>& args) {
+  if (!CheckPerfEventLimit()) {
+    return false;
+  }
+
   static std::map<std::string, std::pair<int, std::string>> type_map = {
       {"hw", {PERF_TYPE_HARDWARE, "hardware events"}},
       {"sw", {PERF_TYPE_SOFTWARE, "software events"}},
