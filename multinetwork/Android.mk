@@ -1,5 +1,8 @@
 LOCAL_PATH := $(call my-dir)
 
+# The PDK build does not have access to frameworks/native elements.
+ifneq ($(TARGET_BUILD_PDK), true)
+
 # Sample util binaries.
 include $(CLEAR_VARS)
 LOCAL_MODULE := dnschk
@@ -22,3 +25,5 @@ LOCAL_MODULE_TAGS := debug
 LOCAL_SHARED_LIBRARIES := libandroid libbase libc++
 LOCAL_SRC_FILES := httpurl.cpp common.cpp
 include $(BUILD_EXECUTABLE)
+
+endif  # ifneq ($(TARGET_BUILD_PDK), true)
