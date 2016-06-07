@@ -88,6 +88,7 @@ struct verity_info {
     uint64_t metadata_start; /* offset in file */
     uint8_t zero_hash[SHA256_DIGEST_LENGTH];
     verity_header header;
+    verity_header ecc_header;
 };
 
 struct verity_block_info {

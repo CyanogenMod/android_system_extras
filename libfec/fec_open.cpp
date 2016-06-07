@@ -460,7 +460,10 @@ int fec_verity_get_metadata(struct fec_handle *f, struct fec_verity_metadata *da
 
     data->disabled = f->verity.disabled;
     data->data_size = f->data_size;
-    memcpy(data->signature, f->verity.header.signature, sizeof(data->signature));
+    memcpy(data->signature, f->verity.header.signature,
+        sizeof(data->signature));
+    memcpy(data->ecc_signature, f->verity.ecc_header.signature,
+        sizeof(data->ecc_signature));
     data->table = f->verity.table;
     data->table_length = f->verity.header.length;
 

@@ -481,6 +481,45 @@ static int rewrite_metadata(fec_handle *f, uint64_t offset)
     return raw_pwrite(f, metadata.get(), VERITY_METADATA_SIZE, offset);
 }
 
+static int validate_header(const fec_handle *f, const verity_header *header,
+        uint64_t offset)
+{
+    check(f);
+    check(header);
+
+    if (header->magic != VERITY_MAGIC &&
+        header->magic != VERITY_MAGIC_DISABLE) {
+        return -1;
+    }
+
+    if (header->version != VERITY_VERSION) {
+        error("unsupported verity version %u", header->version);
+        return -1;
+    }
+
+    if (header->length < VERITY_MIN_TABLE_SIZE ||
+        header->length > VERITY_MAX_TABLE_SIZE) {
+        error("invalid verity table size: %u; expected ["
+            stringify(VERITY_MIN_TABLE_SIZE) ", "
+            stringify(VERITY_MAX_TABLE_SIZE) ")", header->length);
+        return -1;
+    }
+
+    /* signature is skipped, because for our purposes it won't matter from
+       where the data originates; the caller of the library is responsible
+       for signature verification */
+
+    if (offset > UINT64_MAX - header->length) {
+        error("invalid verity table length: %u", header->length);
+        return -1;
+    } else if (offset + header->length >= f->data_size) {
+        error("invalid verity table length: %u", header->length);
+        return -1;
+    }
+
+    return 0;
+}
+
 /* attempts to read verity metadata from `f->fd' position `offset'; if in r/w
    mode, rewrites the metadata if it had errors */
 int verity_parse_header(fec_handle *f, uint64_t offset)
@@ -497,54 +536,58 @@ int verity_parse_header(fec_handle *f, uint64_t offset)
     verity_info *v = &f->verity;
     uint64_t errors = f->errors;
 
-    if (fec_pread(f, &v->header, sizeof(v->header), offset) !=
-            sizeof(v->header)) {
+    if (!raw_pread(f, &v->header, sizeof(v->header), offset)) {
         error("failed to read verity header: %s", strerror(errno));
         return -1;
     }
 
-    verity_header raw_header;
-
-    if (!raw_pread(f, &raw_header, sizeof(raw_header), offset)) {
-        error("failed to read verity header: %s", strerror(errno));
-        return -1;
-    }
     /* use raw data to check for the alternative magic, because it will
        be error corrected to VERITY_MAGIC otherwise */
-    if (raw_header.magic == VERITY_MAGIC_DISABLE) {
+    if (v->header.magic == VERITY_MAGIC_DISABLE) {
         /* this value is not used by us, but can be used by a caller to
            decide whether dm-verity should be enabled */
         v->disabled = true;
-    } else if (v->header.magic != VERITY_MAGIC) {
+    }
+
+    if (fec_pread(f, &v->ecc_header, sizeof(v->ecc_header), offset) !=
+            sizeof(v->ecc_header)) {
+        warn("failed to read verity header: %s", strerror(errno));
         return -1;
     }
 
-    if (v->header.version != VERITY_VERSION) {
-        error("unsupported verity version %u", v->header.version);
-        return -1;
-    }
+    if (validate_header(f, &v->header, offset)) {
+        /* raw verity header is invalid; this could be due to corruption, or
+           due to missing verity metadata */
 
-    if (v->header.length < VERITY_MIN_TABLE_SIZE ||
-        v->header.length > VERITY_MAX_TABLE_SIZE) {
-        error("invalid verity table size: %u; expected ["
-            stringify(VERITY_MIN_TABLE_SIZE) ", "
-            stringify(VERITY_MAX_TABLE_SIZE) ")", v->header.length);
-        return -1;
+        if (validate_header(f, &v->ecc_header, offset)) {
+            return -1; /* either way, we cannot recover */
+        }
+
+        /* report mismatching fields */
+        if (!v->disabled && v->header.magic != v->ecc_header.magic) {
+            warn("corrected verity header magic");
+            v->header.magic = v->ecc_header.magic;
+        }
+
+        if (v->header.version != v->ecc_header.version) {
+            warn("corrected verity header version");
+            v->header.version = v->ecc_header.version;
+        }
+
+        if (v->header.length != v->ecc_header.length) {
+            warn("corrected verity header length");
+            v->header.length = v->ecc_header.length;
+        }
+
+        if (memcmp(v->header.signature, v->ecc_header.signature,
+                sizeof(v->header.signature))) {
+            warn("corrected verity header signature");
+            /* we have no way of knowing which signature is correct, if either
+               of them is */
+        }
     }
 
     v->metadata_start = offset;
-
-    /* signature is skipped, because for our purposes it won't matter from
-       where the data originates; the caller of the library is responsible
-       for signature verification */
-
-    if (offset > UINT64_MAX - v->header.length) {
-        error("invalid verity table length: %u", v->header.length);
-        return -1;
-    } else if (offset + v->header.length >= f->data_size) {
-        error("invalid verity table length: %u", v->header.length);
-        return -1;
-    }
 
     if (parse_table(f, offset + sizeof(v->header), v->header.length) == -1) {
         return -1;

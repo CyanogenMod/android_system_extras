@@ -71,6 +71,7 @@ struct fec_verity_metadata {
     bool disabled;
     uint64_t data_size;
     uint8_t signature[RSANUMBYTES];
+    uint8_t ecc_signature[RSANUMBYTES];
     const char *table;
     uint32_t table_length;
 };
