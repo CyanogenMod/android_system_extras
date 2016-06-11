@@ -197,3 +197,15 @@ bool GetLogSeverity(const std::string& name, android::base::LogSeverity* severit
   }
   return false;
 }
+
+bool IsRoot() {
+  static int is_root = -1;
+  if (is_root == -1) {
+#if defined(__linux__)
+    is_root = (getuid() == 0) ? 1 : 0;
+#else
+    is_root = 0;
+#endif
+  }
+  return is_root == 1;
+}

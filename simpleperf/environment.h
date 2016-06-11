@@ -79,5 +79,6 @@ struct KernelSymbol {
 
 bool ProcessKernelSymbols(const std::string& symbol_file,
                           std::function<bool(const KernelSymbol&)> callback);
+bool CheckPerfEventLimit();
 
 #endif  // SIMPLE_PERF_ENVIRONMENT_H_
