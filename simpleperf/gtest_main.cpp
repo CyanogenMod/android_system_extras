@@ -23,6 +23,10 @@
 #include <android-base/test_utils.h>
 #include <ziparchive/zip_archive.h>
 
+#if defined(__ANDROID__)
+#include <sys/system_properties.h>
+#endif
+
 #include "get_test_data.h"
 #include "read_elf.h"
 #include "utils.h"
@@ -90,6 +94,44 @@ static bool ExtractTestDataFromElfSection() {
   }
   return true;
 }
+
+#if defined(__ANDROID__)
+class SavedPerfHardenProperty {
+ public:
+  SavedPerfHardenProperty() {
+    __system_property_get("security.perf_harden", prop_value_);
+    if (!android::base::ReadFileToString("/proc/sys/kernel/perf_event_paranoid",
+                                    &paranoid_value_)) {
+      PLOG(ERROR) << "failed to read /proc/sys/kernel/perf_event_paranoid";
+    }
+  }
+
+  ~SavedPerfHardenProperty() {
+    if (strlen(prop_value_) != 0) {
+      if (__system_property_set("security.perf_harden", prop_value_) != 0) {
+        PLOG(ERROR) << "failed to set security.perf_harden";
+        return;
+      }
+      // Sleep one second to wait for security.perf_harden changing
+      // /proc/sys/kernel/perf_event_paranoid.
+      sleep(1);
+      std::string paranoid_value;
+      if (!android::base::ReadFileToString("/proc/sys/kernel/perf_event_paranoid",
+                                           &paranoid_value)) {
+        PLOG(ERROR) << "failed to read /proc/sys/kernel/perf_event_paranoid";
+        return;
+      }
+      if (paranoid_value_ != paranoid_value) {
+        LOG(ERROR) << "failed to restore /proc/sys/kernel/perf_event_paranoid";
+      }
+    }
+  }
+
+ private:
+  char prop_value_[PROP_VALUE_MAX];
+  std::string paranoid_value_;
+};
+#endif  // defined(__ANDROID__)
 #endif  // defined(IN_CTS_TEST)
 
 int main(int argc, char** argv) {
@@ -126,6 +168,13 @@ int main(int argc, char** argv) {
       return 1;
     }
   }
+
+#if defined(__ANDROID__)
+  // A cts test PerfEventParanoidTest.java is testing if
+  // /proc/sys/kernel/perf_event_paranoid is 3, so restore perf_harden
+  // value after current test to not break that test.
+  SavedPerfHardenProperty saved_perf_harden;
+#endif
 #endif
   if (!::testing::GTEST_FLAG(list_tests) && testdata_dir.empty()) {
     printf("Usage: %s -t <testdata_dir>\n", argv[0]);
