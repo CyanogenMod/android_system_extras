@@ -5,7 +5,7 @@
 function usage() {
 cat<<EOT
 Usage:
-${0##*/} SRC_DIR OUTPUT_FILE [-s] [-m MOUNT_POINT] [-d PRODUCT_OUT] [-C FS_CONFIG ] [-c FILE_CONTEXTS] [-B BLOCK_MAP_FILE] [-b BLOCK_SIZE] [-z COMPRESSOR] [-zo COMPRESSOR_OPT] [-t COMPRESS_THRESHOLD]
+${0##*/} SRC_DIR OUTPUT_FILE [-s] [-m MOUNT_POINT] [-d PRODUCT_OUT] [-C FS_CONFIG ] [-c FILE_CONTEXTS] [-B BLOCK_MAP_FILE] [-b BLOCK_SIZE] [-z COMPRESSOR] [-zo COMPRESSOR_OPT] [-t COMPRESS_THRESHOLD] [-a]
 EOT
 }
 
@@ -86,6 +86,12 @@ if [[ "$1" == "-t" ]]; then
 fi
 
 
+DISABLE_4K_ALIGN=false
+if [[ "$1" == "-a" ]]; then
+    DISABLE_4K_ALIGN=true
+    shift;
+fi
+
 OPT=""
 if [ -n "$MOUNT_POINT" ]; then
   OPT="$OPT -mount-point $MOUNT_POINT"
@@ -107,6 +113,9 @@ if [ -n "$BLOCK_SIZE" ]; then
 fi
 if [ -n "$COMPRESS_THRESHOLD" ]; then
   OPT="$OPT -t $COMPRESS_THRESHOLD"
+fi
+if [ "$DISABLE_4K_ALIGN" = true ]; then
+  OPT="$OPT -disable-4k-align"
 fi
 
 MAKE_SQUASHFS_CMD="mksquashfs $SRC_DIR/ $OUTPUT_FILE -no-progress -comp $COMPRESSOR $COMPRESSOR_OPT -no-exports -noappend -no-recovery -no-fragments -no-duplicates -android-fs-config $OPT"
