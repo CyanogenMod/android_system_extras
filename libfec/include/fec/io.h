@@ -49,7 +49,7 @@ struct fec_header {
     uint32_t fec_size;
     uint64_t inp_size;
     uint8_t hash[SHA256_DIGEST_LENGTH];
-};
+} __attribute__ ((packed));
 
 struct fec_status {
     int flags;
