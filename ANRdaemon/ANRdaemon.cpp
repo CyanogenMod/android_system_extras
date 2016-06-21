@@ -67,6 +67,8 @@ static const int min_buffer_size = 16;
 static const int max_buffer_size = 2048;
 static const char *min_buffer_size_str = "16";
 static const char *max_buffer_size_str = "2048";
+static const int time_buf_size = 20;
+static const int path_buf_size = 60;
 
 typedef struct cpu_stat {
     unsigned long utime, ntime, stime, itime;
@@ -337,28 +339,17 @@ static void dump_trace()
     }
 
     /*
-     * Create /sdcard/ANRdaemon/ if it doesn't exist
-     */
-    struct stat st;
-    if (stat("/sdcard/ANRdaemon", &st) == -1) {
-        ALOGI("Creating /sdcard/ANRdaemon/");
-        int err = mkdir("/sdcard/ANRdaemon", 0700);
-        if (err != 0)
-            ALOGI("Creating /sdcard/ANRdaemon/ failed with %s", strerror(err));
-    }
-
-    /*
-     * Create a dump file "dump_of_anrdaemon.<current_time>" under /sdcard/ANRdaemon/
+     * Create a dump file "dump_of_anrdaemon.<current_time>" under /data/misc/anrd
      */
     time_t now = time(0);
     struct tm  tstruct;
-    char time_buf[80];
-    char path_buf[200];
+    char time_buf[time_buf_size];
+    char path_buf[path_buf_size];
     const char* header = " done\nTRACE:\n";
     ssize_t header_len = strlen(header);
     tstruct = *localtime(&now);
-    strftime(time_buf, sizeof(time_buf), "%Y-%m-%d.%X", &tstruct);
-    sprintf(path_buf, "/sdcard/ANRdaemon/dump_of_anrdaemon.%s", time_buf);
+    strftime(time_buf, time_buf_size, "%Y-%m-%d.%X", &tstruct);
+    snprintf(path_buf, path_buf_size, "/data/misc/anrd/dump_of_anrdaemon.%s", time_buf);
     int output_fd = creat(path_buf, S_IRWXU);
     if (output_fd == -1) {
         ALOGE("Failed to create %s. Dump aborted.", path_buf);
