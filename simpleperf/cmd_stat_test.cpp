@@ -57,7 +57,8 @@ TEST(stat_cmd, event_modifier) {
 void CreateProcesses(size_t count, std::vector<std::unique_ptr<Workload>>* workloads) {
   workloads->clear();
   for (size_t i = 0; i < count; ++i) {
-    auto workload = Workload::CreateWorkload({"sleep", "1"});
+    // Create a workload runs longer than profiling time.
+    auto workload = Workload::CreateWorkload({"sleep", "1000"});
     ASSERT_TRUE(workload != nullptr);
     ASSERT_TRUE(workload->Start());
     workloads->push_back(std::move(workload));
@@ -69,7 +70,7 @@ TEST(stat_cmd, existing_processes) {
   CreateProcesses(2, &workloads);
   std::string pid_list =
       android::base::StringPrintf("%d,%d", workloads[0]->GetPid(), workloads[1]->GetPid());
-  ASSERT_TRUE(StatCmd()->Run({"-p", pid_list}));
+  ASSERT_TRUE(StatCmd()->Run({"-p", pid_list, "sleep", "1"}));
 }
 
 TEST(stat_cmd, existing_threads) {
@@ -78,7 +79,7 @@ TEST(stat_cmd, existing_threads) {
   // Process id can be used as thread id in linux.
   std::string tid_list =
       android::base::StringPrintf("%d,%d", workloads[0]->GetPid(), workloads[1]->GetPid());
-  ASSERT_TRUE(StatCmd()->Run({"-t", tid_list}));
+  ASSERT_TRUE(StatCmd()->Run({"-t", tid_list, "sleep", "1"}));
 }
 
 TEST(stat_cmd, no_monitored_threads) {
