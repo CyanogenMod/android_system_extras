@@ -171,8 +171,7 @@ TEST(record_cmd, existing_processes) {
   CreateProcesses(2, &workloads);
   std::string pid_list =
       android::base::StringPrintf("%d,%d", workloads[0]->GetPid(), workloads[1]->GetPid());
-  TemporaryFile tmpfile;
-  ASSERT_TRUE(RecordCmd()->Run({"-p", pid_list, "-o", tmpfile.path}));
+  ASSERT_TRUE(RunRecordCmd({"-p", pid_list}));
 }
 
 TEST(record_cmd, existing_threads) {
@@ -182,7 +181,7 @@ TEST(record_cmd, existing_threads) {
   std::string tid_list =
       android::base::StringPrintf("%d,%d", workloads[0]->GetPid(), workloads[1]->GetPid());
   TemporaryFile tmpfile;
-  ASSERT_TRUE(RecordCmd()->Run({"-t", tid_list, "-o", tmpfile.path}));
+  ASSERT_TRUE(RunRecordCmd({"-t", tid_list}));
 }
 
 TEST(record_cmd, no_monitored_threads) {
