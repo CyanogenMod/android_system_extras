@@ -61,7 +61,7 @@ public class VeritySigner {
 
             System.exit(1);
         } else {
-            PrivateKey privateKey = Utils.loadDERPrivateKey(Utils.read(args[1]));
+            PrivateKey privateKey = Utils.loadDERPrivateKeyFromFile(args[1]);
             byte[] signature = Utils.sign(privateKey, content);
             Utils.write(signature, args[2]);
         }
