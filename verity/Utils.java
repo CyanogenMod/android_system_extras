@@ -18,6 +18,7 @@ package com.android.verity;
 
 import java.lang.reflect.Constructor;
 import java.io.File;
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.Console;
 import java.io.FileInputStream;
@@ -61,6 +62,7 @@ public class Utils {
 
     private static final Map<String, String> ID_TO_ALG;
     private static final Map<String, String> ALG_TO_ID;
+    private static String mKeyPath;
 
     static {
         ID_TO_ALG = new HashMap<String, String>();
@@ -145,7 +147,19 @@ public class Utils {
             return null;
         }
 
-        char[] password = System.console().readPassword("Password for the private key file: ");
+        char[] password = null;
+        if (System.console() == null) {
+            System.out.print("Enter password for " + mKeyPath + " (password will not be hidden): ");
+            System.out.flush();
+            BufferedReader stdin = new BufferedReader(new InputStreamReader(System.in));
+            try {
+                password = stdin.readLine().toCharArray();
+            } catch (IOException ex) {
+                return null;
+            }
+        } else {
+            password = System.console().readPassword("Enter password for " + mKeyPath + " key>");
+        }
 
         SecretKeyFactory skFactory = SecretKeyFactory.getInstance(epkInfo.getAlgName());
         Key key = skFactory.generateSecret(new PBEKeySpec(password));
@@ -182,10 +196,12 @@ public class Utils {
     }
 
     static PrivateKey loadPEMPrivateKeyFromFile(String keyFname) throws Exception {
+        mKeyPath = keyFname.replace(".pk8","");
         return loadPEMPrivateKey(read(keyFname));
     }
 
     static PrivateKey loadDERPrivateKeyFromFile(String keyFname) throws Exception {
+        mKeyPath = keyFname.replace(".pk8","");
         return loadDERPrivateKey(read(keyFname));
     }
 
@@ -203,10 +219,12 @@ public class Utils {
     }
 
     static PublicKey loadPEMPublicKeyFromFile(String keyFname) throws Exception {
+        mKeyPath = keyFname.replace(".x509.pem","");
         return loadPEMPublicKey(read(keyFname));
     }
 
     static PublicKey loadDERPublicKeyFromFile(String keyFname) throws Exception {
+        mKeyPath = keyFname.replace(".x509.der","");
         return loadDERPublicKey(read(keyFname));
     }
 
