@@ -694,13 +694,6 @@ int make_ext4fs_internal(int fd, const char *_directory, const char *_target_out
 	if (setjmp(setjmp_env))
 		return EXIT_FAILURE; /* Handle a call to longjmp() */
 
-	info.block_device = is_block_device_fd(fd);
-
-	if (info.block_device && (sparse || gzip || crc)) {
-		fprintf(stderr, "No sparse/gzip/crc allowed for block device\n");
-		return EXIT_FAILURE;
-	}
-
 	if (_mountpoint == NULL) {
 		mountpoint = strdup("");
 	} else {
@@ -834,8 +827,8 @@ int make_ext4fs_internal(int fd, const char *_directory, const char *_target_out
 
 	ext4_update_free();
 
-	// TODO: Consider migrating the OTA tools to the new base alloc file format
-	// used for generating incremental images (see go/incremental-ext4)
+    ext4_queue_sb();
+
 	if (block_list_file) {
 		size_t dirlen = directory ? strlen(directory) : 0;
 		struct block_allocation* p = get_saved_allocation_chain();

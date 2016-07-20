@@ -25,8 +25,6 @@
 extern "C" {
 #endif
 
-#include <stdbool.h>
-
 struct fs_info {
 	int64_t len;	/* If set to 0, ask the block device for the size,
 			 * if less than 0, reserve that much space at the
@@ -43,7 +41,6 @@ struct fs_info {
 	uint32_t bg_desc_reserve_blocks;
 	const char *label;
 	uint8_t no_journal;
-	bool block_device;	/* target fd is a block device? */
 };
 
 int ext4_parse_sb(struct ext4_super_block *sb, struct fs_info *info);

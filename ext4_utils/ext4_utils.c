@@ -169,31 +169,10 @@ void write_sb(int fd, unsigned long long offset, struct ext4_super_block *sb)
 		critical_error("failed to write all of superblock");
 }
 
-static void block_device_write_sb(int fd)
-{
-	unsigned long long offset;
-	u32 i;
-
-	/* write out the backup superblocks */
-	for (i = 1; i < aux_info.groups; i++) {
-		if (ext4_bg_has_super_block(i)) {
-			offset = info.block_size * (aux_info.first_data_block
-				+ i * info.blocks_per_group);
-			write_sb(fd, offset, aux_info.backup_sb[i]);
-		}
-	}
-
-	/* write out the primary superblock */
-	write_sb(fd, 1024, aux_info.sb);
-}
-
 /* Write the filesystem image to a file */
 void write_ext4_image(int fd, int gz, int sparse, int crc)
 {
 	sparse_file_write(ext4_sparse_file, fd, gz, sparse, crc);
-
-	if (info.block_device)
-		block_device_write_sb(fd);
 }
 
 /* Compute the rest of the parameters of the filesystem from the basic info */
@@ -225,27 +204,7 @@ void ext4_create_fs_aux_info()
 		aux_info.len_blocks -= last_group_size;
 	}
 
-	/* A zero-filled superblock to be written firstly to the block
-	 * device to mark the file-system as invalid
-	 */
-	aux_info.sb_zero = calloc(1, info.block_size);
-	if (!aux_info.sb_zero)
-		critical_error_errno("calloc");
-
-	/* The write_data* functions expect only block aligned calls.
-	 * This is not an issue, except when we write out the super
-	 * block on a system with a block size > 1K.  So, we need to
-	 * deal with that here.
-	 */
-	aux_info.sb_block = calloc(1, info.block_size);
-	if (!aux_info.sb_block)
-		critical_error_errno("calloc");
-
-	if (info.block_size > 1024)
-		aux_info.sb = (struct ext4_super_block *)((char *)aux_info.sb_block + 1024);
-	else
-		aux_info.sb = aux_info.sb_block;
-
+	aux_info.sb = calloc(info.block_size, 1);
 	/* Alloc an array to hold the pointers to the backup superblocks */
 	aux_info.backup_sb = calloc(aux_info.groups, sizeof(char *));
 
@@ -266,8 +225,7 @@ void ext4_free_fs_aux_info()
 		if (aux_info.backup_sb[i])
 			free(aux_info.backup_sb[i]);
 	}
-	free(aux_info.sb_block);
-	free(aux_info.sb_zero);
+	free(aux_info.sb);
 	free(aux_info.bg_desc);
 }
 
@@ -367,8 +325,8 @@ void ext4_fill_in_sb(int real_uuid)
 				memcpy(aux_info.backup_sb[i], sb, sizeof(struct ext4_super_block));
 				/* Update the block group nr of this backup superblock */
 				aux_info.backup_sb[i]->s_block_group_nr = i;
-				ext4_queue_sb(group_start_block, info.block_device ?
-						aux_info.sb_zero : aux_info.backup_sb[i]);
+				sparse_file_add_data(ext4_sparse_file, aux_info.backup_sb[i],
+						info.block_size, group_start_block);
 			}
 			sparse_file_add_data(ext4_sparse_file, aux_info.bg_desc,
 				aux_info.bg_desc_blocks * info.block_size,
@@ -384,23 +342,22 @@ void ext4_fill_in_sb(int real_uuid)
 		aux_info.bg_desc[i].bg_free_inodes_count = sb->s_inodes_per_group;
 		aux_info.bg_desc[i].bg_used_dirs_count = 0;
 	}
-
-	/* Queue the primary superblock to be written out - if it's a block device,
-	 * queue a zero-filled block first, the correct version of superblock will
-	 * be written to the block device after all other blocks are written.
-	 *
-	 * The file-system on the block device will not be valid until the correct
-	 * version of superblocks are written, this is to avoid the likelihood of a
-	 * partially created file-system.
-	 */
-	ext4_queue_sb(aux_info.first_data_block, info.block_device ?
-				aux_info.sb_zero : aux_info.sb_block);
 }
 
-
-void ext4_queue_sb(u64 start_block, struct ext4_super_block *sb)
+void ext4_queue_sb(void)
 {
-	sparse_file_add_data(ext4_sparse_file, sb, info.block_size, start_block);
+	/* The write_data* functions expect only block aligned calls.
+	 * This is not an issue, except when we write out the super
+	 * block on a system with a block size > 1K.  So, we need to
+	 * deal with that here.
+	 */
+	if (info.block_size > 1024) {
+		u8 *buf = calloc(info.block_size, 1);
+		memcpy(buf + 1024, (u8*)aux_info.sb, 1024);
+		sparse_file_add_data(ext4_sparse_file, buf, info.block_size, 0);
+	} else {
+		sparse_file_add_data(ext4_sparse_file, aux_info.sb, 1024, 1);
+	}
 }
 
 void ext4_parse_sb_info(struct ext4_super_block *sb)
