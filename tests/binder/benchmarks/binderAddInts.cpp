@@ -79,7 +79,7 @@ class AddIntsService : public BBinder
 
 // File scope function prototypes
 static bool server(void);
-static void BM_client(benchmark::State& state);
+static void BM_addInts(benchmark::State& state);
 static void bindCPU(unsigned int cpu);
 static ostream &operator<<(ostream &stream, const String16& str);
 static ostream &operator<<(ostream &stream, const cpu_set_t& set);
@@ -103,9 +103,8 @@ static bool server(void)
     return true;
 }
 
-static void BM_client(benchmark::State& state)
+static void BM_addInts(benchmark::State& state)
 {
-    server();
     int rv;
     sp<IServiceManager> sm = defaultServiceManager();
 
@@ -162,7 +161,7 @@ static void BM_client(benchmark::State& state)
         state.ResumeTiming();
     }
 }
-BENCHMARK(BM_client);
+BENCHMARK(BM_addInts);
 
 
 AddIntsService::AddIntsService(int cpu): cpu_(cpu) {
@@ -305,6 +304,30 @@ int main(int argc, char *argv[])
         }
     }
 
-    ::benchmark::RunSpecifiedBenchmarks();
-}
+    fflush(stdout);
+    switch (pid_t pid = fork()) {
+    case 0: // Child
+        ::benchmark::RunSpecifiedBenchmarks();
+        return 0;
 
+    default: // Parent
+        if (!server()) { break; }
+
+        // Wait for all children to end
+        do {
+            int stat;
+            rv = wait(&stat);
+            if ((rv == -1) && (errno == ECHILD)) { break; }
+            if (rv == -1) {
+                cerr << "wait failed, rv: " << rv << " errno: "
+                    << errno << endl;
+                perror(NULL);
+                exit(8);
+            }
+        } while (1);
+        return 0;
+
+    case -1: // Error
+        exit(9);
+    }
+}
