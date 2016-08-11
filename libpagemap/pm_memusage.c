@@ -89,15 +89,15 @@ void pm_memusage_pswap_add_offset(pm_memusage_t *mu, unsigned int offset) {
     if (mu->p_swap == NULL)
         return;
 
-    if (offset > mu->p_swap->array_size) {
+    if (offset >= mu->p_swap->array_size) {
         fprintf(stderr, "SWAP offset %d is out of swap bounds.\n", offset);
         return;
+    }
+
+    if (mu->p_swap->offset_array[offset] == USHRT_MAX) {
+        fprintf(stderr, "SWAP offset %d ref. count if overflowing ushort type.\n", offset);
     } else {
-        if (mu->p_swap->offset_array[offset] == USHRT_MAX) {
-            fprintf(stderr, "SWAP offset %d ref. count if overflowing ushort type.\n", offset);
-        } else {
-            mu->p_swap->offset_array[offset]++;
-        }
+        mu->p_swap->offset_array[offset]++;
     }
 
     soff = malloc(sizeof(pm_swap_offset_t));
