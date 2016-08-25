@@ -13,8 +13,7 @@ libext4_utils_src_files := \
     sha1.c \
     wipe.c \
     crc16.c \
-    ext4_sb.c \
-    canned_fs_config.c
+    ext4_sb.c
 
 #
 # -- All host/targets including windows
