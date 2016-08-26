@@ -39,6 +39,7 @@ LOCAL_MODULE := make_ext4fs
 LOCAL_SHARED_LIBRARIES += libcutils
 LOCAL_STATIC_LIBRARIES += \
     libext4_utils_host \
+    libselinux \
     libsparse_host \
     libz
 LOCAL_LDLIBS_windows += -lws2_32
