@@ -12,7 +12,7 @@ perfprofd_cppflags := \
 #
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
-LOCAL_CPP_EXTENSION := cc
+LOCAL_CPP_EXTENSION := .cc
 LOCAL_MODULE := libperfprofdcore
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
@@ -41,7 +41,7 @@ include $(BUILD_STATIC_LIBRARY)
 #
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
-LOCAL_CPP_EXTENSION := cc
+LOCAL_CPP_EXTENSION := .cc
 LOCAL_CXX_STL := libc++
 LOCAL_MODULE := libperfprofdutils
 LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
@@ -55,7 +55,7 @@ include $(BUILD_STATIC_LIBRARY)
 #
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
-LOCAL_CPP_EXTENSION := cc
+LOCAL_CPP_EXTENSION := .cc
 LOCAL_CXX_STL := libc++
 LOCAL_SRC_FILES := perfprofdmain.cc
 LOCAL_STATIC_LIBRARIES := libperfprofdcore libperfprofdutils

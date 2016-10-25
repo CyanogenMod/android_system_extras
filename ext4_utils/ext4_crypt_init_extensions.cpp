@@ -141,8 +141,16 @@ int e4crypt_set_directory_policy(const char* dir)
         KLOG_ERROR(TAG, "Unable to read system policy to set on %s\n", dir);
         return -1;
     }
+
+    auto type_filename = std::string("/data") + e4crypt_key_mode;
+    std::string contents_encryption_mode;
+    if (!android::base::ReadFileToString(type_filename, &contents_encryption_mode)) {
+        LOG(ERROR) << "Cannot read mode";
+    }
+
     KLOG_INFO(TAG, "Setting policy on %s\n", dir);
-    int result = e4crypt_policy_ensure(dir, policy.c_str(), policy.size());
+    int result = e4crypt_policy_ensure(dir, policy.c_str(), policy.length(),
+                                       contents_encryption_mode.c_str());
     if (result) {
         KLOG_ERROR(TAG, "Setting %02x%02x%02x%02x policy on %s failed!\n",
                    policy[0], policy[1], policy[2], policy[3], dir);
